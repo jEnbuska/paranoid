@@ -1,0 +1,16 @@
+.stepper {
+  display: grid;
+  gap: 0.5rem;
+  padding-inline-start: 1.5em;
+}
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+[aria-current="step"] > .label {
+  font-weight: bold;
+}
+.content {
+  padding-block: 0.5rem 1rem;
+}

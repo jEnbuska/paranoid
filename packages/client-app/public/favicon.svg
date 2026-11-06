@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+    <!-- Background -->
+    <rect width="64" height="64" rx="12" fill="#222"/>
+
+    <!-- Speech Bubble -->
+    <path d="M10 22c0-6 6-10 14-10h16c8 0 14 4 14 10v10c0 6-6 10-14 10h-6l-8 6v-6h-2c-8 0-14-4-14-10z" fill="#444"/>
+
+    <!-- Shield -->
+    <path d="M32 18l10 4v6c0 10-6 16-10 18-4-2-10-8-10-18v-6z" fill="#888" stroke="#ccc" stroke-width="2"/>
+
+    <!-- Eye -->
+    <ellipse cx="32" cy="30" rx="6" ry="4" fill="black" />
+    <circle cx="32" cy="30" r="2" fill="white"/>
+</svg>

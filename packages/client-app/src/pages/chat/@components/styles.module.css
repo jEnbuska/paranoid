@@ -1,0 +1,112 @@
+/* Header */
+.header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-block-end: 1px solid GrayText;
+  background: Canvas;
+}
+.peerName {
+  flex-grow: 1;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Message list */
+.messageList {
+  display: grid;
+  align-content: start;
+  gap: 1.5rem;
+  max-block-size: 100%;
+  margin: 0;
+  padding: 1rem;
+  overflow-x: clip;
+  overflow-y: auto;
+  list-style: none;
+}
+.day {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dayDate {
+  justify-self: center;
+}
+.dayMessages {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Message bubble */
+.message {
+  display: grid;
+  align-self: end;
+  padding: 0.75rem 1rem;
+  border: 1px solid GrayText;
+}
+.sent {
+  justify-self: end;
+  margin-inline-start: 2rem;
+  background: color-mix(in srgb, CanvasText 12%, Canvas);
+}
+.received {
+  justify-self: start;
+  margin-inline-end: 2rem;
+}
+.messageBody {
+  display: flex;
+  gap: 1rem;
+}
+.messageText {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.messageTime {
+  align-self: end;
+  color: GrayText;
+}
+
+/* Alert shown in the message area */
+.chatAlert {
+  justify-content: center;
+  align-self: center;
+  justify-self: center;
+  inline-size: 20rem;
+}
+
+/* Compose form */
+.composer {
+  position: sticky;
+  inset-block-end: 0;
+  display: grid;
+  grid-template-columns: 1fr max-content;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-block-start: 1px solid GrayText;
+  background: Canvas;
+}
+.composerError {
+  grid-column: 1 / -1;
+}
+/* A textarea can't center its text, so padding fills one line up to the minimum height */
+.composerInput {
+  --padding-block: calc((2.75rem - 1lh) / 2 - 1px);
+  field-sizing: content;
+  max-block-size: calc(4lh + 2 * var(--padding-block) + 2px);
+  padding-block: var(--padding-block);
+  border-width: 1px;
+  resize: none;
+}

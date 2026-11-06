@@ -1,0 +1,51 @@
+.createForm {
+  display: grid;
+  gap: 1rem;
+}
+/* The rule's auto inline margins would shrink it to nothing in a grid */
+.createForm > hr {
+  inline-size: 100%;
+}
+.passwordGroup {
+  display: grid;
+  gap: 0.5rem;
+}
+.generatePassword {
+  justify-self: start;
+}
+.actions {
+  display: flex;
+  justify-self: end;
+  gap: 0.5rem;
+}
+
+.exchangeText {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.share {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.invite {
+  display: grid;
+  gap: 1rem;
+}
+
+.or {
+  justify-self: center;
+}
+.copy {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

@@ -1,0 +1,25 @@
+{
+  "name": "paranoid",
+  "author": "Joona Enbuska",
+  "license": "MIT",
+  "private": true,
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "test": "pnpm -r run test",
+    "test:e2e": "pnpm --filter e2e test:e2e",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "oxlint",
+    "build": "pnpm -r run build",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
+    "typescript": "^7.0.2"
+  }
+}

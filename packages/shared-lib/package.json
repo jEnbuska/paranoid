@@ -1,0 +1,19 @@
+{
+  "name": "shared-lib",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "shared utils and types between client-app and signaling-server",
+  "exports": {
+    "./types": "./types.ts",
+    "./utils/*": "./utils/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  }
+}

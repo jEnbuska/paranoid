@@ -1,0 +1,10 @@
+.inviteView {
+  display: grid;
+  gap: 1rem;
+}
+.close {
+  justify-self: end;
+}
+.expiresIn {
+  justify-self: center;
+}

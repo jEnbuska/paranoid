@@ -1,0 +1,15 @@
+.fieldset {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem 1.25rem 1.25rem;
+  text-align: start;
+}
+.legend {
+  padding-inline: 0.25em;
+  font-size: 1.125em;
+  font-weight: 600;
+}
+/* Buttons directly in the fieldset, such as its submit button, sit at the end */
+.fieldset > button {
+  justify-self: end;
+}

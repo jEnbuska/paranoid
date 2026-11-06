@@ -1,0 +1,119 @@
+/*
+Base styles live in cascade layers, so the unlayered CSS modules of components
+always override them, whatever the selector specificity.
+*/
+@layer normalize, base;
+
+/* Evens out browser differences and keeps the native look of elements */
+@import "modern-normalize" layer(normalize);
+
+@layer base {
+  /*
+  Native light or dark look, following the OS setting. The explicit background
+  covers embedded webviews that leave the page canvas transparent. Checkboxes,
+  sliders and progress bars use the text color instead of the browser's accent
+  color, so the UI has no hue.
+  */
+  :root {
+    color-scheme: light dark;
+    accent-color: CanvasText;
+    background: Canvas;
+  }
+
+  body {
+    line-height: 1.5;
+  }
+
+  /*
+  Center button labels on their capital letters. The trim needs the button's own
+  block layout, so buttons don't use flex. Icons sit inline next to the label.
+  */
+  button {
+    padding-block: 0.4em;
+    text-box: trim-both cap alphabetic;
+  }
+  /* Move icons from the middle of the x-height to the middle of the capitals */
+  button svg {
+    translate: 0 calc((1ex - 1cap) / 2);
+  }
+
+  /* Finger-sized targets on every device, about 44px at the default font size */
+  button,
+  input,
+  textarea {
+    min-block-size: 2.75rem;
+  }
+  button {
+    padding-inline: 1em;
+  }
+  input[type="checkbox"] {
+    min-block-size: auto;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+  }
+
+  /*
+  Chrome's native dark buttons are a flat gray that looks disabled. Outline them
+  in the text color instead, and fill submit buttons with it. System colors only,
+  so both themes follow the OS.
+  */
+  button {
+    border: 1px solid CanvasText;
+    border-radius: 0.25rem;
+    background: Canvas;
+    color: CanvasText;
+  }
+  button:hover:not(:disabled) {
+    background: color-mix(in srgb, CanvasText 12%, Canvas);
+  }
+  button:active:not(:disabled),
+  button[aria-pressed="true"] {
+    background: color-mix(in srgb, CanvasText 24%, Canvas);
+  }
+  button[type="submit"] {
+    background: CanvasText;
+    color: Canvas;
+  }
+  button[type="submit"]:hover:not(:disabled) {
+    background: color-mix(in srgb, CanvasText 85%, Canvas);
+  }
+  button[type="submit"]:active:not(:disabled) {
+    background: color-mix(in srgb, CanvasText 70%, Canvas);
+  }
+
+  /* Disabled controls look alike: transparent, gray and dashed */
+  button:disabled,
+  input:disabled:not([type="checkbox"], [type="range"]),
+  textarea:disabled {
+    border: 1px dashed GrayText;
+    background: transparent;
+    color: GrayText;
+  }
+
+  /*
+  A loading button shows only a spinner in its center. The label stays in the
+  layout, invisible, so the button keeps its width.
+  */
+  button[aria-busy="true"] {
+    position: relative;
+    color: transparent;
+  }
+  button[aria-busy="true"] progress {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    color: GrayText;
+  }
+
+  /* Invalid fields get a striped bar along their bottom edge, shown even when empty */
+  input[aria-invalid="true"] {
+    background-image: repeating-linear-gradient(
+      135deg,
+      CanvasText 0 0.125rem,
+      transparent 0.125rem 0.375rem
+    );
+    background-position: bottom;
+    background-size: 100% 0.25rem;
+    background-repeat: no-repeat;
+  }
+}

@@ -1,0 +1,16 @@
+.chatPage {
+  display: grid;
+  grid-template-rows: max-content 1fr max-content;
+  block-size: 100dvh;
+}
+.connectionLost {
+  display: grid;
+  grid-row: span 2;
+  place-content: center;
+}
+.messages {
+  display: grid;
+  align-items: end;
+  block-size: 100%;
+  min-block-size: 0;
+}

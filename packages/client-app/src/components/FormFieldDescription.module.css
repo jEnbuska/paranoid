@@ -1,0 +1,9 @@
+.description {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: GrayText;
+}
+.error {
+  color: inherit;
+}

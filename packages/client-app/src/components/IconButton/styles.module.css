@@ -1,0 +1,5 @@
+/* Square: as wide as buttons are tall, without the text buttons' side padding */
+.iconButton {
+  min-inline-size: 2.75rem;
+  padding-inline: 0;
+}

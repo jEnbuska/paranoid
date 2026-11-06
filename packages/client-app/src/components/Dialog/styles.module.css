@@ -1,0 +1,28 @@
+/* Native <dialog> look, with a fade in */
+.dialog {
+  inline-size: min(600px, calc(100% - 2rem));
+  text-align: start;
+}
+.dialog[open] {
+  transition: opacity 225ms;
+}
+@starting-style {
+  .dialog[open] {
+    opacity: 0;
+  }
+}
+/* Dims the page, so the dialog reads as on top of it */
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+.dialog[open]::backdrop {
+  transition: opacity 225ms;
+}
+@starting-style {
+  .dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+.title {
+  margin-block-start: 0;
+}

@@ -1,0 +1,13 @@
+.abstractFormField {
+  display: grid;
+  gap: 0.25rem;
+  text-align: start;
+}
+/* Tabular numbers keep a changing value, like a slider's, from jittering */
+.labelLine {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}

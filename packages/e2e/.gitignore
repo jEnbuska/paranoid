@@ -1,0 +1,5 @@
+# The client built for the tests, and everything a run generates
+dist
+test-results
+playwright-report
+blob-report

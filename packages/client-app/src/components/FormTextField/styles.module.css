@@ -1,0 +1,10 @@
+/* The input and an optional button after it, such as a password toggle */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.input {
+  flex-grow: 1;
+  min-inline-size: 0;
+}

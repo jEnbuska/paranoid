@@ -1,0 +1,9 @@
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: start;
+}
+.message {
+  flex-grow: 1;
+}

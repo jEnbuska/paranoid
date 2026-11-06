@@ -1,0 +1,18 @@
+.pageLayout {
+  min-block-size: 100dvh;
+  max-inline-size: 72rem;
+  margin: auto;
+  padding-block: 0.5rem 1rem;
+}
+
+.main {
+  display: grid;
+  align-items: center;
+  gap: 1rem;
+  inline-size: 100%;
+  max-inline-size: 28rem;
+  block-size: 100%;
+  margin: auto;
+  padding: 1rem;
+  text-align: center;
+}

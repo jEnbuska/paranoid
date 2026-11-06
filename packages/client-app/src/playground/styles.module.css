@@ -1,0 +1,49 @@
+.playground {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2rem;
+  padding: 1rem;
+}
+.title {
+  margin-block-start: 0;
+}
+.nav {
+  padding-inline-start: 1.25em;
+}
+.main {
+  display: grid;
+  align-content: start;
+  gap: 1.5rem;
+  min-inline-size: 0;
+}
+.example {
+  display: grid;
+  gap: 0.5rem;
+}
+.example > h3 {
+  margin: 0;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+.column {
+  display: grid;
+  gap: 1rem;
+  max-inline-size: 28rem;
+}
+.iconGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.iconGrid > li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
