@@ -10,6 +10,7 @@ import type {
 } from "shared-lib/types";
 import useComponentDidMount from "~/hooks/use-component-did-mount";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
+import { enqueueSend } from "~/features/socket/send-queue";
 
 export function useOnEvent<T extends keyof ServerToClientEvents>(
   type: T,
@@ -38,8 +39,13 @@ export function useEmitEventEncrypted() {
   return useStable(async function emitEncrypted<
     E extends "CANDIDATE" | "DESCRIPTION" | "JOIN" | "DONE" | "CLOSE",
   >(type: E, ...args: Parameters<ClientToServerEvents[E]>): Promise<void> {
-    const params = await Promise.all(args.map(encrypt));
-    (socket.emit as any)(type, ...params);
+    // Queued, so that events reach the server in the order they were emitted
+    // here. Encrypting takes time, and without the queue an event with no
+    // payload (DONE) would leave before a payload that is still being encrypted
+    await enqueueSend(socket, async () => {
+      const params = await Promise.all(args.map(encrypt));
+      (socket.emit as any)(type, ...params);
+    });
   });
 }
 
