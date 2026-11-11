@@ -22,6 +22,16 @@ test(
   },
 );
 
+test(
+  "someone on a slower device than the inviter can join",
+  WEBRTC,
+  async ({ openPeer }) => {
+    const alice = await openPeer();
+    const bob = await openPeer({ slowKeyDerivationMs: 1000 });
+    await startChat(alice, bob);
+  },
+);
+
 // Messages go directly to the other person, so the browser's online state
 // doesn't matter
 test(

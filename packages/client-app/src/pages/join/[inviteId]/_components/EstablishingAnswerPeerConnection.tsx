@@ -1,12 +1,12 @@
 import {
-  useEmitEventEncrypted,
+  useEmitIntroduction,
   useOnEventDecrypted,
 } from "~/features/socket/hooks.ts";
 import ConnectionProgressList from "~/features/invite/_components/ConnectionProgressList/ConnectionProgressList.tsx";
 import InviteView from "~/features/invite/_components/InviteView.tsx";
 import { useNavigate } from "react-router";
 import useComponentDidMount from "~/hooks/use-component-did-mount.ts";
-import useThrowToErrorBoundary from "~/hooks/use-throw-to-error-boundary.ts";
+import useReject from "~/hooks/use-reject.ts";
 import { useAbortController } from "~/hooks/use-abort-controller.ts";
 import {
   useInviteState,
@@ -19,16 +19,16 @@ import { addPeerConnectionEventListeners } from "~/features/peer-connection/util
 
 export default function EstablishingAnswerPeerConnection() {
   const navigate = useNavigate();
-  const throwToErrorBoundary = useThrowToErrorBoundary();
-  useHandleInviteConnectionIceCandidatesExchange(throwToErrorBoundary);
+  const reject = useReject();
+  useHandleInviteConnectionIceCandidatesExchange(reject);
   const { signal } = useAbortController();
-  const emit = useEmitEventEncrypted();
+  const emit = useEmitIntroduction();
   const { connection } = useInviteState();
   const { setAnswerChannel } = useInviteCallbacks();
   useOnEventDecrypted({
     type: "DESCRIPTION",
     once: true,
-    onError: throwToErrorBoundary,
+    onError: reject,
     async callback(description) {
       assertIsNotNil(connection);
       await connection.setRemoteDescription(description);
@@ -43,11 +43,11 @@ export default function EstablishingAnswerPeerConnection() {
     },
   });
   const handshake = useHandleHandshake();
-  useComponentDidMount(() => handshake.catch(throwToErrorBoundary));
+  useComponentDidMount(() => handshake.catch(reject));
   useOnEventDecrypted({
     type: "DONE",
     once: true,
-    onError: throwToErrorBoundary,
+    onError: reject,
     async callback() {
       await handshake;
       navigate("/chat", { replace: true });

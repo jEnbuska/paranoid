@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useMemo, use } from "react";
 import {
   useOnEventDecrypted,
-  useEmitEventEncrypted,
+  useEmitIntroduction,
 } from "~/features/socket/hooks";
 import { useAbortController } from "~/hooks/use-abort-controller";
 import { assertIsNotNil } from "shared-lib/utils/nil";
@@ -30,7 +30,7 @@ export function useInviteCallbacks() {
 export function useHandleInviteConnectionIceCandidatesExchange(
   onError?: (error: unknown) => void,
 ) {
-  const emit = useEmitEventEncrypted();
+  const emit = useEmitIntroduction();
   const { signal } = useAbortController();
   const { connection } = useInviteState();
   assertIsNotNil(connection);
@@ -120,10 +120,9 @@ export function useInviteConnectionProgress() {
 }
 
 export function useHandleHandshake() {
-  const { channel, connection } = useInviteState();
+  const { channel, connection, userName } = useInviteState();
   const { signal } = useAbortController();
   const { handshake } = useInviteCallbacks();
-  const { userName } = useInviteState();
   const decrypt = useDecrypt();
   const encrypt = useEncrypt();
   const resolvable = useResolvable();
@@ -161,7 +160,7 @@ export function useHandleHandshake() {
         );
       }
       {
-        const { resolve, reject, promise } = await createResolvable(
+        const { resolve, reject, promise } = createResolvable(
           controller.signal,
         );
         channel.addEventListener("open", () => resolve(), options);

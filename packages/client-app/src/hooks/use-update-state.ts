@@ -35,7 +35,7 @@ export default function useUpdateState<T extends Record<string, any>>(
     resolvable.current = [];
   }, [state]);
   const updateState = useStable(async (update: Partial<T>) => {
-    const { resolve, promise } = await createResolvable();
+    const { resolve, promise } = createResolvable();
     setState((prevState) => ({ ...prevState, ...update }));
     resolvable.current.push(resolve);
     // Wrapping state update in a promise to ensure that promise is not resolved

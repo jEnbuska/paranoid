@@ -9,8 +9,9 @@ import Fieldset from "~/components/Fieldset/Fieldset.tsx";
 import FormTextField from "~/components/FormTextField/FormTextField.tsx";
 import { validateDisplayName } from "~/validation/display-name.ts";
 import Button from "~/components/Button/Button.tsx";
-import InviteDialog from "~/features/invite/_components/InviteDialog.tsx";
 import CreateInviteDialogContent from "~/pages/@components/CreateInviteDialogContent.tsx";
+import Conditional from "~/components/Conditional.tsx";
+import Dialog from "~/components/Dialog/Dialog.tsx";
 
 type CreateOfferFormData = RandomNameData<{
   userName: string;
@@ -29,8 +30,10 @@ export default function LandingPage() {
     mutationFn: ({ [names.userName]: userName }: CreateOfferFormData) =>
       initOffer(userName),
   });
-  const { stage } = useInviteState();
+
+  const { stage, active } = useInviteState();
   useEffect(() => form.reset(), [stage]);
+  const { onClosed } = useInviteCallbacks();
   return (
     <>
       <form onSubmit={form.handleSubmit((data) => mutateAsync(data))}>
@@ -49,11 +52,14 @@ export default function LandingPage() {
           </Button>
         </Fieldset>
       </form>
-      <InviteDialog
+      <Conditional
+        Component={Dialog}
+        shown={active && (stage === "offer" || stage === "connected")}
+        onClose={onClosed}
         title={"Create Invite"}
-        openStage={"offer"}
-        Component={CreateInviteDialogContent}
-      />
+      >
+        <CreateInviteDialogContent />
+      </Conditional>
     </>
   );
 }
