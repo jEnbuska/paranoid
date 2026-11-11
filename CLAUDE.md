@@ -18,6 +18,7 @@ pnpm workspace (`pnpm-workspace.yaml`) with four packages: `packages/client-app`
 - Workspace packages depend on each other with `"workspace:*"` (for example `"shared-lib": "workspace:*"`).
 - pnpm is strict: a package can only import what its own `package.json` declares. If an import fails to resolve, add the dependency to that package instead of relying on another package's.
 - Dependency install scripts only run when allowed under `allowBuilds` in `pnpm-workspace.yaml`. On `ERR_PNPM_IGNORED_BUILDS`, ask before running `pnpm approve-builds <package>`.
+- Don't install anything else yourself, such as Playwright browsers, system packages or command-line tools. Ask the user to install it, and say what is needed and why. `pnpm install` from the lockfile is the exception.
 
 ## Commands (from the root)
 
@@ -33,7 +34,8 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check
 
 - CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job (Chromium, plus Firefox and WebKit on PRs into `main`), on every PR with changed files (a PR with none skips both jobs) and on pushes to `main` and `dev`. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
 - The rules for branches, PRs and releases are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs go into `dev`, except a release PR from `dev` into `main`. Sessions never release unless the user tells them to for that specific PR.
-- Commits must carry the user's GitHub noreply address, as author and committer. Check `git config user.email` before the first commit in a clone, and stop if it's anything else, because a commit on a PR can't be removed.
+- Branch names start with the ticket number: `#<TICKET_NUMBER>-<name>`, for example `#2-peers-stuck-connecting`. Quote the name in a shell (`git switch -c '#2-peers-stuck-connecting'`), because an unquoted `#` starts a comment. `hotfix/*` branches have no ticket and keep that name.
+- Sessions commit and push without asking first.
 - Keep PR branches up to date by rebasing onto `origin/dev` and pushing with `--force-with-lease`. PRs land with "Rebase and merge", and merge commits are refused.
 - A new CI job has to be added as a required check in the `main` and `dev` rulesets.
 - Every PR into `dev` must link an open issue with `Closes #N`, `Fixes #N` or `Resolves #N`, unless it comes from a `hotfix/*` branch; the `PR rules` check fails otherwise. Linked issues get a `PR Opened` label and close when the PR merges into `dev`, the default branch.

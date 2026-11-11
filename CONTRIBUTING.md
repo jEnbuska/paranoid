@@ -21,7 +21,7 @@ A PR with no changes fails `PR rules` unless it's a draft, so skipping CI can't 
 
 ## Opening a pull request
 
-1. Find or open an issue, and start your branch from `dev`.
+1. Find or open an issue, and start your branch from `dev`. Name it `#<TICKET_NUMBER>-<name>`, for example `#2-peers-stuck-connecting`, and quote the name in a shell, because an unquoted `#` starts a comment.
 2. Open the PR against `dev`, with `Closes #N`, `Fixes #N` or `Resolves #N` in its description. The issue has to be open. It closes when the PR merges.
 3. Keep the branch up to date by rebasing, with `git rebase origin/dev` or the "Update with rebase" option on the PR.
 
