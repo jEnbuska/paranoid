@@ -11,19 +11,34 @@ import type {
 import useComponentDidMount from "~/hooks/use-component-did-mount";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
 import { enqueueSend } from "~/features/socket/send-queue";
+import { useInbox } from "~/features/socket/inbox.ts";
+import useReject from "~/hooks/use-reject.ts";
 
 export function useOnEvent<T extends keyof ServerToClientEvents>(
   type: T,
   handler: (...args: Parameters<ServerToClientEvents[T]>) => any,
 ) {
-  const socket = useSocket();
+  const inbox = useInbox();
   const cb: any = useStable(handler);
+  const reject = useReject();
+
   useEffect(() => {
-    socket.on(type, cb);
+    const controller = new AbortController();
+    async function handleNext() {
+      if (controller.signal.aborted) return;
+      try {
+        await inbox.take(type, controller.signal).then((args) => cb(...args));
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        return reject(e);
+      }
+      void handleNext();
+    }
+    void handleNext();
     return () => {
-      socket.off(type, cb);
+      controller.abort();
     };
-  }, [socket]);
+  }, []);
 }
 
 export function useSocket() {
@@ -33,11 +48,11 @@ export function useSocket() {
   }).data;
 }
 
-export function useEmitEventEncrypted() {
+export function useEmitIntroduction() {
   const socket = useSocket();
   const encrypt = useEncrypt();
   return useStable(async function emitEncrypted<
-    E extends "CANDIDATE" | "DESCRIPTION" | "JOIN" | "DONE" | "CLOSE",
+    E extends "CANDIDATE" | "DESCRIPTION" | "DONE",
   >(type: E, ...args: Parameters<ClientToServerEvents[E]>): Promise<void> {
     // Queued, so that events reach the server in the order they were emitted
     // here. Encrypting takes time, and without the queue an event with no
@@ -58,21 +73,22 @@ export function useOnEventDecrypted<
   onError?: (error: unknown) => void;
   callback: (...args: Parameters<ServerToClientEvents[E]>) => any;
 }) {
-  const socket = useSocket();
+  const inbox = useInbox();
   const controller = useAbortController();
   const decrypt = useDecrypt();
-  const callback = useStable(() => {
+  const callback = useStable(async () => {
     const { type, once, callback, onError } = options;
     function handleEvent(...args: any) {
       return Promise.all(args.map(decrypt))
         .then((params) => (callback as any)(...params))
         .catch(onError);
     }
-    const method = once ? "once" : "on";
-    socket[method](type, handleEvent as any);
-    controller.signal.addEventListener("abort", () =>
-      socket.off(type, handleEvent as any),
-    );
+    do {
+      await inbox
+        .take(type, controller.signal)
+        .then((args) => handleEvent(...args))
+        .catch(onError);
+    } while (!once && !controller.signal.aborted);
   });
   useComponentDidMount(callback);
 }

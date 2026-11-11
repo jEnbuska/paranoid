@@ -1,10 +1,7 @@
-import { use } from "react";
 import { useSocket } from "~/features/socket/hooks";
-import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import { useInviteState, useInviteCallbacks } from "~/features/invite/hooks";
 import useStable from "~/hooks/use-stable.ts";
 import { encryptWithPassword } from "~/features/crypt/utils/password";
-import { useComponentDidUnmount } from "~/hooks/use-component-did-unmount";
 import pick from "shared-lib/utils/pick";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router";
@@ -64,21 +61,5 @@ export function useAnswerOffer() {
       password,
       userName,
     });
-  });
-}
-
-export function useHandleInviteDialogClosed() {
-  const { getState } = use(InviteStateContext);
-  const { resetInviteContext } = useInviteCallbacks();
-  const socket = useSocket();
-  useComponentDidUnmount(() => {
-    // The stage from the current state: the dialog's content unmounts without
-    // rendering again when the finished handshake closes the dialog
-    switch (getState().stage) {
-      case "offer":
-      case "answer":
-        socket.emit("CLOSE");
-        void resetInviteContext();
-    }
   });
 }

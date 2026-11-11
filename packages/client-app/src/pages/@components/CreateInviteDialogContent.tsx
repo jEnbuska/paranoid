@@ -3,26 +3,37 @@ import EstablishingOfferPeerConnectionStep from "./EstablishingOfferPeerConnecti
 import CreateOffer from "./CreateOffer.tsx";
 import ExchangeOfferInvite from "./ExchangeOfferInvite.tsx";
 import invoke from "shared-lib/utils/invoke";
-import { useOnEvent } from "~/features/socket/hooks.ts";
+import { useOnEvent, useSocket } from "~/features/socket/hooks.ts";
 import { useInviteState, useInviteCallbacks } from "~/features/invite/hooks.ts";
 import { useMutation } from "@tanstack/react-query";
 import InviteView from "~/features/invite/_components/InviteView.tsx";
-import { useHandleInviteDialogClosed } from "~/pages/hooks.ts";
-import useThrowToErrorBoundary from "~/hooks/use-throw-to-error-boundary.ts";
+import useReject from "~/hooks/use-reject.ts";
+import { useComponentDidUnmount } from "~/hooks/use-component-did-unmount.ts";
+import InviteStateContext from "~/features/invite/context/InviteStateContext.tsx";
+import { use } from "react";
 
 export default function CreateInviteDialogContent() {
-  useHandleInviteDialogClosed();
+  const { getState } = use(InviteStateContext);
+  const { resetInviteContext } = useInviteCallbacks();
+  const socket = useSocket();
+  useComponentDidUnmount(() => {
+    // The stage from the current state: the dialog's content unmounts without
+    // rendering again when the finished handshake closes the dialog
+    switch (getState().stage) {
+      case "offer":
+        socket.emit("CLOSE");
+        void resetInviteContext();
+    }
+  });
   const { peerPublicKey, inviteId } = useInviteState();
   const { createOfferPeerConnection } = useInviteCallbacks();
-  const throwToErrorBoundary = useThrowToErrorBoundary();
+  const reject = useReject();
   const { mutateAsync } = useMutation({
     mutationFn: createOfferPeerConnection,
     throwOnError: true,
   });
   useOnEvent("JOIN", mutateAsync);
-  useOnEvent("CLOSE", () =>
-    throwToErrorBoundary(new Error("Invite was closed")),
-  );
+  useOnEvent("CLOSE", () => reject(new Error("Invite was closed")));
   const step = invoke(() => {
     if (peerPublicKey) return 2;
     if (inviteId) return 1;

@@ -3,20 +3,18 @@ import EstablishingAnswerPeerConnection from "~/pages/join/[inviteId]/_component
 import AnswerOffer from "~/pages/join/[inviteId]/_components/AnswerOffer.tsx";
 import { useInviteState } from "~/features/invite/hooks.ts";
 import { useOnEvent, useSocket } from "~/features/socket/hooks.ts";
-import { useHandleInviteDialogClosed } from "~/pages/hooks.ts";
 import Conditional from "~/components/Conditional.tsx";
 import useStable from "~/hooks/use-stable.ts";
-import useThrowToErrorBoundary from "~/hooks/use-throw-to-error-boundary.ts";
+import useReject from "~/hooks/use-reject.ts";
 
-export default function AnswerDialogContent() {
-  useHandleInviteDialogClosed();
+export default function JoinInviteContent() {
   const { peerPublicKey, stage } = useInviteState();
   const socket = useSocket();
-  const throwToErrorBoundary = useThrowToErrorBoundary();
+  const reject = useReject();
   // After the handshake the peers talk directly, so none of this ends the chat
   const connected = stage === "connected";
   const failJoin = useStable((message: string) => {
-    if (!connected) throwToErrorBoundary(new Error(message));
+    if (!connected) reject(new Error(message));
   });
   useOnEvent("CLOSE", () => failJoin("Invite was closed"));
   useEffect(() => {

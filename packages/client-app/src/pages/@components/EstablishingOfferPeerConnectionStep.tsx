@@ -1,5 +1,5 @@
 import {
-  useEmitEventEncrypted,
+  useEmitIntroduction,
   useOnEventDecrypted,
 } from "~/features/socket/hooks.ts";
 import ConnectionProgressList from "~/features/invite/_components/ConnectionProgressList/ConnectionProgressList.tsx";
@@ -16,7 +16,7 @@ import { assertIsNotNil } from "shared-lib/utils/nil";
 export default function EstablishingOfferPeerConnectionStep() {
   useHandleInviteConnectionIceCandidatesExchange();
   const navigate = useNavigate();
-  const emit = useEmitEventEncrypted();
+  const emit = useEmitIntroduction();
   const { connection } = useInviteState();
   assertIsNotNil(connection);
   useComponentDidMount(() => {

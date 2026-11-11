@@ -5,6 +5,7 @@ import createResolvable from "shared-lib/utils/create-resolvable";
 import { queryClient } from "~/query-client";
 import { socketQueryKey } from "~/features/socket/constants";
 import { createLoader } from "~/features/loader/utils";
+import { getInbox } from "~/features/socket/inbox.ts";
 
 export async function createSocket(): Promise<AppSocket> {
   const socket: AppSocket = io(SIGNALING_SERVER, {
@@ -12,6 +13,9 @@ export async function createSocket(): Promise<AppSocket> {
     reconnectionAttempts: 30,
     reconnectionDelay: 2000, // Try to reconnect every 2 second's
   });
+  // Listens for handshake events from the start, so none arrive before a
+  // component is ready to read them
+  const inbox = getInbox(socket);
 
   const { resolve, reject, promise } = await createResolvable<AppSocket>();
   socket
@@ -21,6 +25,9 @@ export async function createSocket(): Promise<AppSocket> {
     })
     .on("disconnect", (reason) => {
       console.warn("❌ Disconnected:", reason);
+      // The server drops the invite when either side disconnects, so anything
+      // still unread belongs to an invite that no longer exists
+      inbox.clear();
       if (reason === "io server disconnect") {
         socket.connect(); // Manually reconnect if the server disconnected us
       }
@@ -31,6 +38,7 @@ export async function createSocket(): Promise<AppSocket> {
     });
   return promise;
 }
+
 async function reloadSocket() {
   const existingSocket = queryClient.getQueryData<AppSocket>(socketQueryKey);
   existingSocket?.disconnect();

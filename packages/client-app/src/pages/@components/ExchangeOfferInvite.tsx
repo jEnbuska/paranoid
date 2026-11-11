@@ -15,7 +15,6 @@ export default function ExchangeOfferInvite() {
     <>
       <p className={styles.exchangeText}>1. Next ask your contact to join</p>
       <ShareInvite />
-
       <p className={styles.exchangeText}>
         2. Then wait for someone to join the invite...
       </p>

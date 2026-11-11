@@ -66,3 +66,5 @@ export interface ServerToClientEvents<Decrypted extends boolean = true> {
 
   CLOSE(): void;
 }
+
+export type ServerToClientEventType = keyof ServerToClientEvents;
