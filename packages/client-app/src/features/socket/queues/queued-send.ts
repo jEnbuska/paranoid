@@ -2,10 +2,16 @@ import type { AppSocket } from "~/features/socket/types.ts";
 
 function ignore() {}
 
-export function createQueuedSend(socket: AppSocket) {
+export function createQueuedSend(
+  socket: AppSocket,
+  onClear: (cb: () => void) => void,
+) {
   /** The last send queued, which the next one waits for. It never rejects */
   let promise: Promise<unknown> = Promise.resolve();
   const emit = socket.emit.bind(socket);
+  onClear(() => {
+    promise = Promise.resolve();
+  });
 
   /**
    * Runs `send` once every send queued earlier on this socket has finished,
