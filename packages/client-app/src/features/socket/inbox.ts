@@ -16,16 +16,20 @@ type HandshakeEvent = (typeof HANDSHAKE_EVENTS)[number];
 
 function createInbox(socket: AppSocket) {
   const queues = new Map<HandshakeEvent, unknown[][]>();
-
+  let clearSend = () => {};
+  function onClear(cb: () => void) {
+    clearSend = cb;
+  }
   return {
     /** The oldest unread event of this type, or the next one to arrive */
     take: createQueuedTake(socket, queues),
 
-    send: createQueuedSend(socket),
+    send: createQueuedSend(socket, onClear),
 
     /** Drops unread events, so nothing leaks into the next invite */
     clear() {
       queues.clear();
+      clearSend();
     },
   };
 }
