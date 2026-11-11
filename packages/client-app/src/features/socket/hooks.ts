@@ -10,7 +10,6 @@ import type {
 } from "shared-lib/types";
 import useComponentDidMount from "~/hooks/use-component-did-mount";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
-import { enqueueSend } from "~/features/socket/send-queue";
 import { useInbox } from "~/features/socket/inbox.ts";
 import useReject from "~/hooks/use-reject.ts";
 
@@ -49,7 +48,7 @@ export function useSocket() {
 }
 
 export function useEmitIntroduction() {
-  const socket = useSocket();
+  const { send } = useInbox();
   const encrypt = useEncrypt();
   return useStable(async function emitEncrypted<
     E extends "CANDIDATE" | "DESCRIPTION" | "DONE",
@@ -57,9 +56,9 @@ export function useEmitIntroduction() {
     // Queued, so that events reach the server in the order they were emitted
     // here. Encrypting takes time, and without the queue an event with no
     // payload (DONE) would leave before a payload that is still being encrypted
-    await enqueueSend(socket, async () => {
+    await send(async (emit) => {
       const params = await Promise.all(args.map(encrypt));
-      (socket.emit as any)(type, ...params);
+      (emit as any)(type, ...params);
     });
   });
 }
