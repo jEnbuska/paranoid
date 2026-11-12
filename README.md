@@ -112,17 +112,17 @@ The client reads these Vite env variables from [`packages/client-app/.env`](pack
 
 From the repository root:
 
-| Command             | What it does                                                                                           |
-| ------------------- | ------------------------------------------------------------------------------------------------------ |
-| `pnpm dev`          | Signaling server and Vite dev server in parallel, with each line labeled by package; Ctrl+C stops both |
-| `pnpm test`         | Unit tests in every package that has them (client-app, shared-lib, signaling-server)                   |
-| `pnpm test:e2e`     | Playwright end-to-end tests, see [End-to-end tests](#end-to-end-tests)                                 |
-| `pnpm typecheck`    | Type-check every package                                                                               |
-| `pnpm lint`         | Lint the whole repo with oxlint (`.oxlintrc.json`; the client adds React rules in its own config)      |
-| `pnpm knip`         | Find unused files, exports and dependencies in every package with knip (`knip.json`)                   |
-| `pnpm build`        | Build every package that has a build (client-app)                                                      |
-| `pnpm format`       | Format the whole repo with oxfmt (`.oxfmtrc.json`)                                                     |
-| `pnpm format:check` | Check formatting without changing files                                                                |
+| Command             | What it does                                                                                                          |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`          | Signaling server and Vite dev server in parallel, with each line labeled by package; Ctrl+C stops both                |
+| `pnpm test`         | Unit tests in every package that has them (client-app, shared-lib, signaling-server)                                  |
+| `pnpm test:e2e`     | Playwright end-to-end tests, see [End-to-end tests](#end-to-end-tests)                                                |
+| `pnpm typecheck`    | Type-check every package                                                                                              |
+| `pnpm lint`         | Lint the whole repo with oxlint (`.oxlintrc.json`; the client adds React rules in its own config)                     |
+| `pnpm knip`         | Find unused files, exports and dependencies in every package with knip (`knip.json`), and explain how to fix each one |
+| `pnpm build`        | Build every package that has a build (client-app)                                                                     |
+| `pnpm format`       | Format the whole repo with oxfmt (`.oxfmtrc.json`)                                                                    |
+| `pnpm format:check` | Check formatting without changing files                                                                               |
 
 For a single package:
 

@@ -13,7 +13,7 @@
     "test:e2e": "pnpm --filter e2e test:e2e",
     "typecheck": "pnpm -r run typecheck",
     "lint": "oxlint",
-    "knip": "knip",
+    "knip": "knip --reporter symbols --reporter ./scripts/knip-explain.mts",
     "build": "pnpm -r run build",
     "format": "oxfmt",
     "format:check": "oxfmt --check"
