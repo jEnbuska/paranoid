@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import useStable from "~/hooks/use-stable.ts";
-import useAsyncResolver from "~/hooks/use-async-resolver";
 import createResolvable from "shared-lib/utils/create-resolvable";
 import always from "shared-lib/utils/always";
 
@@ -28,7 +27,6 @@ export default function useUpdateState<T extends Record<string, any>>(
 ) {
   const [state, setState] = useState<T>(initialState);
   const resolvable = useRef<Array<() => void>>([]);
-  const resolver = useAsyncResolver();
 
   useEffect(() => {
     resolvable.current.forEach((cb) => cb());
@@ -38,10 +36,9 @@ export default function useUpdateState<T extends Record<string, any>>(
     const { resolve, promise } = createResolvable();
     setState((prevState) => ({ ...prevState, ...update }));
     resolvable.current.push(resolve);
-    // Wrapping state update in a promise to ensure that promise is not resolved
-    // until the state is updated, and if the component is unmounted before that
-    // the promise is not resolved
-    return resolver(promise);
+    // Resolves once the update has rendered. The effect that resolves it
+    // doesn't run after an unmount, so then it never resolves
+    return promise;
   });
   const getState = useStable(always(state));
   return [state, updateState, getState] as const;

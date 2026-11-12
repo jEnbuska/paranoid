@@ -1,8 +1,7 @@
 import { PropsWithChildren } from "react";
 import { MessageData } from "../types";
-import { useAbortController } from "~/hooks/use-abort-controller";
 import { useDecrypt } from "~/features/crypt/hooks";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
+import useAsyncEffect from "~/hooks/use-async-effect";
 import {
   useAddMessage,
   useCreateMessageCallbacks,
@@ -15,12 +14,11 @@ export default function MessageCallbacksContextProvider({
   children,
 }: PropsWithChildren) {
   const inviteState = useInviteState();
-  const { signal } = useAbortController();
   const addMessage = useAddMessage();
   const callbacks = useCreateMessageCallbacks(addMessage);
   const { channel } = inviteState;
   const decrypt = useDecrypt();
-  useComponentDidMount(() => {
+  useAsyncEffect((signal) => {
     channel?.addEventListener(
       "message",
       ({ data }: MessageEvent<string>) =>

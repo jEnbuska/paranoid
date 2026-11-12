@@ -1,17 +1,15 @@
-import { useEffect } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { socketQueryKey } from "~/features/socket/constants";
 import { createSocket } from "~/features/socket/loader";
 import useStable from "~/hooks/use-stable.ts";
-import { useAbortController } from "~/hooks/use-abort-controller";
+import useUpdatedRef from "~/hooks/use-updated-ref.ts";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
 } from "shared-lib/types";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
 import { useInbox } from "~/features/socket/inbox.ts";
-import useReject from "~/hooks/use-reject.ts";
+import useAsyncEffect from "~/hooks/use-async-effect.ts";
 
 export function useOnEvent<T extends keyof ServerToClientEvents>(
   type: T,
@@ -19,25 +17,12 @@ export function useOnEvent<T extends keyof ServerToClientEvents>(
 ) {
   const inbox = useInbox();
   const cb: any = useStable(handler);
-  const reject = useReject();
-
-  useEffect(() => {
-    const controller = new AbortController();
-    async function handleNext() {
-      if (controller.signal.aborted) return;
-      try {
-        await inbox.take(type, controller.signal).then((args) => cb(...args));
-      } catch (e) {
-        if (controller.signal.aborted) return;
-        return reject(e);
-      }
-      void handleNext();
+  useAsyncEffect(async (signal) => {
+    while (!signal.aborted) {
+      const args = await inbox.take(type, signal);
+      await cb(...args);
     }
-    void handleNext();
-    return () => {
-      controller.abort();
-    };
-  }, []);
+  });
 }
 
 export function useSocket() {
@@ -73,21 +58,28 @@ export function useOnEventDecrypted<
   callback: (...args: Parameters<ServerToClientEvents[E]>) => any;
 }) {
   const inbox = useInbox();
-  const controller = useAbortController();
   const decrypt = useDecrypt();
-  const callback = useStable(async () => {
-    const { type, once, callback, onError } = options;
-    function handleEvent(...args: any) {
-      return Promise.all(args.map(decrypt))
-        .then((params) => (callback as any)(...params))
-        .catch(onError);
-    }
+  const latest = useUpdatedRef(options);
+  useAsyncEffect(async (signal) => {
+    const { type, once } = latest.current;
     do {
-      await inbox
-        .take(type, controller.signal)
-        .then((args) => handleEvent(...args))
-        .catch(onError);
-    } while (!once && !controller.signal.aborted);
+      const args = await inbox.take(type, signal);
+      const { callback, onError } = latest.current;
+      try {
+        await (callback as any)(
+          ...(await Promise.all(args.map((arg) => decrypt(arg as string)))),
+        );
+      } catch (error) {
+        if (signal.aborted) return;
+        if (!onError) {
+          // Stops listening and only reports the error, as before
+          // useAsyncEffect. The error page would replace a connection that
+          // can still succeed, for example without a candidate that failed
+          reportError(error);
+          return;
+        }
+        onError(error);
+      }
+    } while (!once && !signal.aborted);
   });
-  useComponentDidMount(callback);
 }

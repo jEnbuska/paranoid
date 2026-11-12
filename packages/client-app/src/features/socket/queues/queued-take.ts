@@ -25,12 +25,17 @@ export function createQueuedTake(
     });
   }
 
-  return function take(
+  return async function take(
     type: HandshakeEvent,
     signal: AbortSignal,
   ): Promise<unknown[]> {
+    // Reads the queue a microtask later, so that a take whose signal aborts
+    // right away leaves the event for the next take. React.StrictMode aborts
+    // an effect's first run that way in development
+    await Promise.resolve();
+    signal.throwIfAborted();
     const queued = queues.get(type)?.shift();
-    if (queued) return Promise.resolve(queued);
+    if (queued) return queued;
     return new Promise((resolve, reject) => {
       const list = waiters.getOrInsertComputed(type, () => []);
       const waiter: Waiter = (args) => {

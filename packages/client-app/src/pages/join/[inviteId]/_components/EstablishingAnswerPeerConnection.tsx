@@ -7,7 +7,7 @@ import InviteView from "~/features/invite/_components/InviteView.tsx";
 import { useNavigate } from "react-router";
 import useComponentDidMount from "~/hooks/use-component-did-mount.ts";
 import useReject from "~/hooks/use-reject.ts";
-import { useAbortController } from "~/hooks/use-abort-controller.ts";
+import useAsyncEffect from "~/hooks/use-async-effect.ts";
 import {
   useInviteState,
   useInviteCallbacks,
@@ -21,25 +21,28 @@ export default function EstablishingAnswerPeerConnection() {
   const navigate = useNavigate();
   const reject = useReject();
   useHandleInviteConnectionIceCandidatesExchange(reject);
-  const { signal } = useAbortController();
   const emit = useEmitIntroduction();
   const { connection } = useInviteState();
+  assertIsNotNil(connection);
   const { setAnswerChannel } = useInviteCallbacks();
+  // Added on mount rather than after the answer is sent: the channel only
+  // arrives once the connection, which needs the answer, is established
+  useAsyncEffect((signal) =>
+    addPeerConnectionEventListeners(connection, signal, {
+      async datachannel({ channel }) {
+        void setAnswerChannel(channel);
+      },
+    }),
+  );
   useOnEventDecrypted({
     type: "DESCRIPTION",
     once: true,
     onError: reject,
     async callback(description) {
-      assertIsNotNil(connection);
       await connection.setRemoteDescription(description);
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
       await emit("DESCRIPTION", answer);
-      addPeerConnectionEventListeners(connection, signal, {
-        async datachannel({ channel }) {
-          void setAnswerChannel(channel);
-        },
-      });
     },
   });
   const handshake = useHandleHandshake();

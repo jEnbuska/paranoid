@@ -1,11 +1,10 @@
-import { useEffect, useReducer, useMemo, use } from "react";
+import { useReducer, useMemo, use } from "react";
+import useAsyncEffect from "~/hooks/use-async-effect";
 import {
   useOnEventDecrypted,
   useEmitIntroduction,
 } from "~/features/socket/hooks";
-import { useAbortController } from "~/hooks/use-abort-controller";
 import { assertIsNotNil } from "shared-lib/utils/nil";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
 import { addPeerConnectionEventListeners } from "~/features/peer-connection/utils";
 import { useMemoOnce } from "~/hooks/use-memo-once";
 import constList from "shared-lib/utils/const-list";
@@ -16,8 +15,6 @@ import sleep from "shared-lib/utils/sleep";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
 import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksContext";
-import { useResolvable } from "~/hooks/use-resolvable";
-import invoke from "shared-lib/utils/invoke";
 import createResolvable from "shared-lib/utils/create-resolvable";
 
 export function useInviteState() {
@@ -31,10 +28,9 @@ export function useHandleInviteConnectionIceCandidatesExchange(
   onError?: (error: unknown) => void,
 ) {
   const emit = useEmitIntroduction();
-  const { signal } = useAbortController();
   const { connection } = useInviteState();
   assertIsNotNil(connection);
-  useComponentDidMount(() =>
+  useAsyncEffect((signal) =>
     addPeerConnectionEventListeners(connection, signal, {
       icecandidate({ candidate }) {
         if (candidate) {
@@ -82,8 +78,7 @@ export function useInviteConnectionProgress() {
     });
   };
 
-  const { signal } = useAbortController();
-  useMemoOnce(() => {
+  useAsyncEffect((signal) => {
     addPeerConnectionEventListeners(connection, signal, {
       signalingstatechange: () => addConnectionProgress("signalingState"),
       connectionstatechange: () => addConnectionProgress("connectionState"),
@@ -93,40 +88,48 @@ export function useInviteConnectionProgress() {
       iceconnectionstatechange: () =>
         addConnectionProgress("iceConnectionState"),
     });
-  });
-  useEffect(() => {
-    if (!channel) return;
-    const type = "Data Channel" as const;
-    constList(
-      "open",
-      "close",
-      "closing",
-      "message",
-      "error",
-      "bufferedamountlow",
-    ).forEach((event) => {
-      channel.addEventListener(
-        event,
-        () =>
-          dispatchProgress({
-            type,
-            value: channel.readyState,
-          }),
-        { signal },
-      );
+    // Catches up with what changed after rendering, before the listeners
+    // were added
+    inviteConnectionStateTypes.forEach((state, index) => {
+      const { value } = getConnectionStateProgress(connection, state);
+      if (value !== initialState[index].value) addConnectionProgress(state);
     });
-  }, [channel]);
+  });
+  useAsyncEffect(
+    (signal) => {
+      if (!channel) return;
+      const type = "Data Channel" as const;
+      constList(
+        "open",
+        "close",
+        "closing",
+        "message",
+        "error",
+        "bufferedamountlow",
+      ).forEach((event) => {
+        channel.addEventListener(
+          event,
+          () =>
+            dispatchProgress({
+              type,
+              value: channel.readyState,
+            }),
+          { signal },
+        );
+      });
+    },
+    [channel],
+  );
   return progress;
 }
 
 export function useHandleHandshake() {
   const { channel, connection, userName } = useInviteState();
-  const { signal } = useAbortController();
   const { handshake } = useInviteCallbacks();
   const decrypt = useDecrypt();
   const encrypt = useEncrypt();
-  const resolvable = useResolvable();
-  useComponentDidMount(() => {
+  const resolvable = useMemoOnce(() => createResolvable());
+  useAsyncEffect((signal) => {
     assertIsNotNil(connection);
     addPeerConnectionEventListeners(connection, signal, {
       connectionstatechange() {
@@ -135,46 +138,42 @@ export function useHandleHandshake() {
       },
     });
   });
-  useEffect(() => {
-    if (!channel) return;
-    // Abort per effect run so React.StrictMode's second run does not add a
-    // second listener and send the user name twice
-    const controller = new AbortController();
-    invoke(async () => {
-      const options = {
-        once: true,
-        signal: controller.signal,
-      };
-      {
-        const { resolve, reject } = resolvable;
-        channel.addEventListener(
-          "message",
-          (e) =>
-            decrypt<string>(e.data).then(handshake).then(resolve).catch(reject),
-          options,
-        );
-        channel.addEventListener(
-          "close",
-          () => reject(new Error("Data channel closed during handshake")),
-          options,
-        );
-      }
-      {
-        const { resolve, reject, promise } = createResolvable(
-          controller.signal,
-        );
-        channel.addEventListener("open", () => resolve(), options);
+  useAsyncEffect(
+    async (signal) => {
+      if (!channel) return;
+      const options = { once: true, signal };
+      const { resolve, reject } = resolvable;
+      channel.addEventListener(
+        "message",
+        (e) =>
+          decrypt<string>(e.data).then(handshake).then(resolve).catch(reject),
+        options,
+      );
+      channel.addEventListener(
+        "close",
+        () => reject(new Error("Data channel closed during handshake")),
+        options,
+      );
+      try {
+        const opened = createResolvable(signal);
+        channel.addEventListener("open", () => opened.resolve(), options);
         channel.addEventListener(
           "error",
-          () => reject(new Error("Data channel failed")),
+          () => opened.reject(new Error("Data channel failed")),
           options,
         );
-        if (channel.readyState === "open") resolve();
-        await promise;
-        channel.send(await encrypt(userName));
+        if (channel.readyState === "open") opened.resolve();
+        await opened.promise;
+        const encrypted = await encrypt(userName);
+        // React.StrictMode's first run gets here too when the channel is
+        // already open, and must not send the user name a second time
+        if (signal.aborted) return;
+        channel.send(encrypted);
+      } catch (error) {
+        if (!signal.aborted) reject(error);
       }
-    }).catch(resolvable.reject);
-    return () => controller.abort();
-  }, [channel]);
+    },
+    [channel],
+  );
   return resolvable.promise;
 }
