@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/knip/schema.json",
+  // shared-lib's `exports` map makes every util an entry file, and knip skips
+  // entry files' exports by default, so unused shared exports would never show
+  "includeEntryExports": true,
+  "workspaces": {
+    "packages/client-app": {
+      // Only imported from CSS (`@import` in src/index.css), which knip
+      // doesn't parse
+      "ignoreDependencies": ["modern-normalize"]
+    }
+  }
+}

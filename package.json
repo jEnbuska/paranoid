@@ -13,11 +13,13 @@
     "test:e2e": "pnpm --filter e2e test:e2e",
     "typecheck": "pnpm -r run typecheck",
     "lint": "oxlint",
+    "knip": "knip",
     "build": "pnpm -r run build",
     "format": "oxfmt",
     "format:check": "oxfmt --check"
   },
   "devDependencies": {
+    "knip": "^6.45.1",
     "oxfmt": "^0.75.0",
     "oxlint": "^1.90.0",
     "typescript": "^7.0.2"
