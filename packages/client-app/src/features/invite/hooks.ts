@@ -7,7 +7,6 @@ import {
 } from "~/features/socket/hooks";
 import { assertIsNotNil } from "shared-lib/utils/nil";
 import { addPeerConnectionEventListeners } from "~/features/peer-connection/utils";
-import { useMemoOnce } from "~/hooks/use-memo-once";
 import constList from "shared-lib/utils/const-list";
 import { InviteConnectionProgressState } from "~/features/invite/types";
 import { inviteConnectionStateTypes } from "~/features/invite/constants";
@@ -16,6 +15,7 @@ import sleep from "shared-lib/utils/sleep";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
 import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksContext";
+import { useResolvable } from "~/hooks/use-resolvable";
 import createResolvable from "shared-lib/utils/create-resolvable";
 
 export function useInviteState() {
@@ -129,7 +129,7 @@ export function useHandleHandshake() {
   const { handshake } = useInviteCallbacks();
   const decrypt = useDecrypt();
   const encrypt = useEncrypt();
-  const resolvable = useMemoOnce(() => createResolvable());
+  const resolvable = useResolvable();
   useComponentDidMount((signal) => {
     assertIsNotNil(connection);
     addPeerConnectionEventListeners(connection, signal, {

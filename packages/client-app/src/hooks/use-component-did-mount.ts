@@ -1,6 +1,5 @@
 import { useRef, useEffect } from "react";
-import { useMemoOnce } from "~/hooks/use-memo-once";
-import { useComponentDidUnmount } from "~/hooks/use-component-did-unmount";
+import { useAbortController } from "~/hooks/use-abort-controller";
 import useRunEffect, { type EffectCallback } from "~/hooks/use-run-effect.ts";
 
 /**
@@ -23,11 +22,10 @@ import useRunEffect, { type EffectCallback } from "~/hooks/use-run-effect.ts";
 export default function useComponentDidMount(callback: EffectCallback) {
   const run = useRunEffect();
   const mounted = useRef(false);
-  const controller = useMemoOnce(() => new AbortController());
-  useComponentDidUnmount(() => controller.abort());
+  const { signal } = useAbortController();
   useEffect(() => {
     if (mounted.current) return;
     mounted.current = true;
-    run(callback, controller.signal);
+    run(callback, signal);
   }, []);
 }
