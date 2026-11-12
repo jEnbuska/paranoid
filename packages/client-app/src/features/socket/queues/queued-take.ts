@@ -20,9 +20,8 @@ export function createQueuedTake(
     (socket.on as any)(type, (...args: unknown[]) => {
       const waiter = waiters.get(type)?.shift();
       if (waiter) return waiter(args);
-      const queue = queues.get(type) ?? [];
+      const queue = queues.getOrInsertComputed(type, () => []);
       if (queue.length < 100) queue.push(args); // Cap: only the peer can fill it
-      queues.set(type, queue);
     });
   }
 
@@ -33,8 +32,7 @@ export function createQueuedTake(
     const queued = queues.get(type)?.shift();
     if (queued) return Promise.resolve(queued);
     return new Promise((resolve, reject) => {
-      const list = waiters.get(type) ?? [];
-      waiters.set(type, list);
+      const list = waiters.getOrInsertComputed(type, () => []);
       const waiter: Waiter = (args) => {
         signal.removeEventListener("abort", onAbort);
         resolve(args);
