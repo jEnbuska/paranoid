@@ -25,11 +25,12 @@ import invoke from "shared-lib/utils/invoke";
  * work that runs once on mount, use `useComponentDidMount` instead.
  *
  * @param effect - Called on every run with that run's signal.
- * @param deps - Like `useEffect`'s. Leaving it out runs the effect on mount.
+ * @param deps - Like `useEffect`'s, and required: list everything the effect
+ *   reads that can change, so it never keeps using stale values.
  */
 export default function useAsyncEffect(
   effect: (signal: AbortSignal) => void | Promise<void>,
-  deps: DependencyList = [],
+  deps: DependencyList,
 ) {
   const reject = useReject();
   useEffect(() => {

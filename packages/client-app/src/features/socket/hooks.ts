@@ -23,7 +23,7 @@ export function useOnEvent<T extends keyof ServerToClientEvents>(
       const args = await inbox.take(type, signal);
       await cb(...args);
     }
-  });
+  }, []);
 }
 
 export function useSocket() {

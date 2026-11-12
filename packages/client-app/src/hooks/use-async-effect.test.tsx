@@ -31,7 +31,7 @@ describe("useAsyncEffect", () => {
     const { unmount } = renderHook(() =>
       useAsyncEffect((signal) => {
         signals.push(signal);
-      }),
+      }, []),
     );
 
     expect(signals).toHaveLength(1);
@@ -68,7 +68,7 @@ describe("useAsyncEffect", () => {
     const { unmount } = renderHook(() =>
       useAsyncEffect((signal) => {
         target.addEventListener("ping", listener, { signal });
-      }),
+      }, []),
     );
 
     target.dispatchEvent(new Event("ping"));
@@ -85,7 +85,7 @@ describe("useAsyncEffect", () => {
           await Promise.resolve();
           if (signal.aborted) return;
           sent.push("sent");
-        }),
+        }, []),
       { wrapper: StrictMode },
     );
 
@@ -126,7 +126,7 @@ describe("useAsyncEffect", () => {
       useAsyncEffect(async () => {
         await Promise.resolve();
         throw new Error("Loading failed");
-      });
+      }, []);
       return <p>Mounted</p>;
     }
     const { findByRole } = render(
@@ -143,7 +143,7 @@ describe("useAsyncEffect", () => {
     function Effect() {
       useAsyncEffect(() => {
         throw new Error("Not connected");
-      });
+      }, []);
       return <p>Mounted</p>;
     }
     const { findByRole } = render(
