@@ -1,5 +1,6 @@
 import { useEffect, type DependencyList } from "react";
-import useRunEffect, { type EffectCallback } from "~/hooks/use-run-effect.ts";
+import useReject from "~/hooks/use-reject.ts";
+import invoke from "shared-lib/utils/invoke";
 
 /**
  * `useEffect` for effects that do async work or add listeners, and run again
@@ -27,13 +28,17 @@ import useRunEffect, { type EffectCallback } from "~/hooks/use-run-effect.ts";
  * @param deps - Like `useEffect`'s. Leaving it out runs the effect on mount.
  */
 export default function useAsyncEffect(
-  effect: EffectCallback,
+  effect: (signal: AbortSignal) => void | Promise<void>,
   deps: DependencyList = [],
 ) {
-  const run = useRunEffect();
+  const reject = useReject();
   useEffect(() => {
     const controller = new AbortController();
-    run(effect, controller.signal);
+    const { signal } = controller;
+    // async, so that a synchronous throw rejects too
+    invoke(async () => effect(signal)).catch((error) => {
+      if (!signal.aborted) reject(error);
+    });
     return () => controller.abort();
   }, deps);
 }

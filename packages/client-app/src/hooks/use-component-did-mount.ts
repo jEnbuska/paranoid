@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react";
 import { useAbortController } from "~/hooks/use-abort-controller";
-import useRunEffect, { type EffectCallback } from "~/hooks/use-run-effect.ts";
+import useReject from "~/hooks/use-reject.ts";
+import invoke from "shared-lib/utils/invoke";
 
 /**
  * Runs a callback once when the component mounts, also under
@@ -19,13 +20,18 @@ import useRunEffect, { type EffectCallback } from "~/hooks/use-run-effect.ts";
  * rejection is rethrown while rendering, so the nearest error boundary
  * catches it.
  */
-export default function useComponentDidMount(callback: EffectCallback) {
-  const run = useRunEffect();
+export default function useComponentDidMount(
+  callback: (signal: AbortSignal) => void | Promise<void>,
+) {
+  const reject = useReject();
   const mounted = useRef(false);
   const { signal } = useAbortController();
   useEffect(() => {
     if (mounted.current) return;
     mounted.current = true;
-    run(callback, signal);
+    // async, so that a synchronous throw rejects too
+    invoke(async () => callback(signal)).catch((error) => {
+      if (!signal.aborted) reject(error);
+    });
   }, []);
 }
