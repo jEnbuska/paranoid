@@ -6,7 +6,7 @@
 
 /** RTCIceServer without credentials: this variable is built into the client,
  * so anything in it is visible to anyone using the app */
-export type IceServer = { urls: string | string[] };
+type IceServer = { urls: string | string[] };
 
 export const defaultIceServers: IceServer[] = [
   { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },

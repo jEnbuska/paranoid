@@ -2,7 +2,7 @@ import type { Page, WebSocketRoute } from "@playwright/test";
 import { expect, pageRecord, type PeerOptions } from "./fixtures.ts";
 
 export const PASS_PHRASE = "Correct-Horse-42";
-export const CREATE_DIALOG = "Create Invite";
+const CREATE_DIALOG = "Create Invite";
 
 /** Tag of tests that need two peers to connect over WebRTC */
 export const WEBRTC = { tag: "@webrtc" };
