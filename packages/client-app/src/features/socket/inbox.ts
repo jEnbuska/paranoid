@@ -37,9 +37,7 @@ function createInbox(socket: AppSocket) {
 const inboxes = new WeakMap<AppSocket, ReturnType<typeof createInbox>>();
 
 export function getInbox(socket: AppSocket) {
-  let inbox = inboxes.get(socket);
-  if (!inbox) inboxes.set(socket, (inbox = createInbox(socket)));
-  return inbox;
+  return inboxes.getOrInsertComputed(socket, createInbox);
 }
 
 export function useInbox() {
