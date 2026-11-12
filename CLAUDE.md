@@ -26,7 +26,7 @@ pnpm workspace (`pnpm-workspace.yaml`) with four packages: `packages/client-app`
 - `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`: all workspaces. `pnpm test` is unit tests only.
 - `pnpm test:e2e`: Playwright tests, on their own ports. Install browsers first: `pnpm --filter e2e exec playwright install chromium firefox webkit`.
 - `pnpm format` / `pnpm format:check`: oxfmt over the whole repo.
-- `pnpm knip`: unused files, exports and dependencies in every workspace.
+- `pnpm knip`: unused files, exports and dependencies in every workspace. After knip's own table, `scripts/knip-explain.mts` explains each finding and how to fix it.
 - One package: `pnpm --filter <package> <script>`.
 
 Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm format:check` and `pnpm test`, and `pnpm build` and `pnpm test:e2e` for client or signaling changes.

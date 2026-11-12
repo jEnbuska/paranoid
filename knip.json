@@ -4,6 +4,12 @@
   // entry files' exports by default, so unused shared exports would never show
   "includeEntryExports": true,
   "workspaces": {
+    ".": {
+      // The reporter that the `knip` script passes with --reporter. Knip
+      // loads its default export itself, so entry exports aren't checked here
+      "entry": ["scripts/knip-explain.mts"],
+      "includeEntryExports": false
+    },
     "packages/client-app": {
       // Only imported from CSS (`@import` in src/index.css), which knip
       // doesn't parse
