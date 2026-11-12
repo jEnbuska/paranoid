@@ -96,13 +96,16 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ matrix.browser }}-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-      - name: Install the browser and its system dependencies
+      # GitHub's Ubuntu image already has the libraries Chromium needs, so
+      # Chromium skips apt, which hangs when Ubuntu's mirror is unreachable.
+      # Firefox and WebKit need more packages.
+      - name: Install the browser
         if: steps.browser-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter e2e exec playwright install --with-deps ${{ matrix.browser }}
+        run: pnpm --filter e2e exec playwright install ${{ matrix.browser != 'chromium' && '--with-deps' || '' }} ${{ matrix.browser }}
 
       # The cache holds the browser, not the system packages it needs
       - name: Install system dependencies of the cached browser
-        if: steps.browser-cache.outputs.cache-hit == 'true'
+        if: steps.browser-cache.outputs.cache-hit == 'true' && matrix.browser != 'chromium'
         run: pnpm --filter e2e exec playwright install-deps ${{ matrix.browser }}
 
       - name: Run end-to-end tests
