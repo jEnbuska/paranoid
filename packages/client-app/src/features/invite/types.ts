@@ -1,4 +1,4 @@
-export type InviteStageType = "none" | "offer" | "answer" | "connected";
+type InviteStageType = "none" | "offer" | "answer" | "connected";
 
 export type InviteContextStateData = {
   active: boolean;
