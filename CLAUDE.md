@@ -14,7 +14,7 @@ pnpm workspace (`pnpm-workspace.yaml`) with four packages: `packages/client-app`
 - `pnpm install --frozen-lockfile` installs exactly what the lockfile says and fails if the lockfile and `package.json` files disagree. Use it when `node_modules` looks stale or broken.
 - One package only: `pnpm install --frozen-lockfile --filter <package>` (root tooling is included).
 - Add or remove a package's dependency from the root: `pnpm add <dep> --filter <package>`, `pnpm remove <dep> --filter <package>`. Commit the updated `package.json` and `pnpm-lock.yaml` together.
-- Shared tooling (TypeScript 7, oxlint, oxfmt) is a root dev dependency: `pnpm add -D -w <tool>` (`-w` is the workspace root, not a package). Don't add these to a package.
+- Shared tooling (TypeScript 7, oxlint, oxfmt, knip) is a root dev dependency: `pnpm add -D -w <tool>` (`-w` is the workspace root, not a package). Don't add these to a package.
 - Workspace packages depend on each other with `"workspace:*"` (for example `"shared-lib": "workspace:*"`).
 - pnpm is strict: a package can only import what its own `package.json` declares. If an import fails to resolve, add the dependency to that package instead of relying on another package's.
 - Dependency install scripts only run when allowed under `allowBuilds` in `pnpm-workspace.yaml`. On `ERR_PNPM_IGNORED_BUILDS`, ask before running `pnpm approve-builds <package>`.
@@ -26,13 +26,14 @@ pnpm workspace (`pnpm-workspace.yaml`) with four packages: `packages/client-app`
 - `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`: all workspaces. `pnpm test` is unit tests only.
 - `pnpm test:e2e`: Playwright tests, on their own ports. Install browsers first: `pnpm --filter e2e exec playwright install chromium firefox webkit`.
 - `pnpm format` / `pnpm format:check`: oxfmt over the whole repo.
+- `pnpm knip`: unused files, exports and dependencies in every workspace.
 - One package: `pnpm --filter <package> <script>`.
 
-Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check` and `pnpm test`, and `pnpm build` and `pnpm test:e2e` for client or signaling changes.
+Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm format:check` and `pnpm test`, and `pnpm build` and `pnpm test:e2e` for client or signaling changes.
 
 ## CI and pull requests
 
-- CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job (Chromium, plus Firefox and WebKit on PRs into `main`), on every PR with changed files (a PR with none skips both jobs) and on pushes to `main` and `dev`. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
+- CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm knip`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job (Chromium, plus Firefox and WebKit on PRs into `main`), on every PR with changed files (a PR with none skips both jobs) and on pushes to `main` and `dev`. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
 - The rules for branches, PRs and releases are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs go into `dev`, except a release PR from `dev` into `main`. Sessions never release unless the user tells them to for that specific PR.
 - Branch names start with the ticket number: `#<TICKET_NUMBER>-<name>`, for example `#2-peers-stuck-connecting`. Quote the name in a shell (`git switch -c '#2-peers-stuck-connecting'`), because an unquoted `#` starts a comment. `hotfix/*` branches have no ticket and keep that name.
 - Sessions commit and push without asking first.
@@ -58,6 +59,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm format:check
 - TypeScript 7 is the native `tsgo` compiler, run as `tsc`, used only for type checking. Tools that need the JavaScript TypeScript API (typescript-eslint and similar) don't work with it.
 - Linting is oxlint: base rules in `.oxlintrc.json`, React rules in `packages/client-app/.oxlintrc.json`, which extends it. Unused names starting with `_` are allowed.
 - Formatting is oxfmt (`.oxfmtrc.json`, 80 columns). There is no Prettier or ESLint.
+- Dead code is found by knip (`knip.json`), which parses with oxc and works with TypeScript 7. Its Vite, Vitest and Playwright plugins find the entry points. Delete what it reports rather than ignoring it, and give any ignore in `knip.json` a comment saying why. It doesn't parse CSS, so a package imported only from CSS is ignored there.
 
 ## Signaling server
 
