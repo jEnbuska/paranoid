@@ -10,6 +10,7 @@ import type {
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
 import { useInbox } from "~/features/socket/inbox.ts";
 import useAsyncEffect from "~/hooks/use-async-effect.ts";
+import useComponentDidMount from "~/hooks/use-component-did-mount.ts";
 
 export function useOnEvent<T extends keyof ServerToClientEvents>(
   type: T,
@@ -60,7 +61,7 @@ export function useOnEventDecrypted<
   const inbox = useInbox();
   const decrypt = useDecrypt();
   const latest = useUpdatedRef(options);
-  useAsyncEffect(async (signal) => {
+  useComponentDidMount(async (signal) => {
     const { type, once } = latest.current;
     do {
       const args = await inbox.take(type, signal);
@@ -72,9 +73,9 @@ export function useOnEventDecrypted<
       } catch (error) {
         if (signal.aborted) return;
         if (!onError) {
-          // Stops listening and only reports the error, as before
-          // useAsyncEffect. The error page would replace a connection that
-          // can still succeed, for example without a candidate that failed
+          // Stops listening and only reports the error. The error page would
+          // replace a connection that can still succeed, for example without
+          // a candidate that failed
           reportError(error);
           return;
         }

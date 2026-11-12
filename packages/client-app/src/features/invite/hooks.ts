@@ -1,5 +1,6 @@
 import { useReducer, useMemo, use } from "react";
 import useAsyncEffect from "~/hooks/use-async-effect";
+import useComponentDidMount from "~/hooks/use-component-did-mount";
 import {
   useOnEventDecrypted,
   useEmitIntroduction,
@@ -30,7 +31,7 @@ export function useHandleInviteConnectionIceCandidatesExchange(
   const emit = useEmitIntroduction();
   const { connection } = useInviteState();
   assertIsNotNil(connection);
-  useAsyncEffect((signal) =>
+  useComponentDidMount((signal) =>
     addPeerConnectionEventListeners(connection, signal, {
       icecandidate({ candidate }) {
         if (candidate) {
@@ -78,7 +79,7 @@ export function useInviteConnectionProgress() {
     });
   };
 
-  useAsyncEffect((signal) => {
+  useComponentDidMount((signal) => {
     addPeerConnectionEventListeners(connection, signal, {
       signalingstatechange: () => addConnectionProgress("signalingState"),
       connectionstatechange: () => addConnectionProgress("connectionState"),
@@ -88,8 +89,8 @@ export function useInviteConnectionProgress() {
       iceconnectionstatechange: () =>
         addConnectionProgress("iceConnectionState"),
     });
-    // Catches up with what changed after rendering, before the listeners
-    // were added
+    // Catches up with what changed between rendering and mounting, before
+    // the listeners were added
     inviteConnectionStateTypes.forEach((state, index) => {
       const { value } = getConnectionStateProgress(connection, state);
       if (value !== initialState[index].value) addConnectionProgress(state);
@@ -129,7 +130,7 @@ export function useHandleHandshake() {
   const decrypt = useDecrypt();
   const encrypt = useEncrypt();
   const resolvable = useMemoOnce(() => createResolvable());
-  useAsyncEffect((signal) => {
+  useComponentDidMount((signal) => {
     assertIsNotNil(connection);
     addPeerConnectionEventListeners(connection, signal, {
       connectionstatechange() {

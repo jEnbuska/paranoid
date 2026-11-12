@@ -1,16 +1,18 @@
 import { useEffect, type DependencyList } from "react";
-import useReject from "~/hooks/use-reject.ts";
+import useRunEffect, { type EffectCallback } from "~/hooks/use-run-effect.ts";
 
 /**
- * `useEffect` for effects that do async work or add listeners. Each run gets
- * its own `AbortSignal`, which aborts when the run is cleaned up: when `deps`
- * change or the component unmounts.
+ * `useEffect` for effects that do async work or add listeners, and run again
+ * when `deps` change. Each run gets its own `AbortSignal`, which aborts when
+ * the run is cleaned up: when `deps` change or the component unmounts.
  *
  * ```ts
- * useAsyncEffect(async (signal) => {
- *   channel.addEventListener("close", onClose, { signal });
- *   const args = await inbox.take("DONE", signal);
- * });
+ * useAsyncEffect(
+ *   async (signal) => {
+ *     channel.addEventListener("close", onClose, { signal });
+ *   },
+ *   [channel],
+ * );
  * ```
  *
  * A rejection after the signal has aborted is ignored. Any other rejection is
@@ -18,30 +20,20 @@ import useReject from "~/hooks/use-reject.ts";
  *
  * In development, React.StrictMode runs the effect, cleans it up and runs it
  * again, so the first run's signal aborts right away. Check `signal.aborted`
- * before anything that must not happen twice, such as sending a message.
+ * before anything that must not happen twice, such as sending a message. For
+ * work that runs once on mount, use `useComponentDidMount` instead.
  *
  * @param effect - Called on every run with that run's signal.
  * @param deps - Like `useEffect`'s. Leaving it out runs the effect on mount.
  */
 export default function useAsyncEffect(
-  effect: (signal: AbortSignal) => void | Promise<void>,
+  effect: EffectCallback,
   deps: DependencyList = [],
 ) {
-  const reject = useReject();
+  const run = useRunEffect();
   useEffect(() => {
     const controller = new AbortController();
-    const { signal } = controller;
-    void invokeEffect(effect, signal).catch((error) => {
-      if (!signal.aborted) reject(error);
-    });
+    run(effect, controller.signal);
     return () => controller.abort();
   }, deps);
-}
-
-/** Runs the effect so that a synchronous throw rejects too */
-async function invokeEffect(
-  effect: (signal: AbortSignal) => void | Promise<void>,
-  signal: AbortSignal,
-) {
-  await effect(signal);
 }

@@ -1,7 +1,7 @@
 import { PropsWithChildren } from "react";
 import { MessageData } from "../types";
 import { useDecrypt } from "~/features/crypt/hooks";
-import useAsyncEffect from "~/hooks/use-async-effect";
+import useComponentDidMount from "~/hooks/use-component-did-mount";
 import {
   useAddMessage,
   useCreateMessageCallbacks,
@@ -18,7 +18,7 @@ export default function MessageCallbacksContextProvider({
   const callbacks = useCreateMessageCallbacks(addMessage);
   const { channel } = inviteState;
   const decrypt = useDecrypt();
-  useAsyncEffect((signal) => {
+  useComponentDidMount((signal) => {
     channel?.addEventListener(
       "message",
       ({ data }: MessageEvent<string>) =>

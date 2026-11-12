@@ -5,13 +5,13 @@ import Conditional from "~/components/Conditional";
 import { useState } from "react";
 import Alert from "~/components/Alert/Alert";
 import { useInviteState } from "~/features/invite/hooks";
-import useAsyncEffect from "~/hooks/use-async-effect";
+import useComponentDidMount from "~/hooks/use-component-did-mount";
 import styles from "./styles.module.css";
 
 export default function ChatPage() {
   const { channel } = useInviteState();
   const [closed, setClosed] = useState(false);
-  useAsyncEffect((signal) =>
+  useComponentDidMount((signal) =>
     channel!.addEventListener("close", () => setClosed(true), { signal }),
   );
   return (

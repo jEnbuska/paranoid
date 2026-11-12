@@ -5,7 +5,7 @@ import useStable from "~/hooks/use-stable.ts";
  * Runs `cleanup` when the component unmounts, but not when React.StrictMode
  * only pretends to unmount it in development. Use it for cleanup that must
  * happen once, such as telling the server. `useAsyncEffect`'s signal aborts
- * on StrictMode's pretend unmount too.
+ * on StrictMode's pretend unmount too; `useComponentDidMount`'s doesn't.
  *
  * The cleanup waits a timeout, which StrictMode's immediate remount cancels.
  *
