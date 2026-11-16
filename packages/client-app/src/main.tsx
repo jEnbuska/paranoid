@@ -1,3 +1,4 @@
+// THROWAWAY #28: a client code change
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
