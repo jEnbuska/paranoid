@@ -51,7 +51,7 @@ jobs:
           while IFS= read -r file; do
             echo "Changed: $file"
             case "$file" in
-              .github/workflows/ci.yml) checks=true format=true e2e=true ;;
+              .github/workflows/ci.yml) ;; # THROWAWAY: ignore this file, as if it were on dev
               *.md) format=true ;;
               LICENSE) ;;
               *) checks=true format=true ;;
