@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useMemo, use } from "react";
+import { useReducer, useMemo, use } from "react";
 import {
   useOnEventDecrypted,
   useEmitIntroduction,
@@ -13,7 +13,9 @@ import { InviteConnectionProgressState } from "~/features/invite/types";
 import { inviteConnectionStateTypes } from "~/features/invite/constants";
 import { getConnectionStateProgress } from "~/features/invite/utils";
 import sleep from "shared-lib/utils/sleep";
-import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
+import { useEncrypt } from "~/features/crypt/hooks";
+import { getChannelInbox } from "~/features/channel/inbox.ts";
+import { sendChannelMessage } from "~/features/channel/send.ts";
 import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksContext";
 import { useResolvable } from "~/hooks/use-resolvable";
@@ -32,16 +34,18 @@ export function useHandleInviteConnectionIceCandidatesExchange(
 ) {
   const emit = useEmitIntroduction();
   const { signal } = useAbortController();
-  const { connection } = useInviteState();
+  const { connection, channel } = useInviteState();
   assertIsNotNil(connection);
   useAbortableEffect(
     () =>
       addPeerConnectionEventListeners(connection, signal, {
         icecandidate({ candidate }) {
-          if (candidate) {
-            void emit("CANDIDATE", candidate).catch(onError);
-          } else {
+          if (!candidate) {
             void emit("DONE").catch(onError);
+          } else if (channel?.readyState !== "open") {
+            // Once the channel is open, candidates go over it instead
+            // (`exchangeCandidatesOverChannel`)
+            void emit("CANDIDATE", candidate).catch(onError);
           }
         },
       }),
@@ -99,24 +103,19 @@ export function useInviteConnectionProgress() {
   useAbortableEffect(() => {
     if (!channel) return;
     const type = "Data Channel" as const;
-    constList(
-      "open",
-      "close",
-      "closing",
-      "message",
-      "error",
-      "bufferedamountlow",
-    ).forEach((event) => {
-      channel.addEventListener(
-        event,
-        () =>
-          dispatchProgress({
-            type,
-            value: channel.readyState,
-          }),
-        { signal },
-      );
-    });
+    constList("open", "close", "closing", "error", "bufferedamountlow").forEach(
+      (event) => {
+        channel.addEventListener(
+          event,
+          () =>
+            dispatchProgress({
+              type,
+              value: channel.readyState,
+            }),
+          { signal },
+        );
+      },
+    );
   }, [channel]);
   return progress;
 }
@@ -125,7 +124,6 @@ export function useHandleHandshake() {
   const { channel, connection, userName } = useInviteState();
   const { signal } = useAbortController();
   const { handshake } = useInviteCallbacks();
-  const decrypt = useDecrypt();
   const encrypt = useEncrypt();
   const resolvable = useResolvable();
   useAbortableEffect(() => {
@@ -137,46 +135,44 @@ export function useHandleHandshake() {
       },
     });
   }, []);
-  useEffect(() => {
-    if (!channel) return;
-    // Abort per effect run so React.StrictMode's second run does not add a
-    // second listener and send the user name twice
-    const controller = new AbortController();
-    invoke(async () => {
-      const options = {
-        once: true,
-        signal: controller.signal,
-      };
-      {
-        const { resolve, reject } = resolvable;
-        channel.addEventListener(
-          "message",
-          (e) =>
-            decrypt<string>(e.data).then(handshake).then(resolve).catch(reject),
-          options,
-        );
-        channel.addEventListener(
-          "close",
-          () => reject(new Error("Data channel closed during handshake")),
-          options,
-        );
-      }
-      {
-        const { resolve, reject, promise } = createResolvable(
-          controller.signal,
-        );
-        channel.addEventListener("open", () => resolve(), options);
+  // Its own signal per run, so React.StrictMode's discarded first run neither
+  // takes the peer's name nor sends the user name
+  useAbortableEffect(
+    (signal) => {
+      if (!channel) return;
+      const options = { once: true, signal };
+      const { resolve, reject } = resolvable;
+      getChannelInbox(channel)
+        .take("PEERNAME", signal)
+        .then(handshake)
+        .then(resolve)
+        .catch((e) => {
+          if (!signal.aborted) reject(e);
+        });
+      channel.addEventListener(
+        "close",
+        () => reject(new Error("Data channel closed during handshake")),
+        options,
+      );
+      invoke(async () => {
+        const opened = createResolvable(signal);
+        channel.addEventListener("open", () => opened.resolve(), options);
         channel.addEventListener(
           "error",
-          () => reject(new Error("Data channel failed")),
+          () => opened.reject(new Error("Data channel failed")),
           options,
         );
-        if (channel.readyState === "open") resolve();
-        await promise;
-        channel.send(await encrypt(userName));
-      }
-    }).catch(resolvable.reject);
-    return () => controller.abort();
-  }, [channel]);
+        if (channel.readyState === "open") opened.resolve();
+        await opened.promise;
+        if (signal.aborted) return;
+        await sendChannelMessage(
+          channel,
+          { type: "PEERNAME", data: userName },
+          encrypt,
+        );
+      }).catch(reject);
+    },
+    [channel],
+  );
   return resolvable.promise;
 }

@@ -1,7 +1,5 @@
 import { PropsWithChildren } from "react";
-import { MessageData } from "../types";
-import { useAbortController } from "~/hooks/use-abort-controller";
-import { useDecrypt } from "~/features/crypt/hooks";
+import { getChannelInbox } from "~/features/channel/inbox.ts";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import {
   useAddMessage,
@@ -15,18 +13,14 @@ export default function MessageCallbacksContextProvider({
   children,
 }: PropsWithChildren) {
   const inviteState = useInviteState();
-  const { signal } = useAbortController();
   const addMessage = useAddMessage();
   const callbacks = useCreateMessageCallbacks(addMessage);
   const { channel } = inviteState;
-  const decrypt = useDecrypt();
-  useAbortableEffect(() => {
-    channel?.addEventListener(
-      "message",
-      ({ data }: MessageEvent<string>) =>
-        decrypt<MessageData>(data).then(addMessage),
-      { signal },
-    );
+  // Messages that arrived before the chat mounted wait in the inbox
+  useAbortableEffect(async (signal) => {
+    if (!channel) return;
+    const inbox = getChannelInbox(channel);
+    while (!signal.aborted) addMessage(await inbox.take("TEXT", signal));
   }, []);
   if (inviteState.stage !== "connected") {
     return <Navigate to={"/"} replace />;
