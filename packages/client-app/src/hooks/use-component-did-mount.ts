@@ -1,4 +1,6 @@
-import { useRef, useEffect } from "react";
+import { useRef } from "react";
+import {useAbortableEffect} from "~/hooks/use-abortable-effect.ts";
+import useReject from "~/hooks/use-reject.ts";
 
 /**
  * A hook that runs a callback function only once when the component mounts.
@@ -7,9 +9,16 @@ import { useRef, useEffect } from "react";
  */
 export default function useComponentDidMount(callback: () => any) {
   const mounted = useRef(false);
-  useEffect(() => {
+  const reject = useReject()
+  useAbortableEffect((signal) => {
     if (mounted.current) return;
-    mounted.current = true;
-    callback();
+    queueMicrotask(() => {
+      if(signal.aborted) return;
+      try {
+        callback();
+      } catch (e) {
+        reject(e)
+      }
+    });
   }, []);
 }

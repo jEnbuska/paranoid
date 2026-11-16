@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import {useEffect, useMemo, useRef} from "react";
 import useUpdateCallback from "~/hooks/use-stable.ts";
 import { useTimeout } from "~/hooks/use-timeout";
 
@@ -11,12 +11,15 @@ import { useTimeout } from "~/hooks/use-timeout";
  */
 export function useComponentDidUnmount(cleanup: () => any) {
   const callback = useUpdateCallback(cleanup);
-  const timeout = useTimeout();
-  // Clear the timeout when the component is mounted twice (React.StrictMode)
+  const mounted = useRef(false);
   useEffect(() => {
-    timeout.clear();
+    mounted.current = true;
     return () => {
-      timeout.set(callback);
+      mounted.current = false;
+      queueMicrotask(() => {
+        if(mounted.current) return;
+        callback()
+      })
     };
   }, []);
 }
