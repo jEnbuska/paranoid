@@ -35,7 +35,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 
 - CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm knip`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job (Chromium, plus Firefox and WebKit on PRs into `main`), on every PR with changed files (a PR with none skips both jobs) and on pushes to `main` and `dev`. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
 - The rules for branches, PRs and releases are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs go into `dev`, except a release PR from `dev` into `main`. Sessions never release unless the user tells them to for that specific PR.
-- Branch names start with the ticket number: `#<TICKET_NUMBER>-<name>`, for example `#2-peers-stuck-connecting`. Quote the name in a shell (`git switch -c '#2-peers-stuck-connecting'`), because an unquoted `#` starts a comment. `hotfix/*` branches have no ticket and keep that name.
+- Branch names start with the ticket number: `<TICKET_NUMBER>-<name>`, for example `2-peers-stuck-connecting`. `hotfix/*` branches have no ticket and keep that name.
 - Sessions commit and push without asking first.
 - Keep PR branches up to date by rebasing onto `origin/dev` and pushing with `--force-with-lease`. PRs land with "Rebase and merge", and merge commits are refused.
 - A new CI job has to be added as a required check in the `main` and `dev` rulesets.
