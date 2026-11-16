@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import {useAbortableEffect} from "~/hooks/use-abortable-effect.ts";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import useReject from "~/hooks/use-reject.ts";
 
 /**
@@ -9,15 +9,16 @@ import useReject from "~/hooks/use-reject.ts";
  */
 export default function useComponentDidMount(callback: () => any) {
   const mounted = useRef(false);
-  const reject = useReject()
+  const reject = useReject();
   useAbortableEffect((signal) => {
     if (mounted.current) return;
+    mounted.current = true;
     queueMicrotask(() => {
-      if(signal.aborted) return;
+      if (signal.aborted) return;
       try {
         callback();
       } catch (e) {
-        reject(e)
+        reject(e);
       }
     });
   }, []);
