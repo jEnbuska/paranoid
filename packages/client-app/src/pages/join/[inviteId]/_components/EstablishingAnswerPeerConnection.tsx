@@ -7,24 +7,19 @@ import InviteView from "~/features/invite/_components/InviteView.tsx";
 import { useNavigate } from "react-router";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import useReject from "~/hooks/use-reject.ts";
-import { useAbortController } from "~/hooks/use-abort-controller.ts";
 import {
   useInviteState,
-  useInviteCallbacks,
   useHandleInviteConnectionIceCandidatesExchange,
   useHandleHandshake,
 } from "~/features/invite/hooks.ts";
 import { assertIsNotNil } from "shared-lib/utils/nil";
-import { addPeerConnectionEventListeners } from "~/features/peer-connection/utils.ts";
 
 export default function EstablishingAnswerPeerConnection() {
   const navigate = useNavigate();
   const reject = useReject();
   useHandleInviteConnectionIceCandidatesExchange(reject);
-  const { signal } = useAbortController();
   const emit = useEmitIntroduction();
   const { connection } = useInviteState();
-  const { setAnswerChannel } = useInviteCallbacks();
   useOnEventDecrypted({
     type: "DESCRIPTION",
     once: true,
@@ -35,11 +30,6 @@ export default function EstablishingAnswerPeerConnection() {
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
       await emit("DESCRIPTION", answer);
-      addPeerConnectionEventListeners(connection, signal, {
-        async datachannel({ channel }) {
-          void setAnswerChannel(channel);
-        },
-      });
     },
   });
   const handshake = useHandleHandshake();

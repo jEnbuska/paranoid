@@ -39,9 +39,6 @@ export type InviteContextCallbacks = {
   /** This should be called by the offerer when the other party has answered the offer with corret password */
   createOfferPeerConnection(peerPublicKeyEncrypted: string): Promise<void>;
 
-  /** This should be called after peer connection is made and data channel has been acquired */
-  setAnswerChannel(channel: RTCDataChannel): Promise<void>;
-
   /** This should be called after peer connection is made and data channel is acquired   */
   handshake(peerName: string): Promise<void>;
   /** This should be called everytime offer / answer flow is interrupted */
