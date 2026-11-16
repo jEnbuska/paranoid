@@ -12,6 +12,7 @@ import { Outlet } from "react-router";
 import CommonPageLayout from "~/components/CommonPageLayout.tsx";
 import Main from "~/components/Main.tsx";
 import { use } from "react";
+import {createMetaChannel} from "~/features/channel/create.ts";
 
 export default function InviteCallbacksContextProvider() {
   const { updateState, getState } = use(InviteStateContext);
@@ -47,6 +48,7 @@ export default function InviteCallbacksContextProvider() {
     async answerOffer({ password, userName }) {
       const { peerPublicKeyEncrypted } = getState();
       const connection = createPeerConnection();
+      const channel = createMetaChannel(connection);
       const peerPublicKey = await decryptWithPassword<string>(
         peerPublicKeyEncrypted,
         { password },
@@ -56,6 +58,7 @@ export default function InviteCallbacksContextProvider() {
         connection,
         password,
         userName,
+        channel,
       });
     },
     resetInviteContext() {
@@ -63,18 +66,13 @@ export default function InviteCallbacksContextProvider() {
       if (getState() === defaultInviteContextState) return Promise.resolve();
       return updateState(defaultInviteContextState);
     },
-    setAnswerChannel: (channel: RTCDataChannel) => updateState({ channel }),
     async createOfferPeerConnection(peerPublicKeyEncrypted) {
       const peerPublicKey = await decryptWithPassword<string>(
         peerPublicKeyEncrypted,
         { password: getState().password },
       );
       const connection = createPeerConnection();
-      const channel = connection.createDataChannel("meta", {
-        id: 1,
-        ordered: true, // Ensure data is received in the order it's sent
-        protocol: "meta-data",
-      });
+      const channel = createMetaChannel(connection);
       const offer = await connection.createOffer();
       await connection.setLocalDescription(offer);
       return updateState({
