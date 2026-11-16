@@ -1,5 +1,5 @@
 import { useMemoOnce } from "~/hooks/use-memo-once";
-import { useComponentDidUnmount } from "~/hooks/use-component-did-unmount";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect";
 
 /**
  * A hook that provides an AbortController instance.
@@ -7,6 +7,8 @@ import { useComponentDidUnmount } from "~/hooks/use-component-did-unmount";
  */
 export function useAbortController() {
   const controller = useMemoOnce(() => new AbortController());
-  useComponentDidUnmount(() => controller.abort());
+  useAbortableEffect((signal) => {
+    signal.addEventListener("abort", () => controller.abort());
+  }, []);
   return controller;
 }

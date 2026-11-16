@@ -5,7 +5,7 @@ import {
 } from "~/features/socket/hooks";
 import { useAbortController } from "~/hooks/use-abort-controller";
 import { assertIsNotNil } from "shared-lib/utils/nil";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import { addPeerConnectionEventListeners } from "~/features/peer-connection/utils";
 import { useMemoOnce } from "~/hooks/use-memo-once";
 import constList from "shared-lib/utils/const-list";
@@ -19,7 +19,6 @@ import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksCon
 import { useResolvable } from "~/hooks/use-resolvable";
 import invoke from "shared-lib/utils/invoke";
 import createResolvable from "shared-lib/utils/create-resolvable";
-import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 
 export function useInviteState() {
   return use(InviteStateContext).state;
@@ -35,16 +34,18 @@ export function useHandleInviteConnectionIceCandidatesExchange(
   const { signal } = useAbortController();
   const { connection } = useInviteState();
   assertIsNotNil(connection);
-  useComponentDidMount(() =>
-    addPeerConnectionEventListeners(connection, signal, {
-      icecandidate({ candidate }) {
-        if (candidate) {
-          void emit("CANDIDATE", candidate).catch(onError);
-        } else {
-          void emit("DONE").catch(onError);
-        }
-      },
-    }),
+  useAbortableEffect(
+    () =>
+      addPeerConnectionEventListeners(connection, signal, {
+        icecandidate({ candidate }) {
+          if (candidate) {
+            void emit("CANDIDATE", candidate).catch(onError);
+          } else {
+            void emit("DONE").catch(onError);
+          }
+        },
+      }),
+    [],
   );
   useOnEventDecrypted({
     type: "CANDIDATE",
@@ -127,7 +128,7 @@ export function useHandleHandshake() {
   const decrypt = useDecrypt();
   const encrypt = useEncrypt();
   const resolvable = useResolvable();
-  useComponentDidMount(() => {
+  useAbortableEffect(() => {
     assertIsNotNil(connection);
     addPeerConnectionEventListeners(connection, signal, {
       connectionstatechange() {
@@ -135,7 +136,7 @@ export function useHandleHandshake() {
         resolvable.reject(new Error("Peer connection failed"));
       },
     });
-  });
+  }, []);
   useEffect(() => {
     if (!channel) return;
     // Abort per effect run so React.StrictMode's second run does not add a

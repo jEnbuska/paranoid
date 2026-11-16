@@ -1,5 +1,5 @@
 import { ReactNode, useId, useRef } from "react";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import styles from "./styles.module.css";
 
 type OwnProps = {
@@ -13,7 +13,7 @@ type OwnProps = {
 export default function Dialog({ onClose, title, children }: OwnProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  useComponentDidMount(() => ref.current?.showModal());
+  useAbortableEffect(() => ref.current?.showModal(), []);
   return (
     <dialog
       ref={ref}

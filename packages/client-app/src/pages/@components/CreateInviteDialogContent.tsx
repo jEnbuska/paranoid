@@ -8,7 +8,8 @@ import { useInviteState, useInviteCallbacks } from "~/features/invite/hooks.ts";
 import { useMutation } from "@tanstack/react-query";
 import InviteView from "~/features/invite/_components/InviteView.tsx";
 import useReject from "~/hooks/use-reject.ts";
-import { useComponentDidUnmount } from "~/hooks/use-component-did-unmount.ts";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
+import useStable from "~/hooks/use-stable.ts";
 import InviteStateContext from "~/features/invite/context/InviteStateContext.tsx";
 import { use } from "react";
 
@@ -16,7 +17,7 @@ export default function CreateInviteDialogContent() {
   const { getState } = use(InviteStateContext);
   const { resetInviteContext } = useInviteCallbacks();
   const socket = useSocket();
-  useComponentDidUnmount(() => {
+  const onUnmount = useStable(() => {
     // The stage from the current state: the dialog's content unmounts without
     // rendering again when the finished handshake closes the dialog
     switch (getState().stage) {
@@ -25,6 +26,9 @@ export default function CreateInviteDialogContent() {
         void resetInviteContext();
     }
   });
+  useAbortableEffect((signal) => {
+    signal.addEventListener("abort", onUnmount);
+  }, []);
   const { peerPublicKey, inviteId } = useInviteState();
   const { createOfferPeerConnection } = useInviteCallbacks();
   const reject = useReject();
