@@ -87,7 +87,7 @@ describe("createChannelInbox", () => {
     });
 
     delays.forEach((_, index) => receive(text(String(index))));
-    const taken = [];
+    const taken: string[] = [];
     for (const _ of delays) taken.push((await inbox.take("TEXT", signal)).data);
 
     expect(taken).toEqual(["0", "1", "2", "3", "4"]);
