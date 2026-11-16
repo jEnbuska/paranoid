@@ -12,7 +12,7 @@ import { Outlet } from "react-router";
 import CommonPageLayout from "~/components/CommonPageLayout.tsx";
 import Main from "~/components/Main.tsx";
 import { use } from "react";
-import {createMetaChannel} from "~/features/channel/create.ts";
+import { createMetaChannel } from "~/features/channel/create.ts";
 
 export default function InviteCallbacksContextProvider() {
   const { updateState, getState } = use(InviteStateContext);
