@@ -1,10 +1,12 @@
 import { v4 as uuid } from "uuid";
 import { MessageCallbacksData, MessageData } from "./types";
+import { sendChannelMessage } from "~/features/channel/send.ts";
+import type { Encrypt } from "~/features/channel/types.ts";
 
 export function createMessageCallbacks(args: {
   userId: string;
   channel: RTCDataChannel;
-  encrypt: <T>(data: T) => Promise<string>;
+  encrypt: Encrypt;
   addMessage(message: MessageData): void;
 }): MessageCallbacksData {
   const { userId, channel, encrypt, addMessage } = args;
@@ -16,12 +18,11 @@ export function createMessageCallbacks(args: {
         createdBy: userId,
         data: text,
       };
-      const encrypted = await encrypt(message);
-      // Firefox drops a message sent on a closed channel instead of throwing
-      if (channel.readyState !== "open") {
-        throw new Error("Data channel not open");
-      }
-      channel.send(encrypted);
+      await sendChannelMessage(
+        channel,
+        { type: "TEXT", data: message },
+        encrypt,
+      );
       addMessage(message);
     },
   };

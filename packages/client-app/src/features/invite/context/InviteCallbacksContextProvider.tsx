@@ -13,6 +13,20 @@ import CommonPageLayout from "~/components/CommonPageLayout.tsx";
 import Main from "~/components/Main.tsx";
 import { use } from "react";
 import { createMetaChannel } from "~/features/channel/create.ts";
+import { getChannelInbox } from "~/features/channel/inbox.ts";
+import { encrypt, decrypt } from "~/features/crypt/utils";
+
+/** Encrypt and decrypt for the peer, for the channel to use from its creation */
+function bindKeys(keys: {
+  password: string;
+  peerPublicKey: string;
+  privateKey: string;
+}) {
+  return {
+    encrypt: <T,>(data: T) => encrypt(data, keys),
+    decrypt: <T,>(encrypted: string) => decrypt<T>(encrypted, keys),
+  };
+}
 
 export default function InviteCallbacksContextProvider() {
   const { updateState, getState } = use(InviteStateContext);
@@ -46,12 +60,15 @@ export default function InviteCallbacksContextProvider() {
       });
     },
     async answerOffer({ password, userName }) {
-      const { peerPublicKeyEncrypted } = getState();
-      const connection = createPeerConnection();
-      const channel = createMetaChannel(connection);
+      const { peerPublicKeyEncrypted, privateKey } = getState();
       const peerPublicKey = await decryptWithPassword<string>(
         peerPublicKeyEncrypted,
         { password },
+      );
+      const connection = createPeerConnection();
+      const channel = createMetaChannel(
+        connection,
+        bindKeys({ password, peerPublicKey, privateKey }),
       );
       void updateState({
         peerPublicKey,
@@ -62,17 +79,23 @@ export default function InviteCallbacksContextProvider() {
       });
     },
     resetInviteContext() {
-      getState().channel?.close();
+      const { channel } = getState();
+      if (channel) getChannelInbox(channel).clear();
+      channel?.close();
       if (getState() === defaultInviteContextState) return Promise.resolve();
       return updateState(defaultInviteContextState);
     },
     async createOfferPeerConnection(peerPublicKeyEncrypted) {
+      const { password, privateKey } = getState();
       const peerPublicKey = await decryptWithPassword<string>(
         peerPublicKeyEncrypted,
-        { password: getState().password },
+        { password },
       );
       const connection = createPeerConnection();
-      const channel = createMetaChannel(connection);
+      const channel = createMetaChannel(
+        connection,
+        bindKeys({ password, peerPublicKey, privateKey }),
+      );
       const offer = await connection.createOffer();
       await connection.setLocalDescription(offer);
       return updateState({
