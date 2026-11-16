@@ -14,12 +14,68 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decides from a PR's changed files which of the jobs below have work to do.
+  # Only PRs skip anything: pushes to main and dev run everything.
+  changes:
+    name: Find the changed files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      checks: ${{ steps.changes.outputs.checks }}
+      format: ${{ steps.changes.outputs.format }}
+      e2e: ${{ steps.changes.outputs.e2e }}
+
+    steps:
+      # A PR checks out its merge commit, whose first parent is the tip of the
+      # base branch, so two commits are enough to diff against the base.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      # - checks: everything except docs (Markdown and LICENSE). oxfmt formats
+      #   Markdown, so a Markdown change still runs the format check, alone.
+      # - e2e: the packages (except their docs) and what installs them.
+      # - A change to this workflow runs everything.
+      - name: Decide which jobs run
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" != pull_request ]; then
+            printf 'checks=true\nformat=true\ne2e=true\n' | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          checks=false format=false e2e=false
+          while IFS= read -r file; do
+            echo "Changed: $file"
+            case "$file" in
+              .github/workflows/ci.yml) checks=true format=true e2e=true ;;
+              *.md) format=true ;;
+              LICENSE) ;;
+              *) checks=true format=true ;;
+            esac
+            case "$file" in
+              *.md) ;;
+              packages/* | package.json | pnpm-lock.yaml | pnpm-workspace.yaml | .nvmrc) e2e=true ;;
+            esac
+          done < <(git diff --name-only HEAD^1 HEAD)
+          printf 'checks=%s\nformat=%s\ne2e=%s\n' "$checks" "$format" "$e2e" | tee -a "$GITHUB_OUTPUT"
+
   checks:
     name: Lint, format, typecheck, test & build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: changes
     # Draft PRs often start with an empty commit, so there's nothing to check.
-    if: github.event_name != 'pull_request' || github.event.pull_request.changed_files > 0
+    # A PR changing nothing this job checks skips it, which counts as passing.
+    # `!cancelled()` runs it even if `changes` fails: its outputs are then
+    # empty, which isn't 'false', so every step runs.
+    if: >-
+      !cancelled()
+      && (github.event_name != 'pull_request' || github.event.pull_request.changed_files > 0)
+      && (needs.changes.outputs.checks != 'false' || needs.changes.outputs.format != 'false')
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,30 +96,44 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # A PR that only changes Markdown runs the format check and nothing else.
       - name: Lint
+        if: needs.changes.outputs.checks != 'false'
         run: pnpm lint
 
       - name: Find dead code
+        if: needs.changes.outputs.checks != 'false'
         run: pnpm knip
 
       - name: Format check
         run: pnpm format:check
 
       - name: Type check
+        if: needs.changes.outputs.checks != 'false'
         run: pnpm typecheck
 
       - name: Test
+        if: needs.changes.outputs.checks != 'false'
         run: pnpm test
 
       - name: Build
+        if: needs.changes.outputs.checks != 'false'
         run: pnpm build
 
   e2e:
     name: End-to-end tests (${{ matrix.browser }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: changes
     # Draft PRs often start with an empty commit, so there's nothing to check.
-    if: github.event_name != 'pull_request' || github.event.pull_request.changed_files > 0
+    # Skipping this job for any other reason would report a single check named
+    # `End-to-end tests (${{ matrix.browser }})`, and the required
+    # `End-to-end tests (chromium)` would wait forever. So the matrix always
+    # runs, and its steps skip when no file the tests check has changed.
+    # `!cancelled()` runs it even if `changes` fails, with every step.
+    if: >-
+      !cancelled()
+      && (github.event_name != 'pull_request' || github.event.pull_request.changed_files > 0)
     # PRs into main are releases from dev, the only time every browser runs.
     # Everything else runs Chromium, and sessions run the rest locally.
     strategy:
@@ -72,28 +142,38 @@ jobs:
         browser: ${{ github.base_ref == 'main' && fromJSON('["chromium","firefox","webkit"]') || fromJSON('["chromium"]') }}
 
     steps:
+      - name: Skip, as no file the end-to-end tests check has changed
+        if: needs.changes.outputs.e2e == 'false'
+        run: echo "Nothing to test."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.e2e != 'false'
         with:
           persist-credentials: false
 
       - name: Set up pnpm
+        if: needs.changes.outputs.e2e != 'false'
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Set up Node.js
+        if: needs.changes.outputs.e2e != 'false'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install dependencies
+        if: needs.changes.outputs.e2e != 'false'
         run: pnpm install --frozen-lockfile
 
       - name: Read the Playwright version
         id: playwright
+        if: needs.changes.outputs.e2e != 'false'
         run: echo "version=$(pnpm --filter e2e exec playwright --version | cut -d ' ' -f 2)" >> "$GITHUB_OUTPUT"
 
       - name: Cache the browser
         id: browser-cache
+        if: needs.changes.outputs.e2e != 'false'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
@@ -103,15 +183,16 @@ jobs:
       # Chromium skips apt, which hangs when Ubuntu's mirror is unreachable.
       # Firefox and WebKit need more packages.
       - name: Install the browser
-        if: steps.browser-cache.outputs.cache-hit != 'true'
+        if: needs.changes.outputs.e2e != 'false' && steps.browser-cache.outputs.cache-hit != 'true'
         run: pnpm --filter e2e exec playwright install ${{ matrix.browser != 'chromium' && '--with-deps' || '' }} ${{ matrix.browser }}
 
       # The cache holds the browser, not the system packages it needs
       - name: Install system dependencies of the cached browser
-        if: steps.browser-cache.outputs.cache-hit == 'true' && matrix.browser != 'chromium'
+        if: needs.changes.outputs.e2e != 'false' && steps.browser-cache.outputs.cache-hit == 'true' && matrix.browser != 'chromium'
         run: pnpm --filter e2e exec playwright install-deps ${{ matrix.browser }}
 
       - name: Run end-to-end tests
+        if: needs.changes.outputs.e2e != 'false'
         run: pnpm test:e2e --project=${{ matrix.browser }}
 
       - name: Upload the report
