@@ -14,19 +14,7 @@ import Main from "~/components/Main.tsx";
 import { use } from "react";
 import { createMetaChannel } from "~/features/channel/create.ts";
 import { getChannelInbox } from "~/features/channel/inbox.ts";
-import { encrypt, decrypt } from "~/features/crypt/utils";
-
-/** Encrypt and decrypt for the peer, for the channel to use from its creation */
-function bindKeys(keys: {
-  password: string;
-  peerPublicKey: string;
-  privateKey: string;
-}) {
-  return {
-    encrypt: <T,>(data: T) => encrypt(data, keys),
-    decrypt: <T,>(encrypted: string) => decrypt<T>(encrypted, keys),
-  };
-}
+import { createChannelCrypt } from "~/features/channel/crypt.ts";
 
 export default function InviteCallbacksContextProvider() {
   const { updateState, getState } = use(InviteStateContext);
@@ -68,7 +56,7 @@ export default function InviteCallbacksContextProvider() {
       const connection = createPeerConnection();
       const channel = createMetaChannel(
         connection,
-        bindKeys({ password, peerPublicKey, privateKey }),
+        createChannelCrypt({ password, peerPublicKey, privateKey }),
       );
       void updateState({
         peerPublicKey,
@@ -94,7 +82,7 @@ export default function InviteCallbacksContextProvider() {
       const connection = createPeerConnection();
       const channel = createMetaChannel(
         connection,
-        bindKeys({ password, peerPublicKey, privateKey }),
+        createChannelCrypt({ password, peerPublicKey, privateKey }),
       );
       const offer = await connection.createOffer();
       await connection.setLocalDescription(offer);
