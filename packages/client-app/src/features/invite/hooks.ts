@@ -19,8 +19,6 @@ import { sendChannelMessage } from "~/features/channel/send.ts";
 import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksContext";
 import { useResolvable } from "~/hooks/use-resolvable";
-import invoke from "shared-lib/utils/invoke";
-import createResolvable from "shared-lib/utils/create-resolvable";
 
 export function useInviteState() {
   return use(InviteStateContext).state;
@@ -136,41 +134,42 @@ export function useHandleHandshake() {
     });
   }, []);
   // Its own signal per run, so React.StrictMode's discarded first run neither
-  // takes the peer's name nor sends the user name
+  // sends the user name nor takes the peer's name
   useAbortableEffect(
-    (signal) => {
+    async (signal) => {
       if (!channel) return;
       const options = { once: true, signal };
-      const { resolve, reject } = resolvable;
-      getChannelInbox(channel)
-        .take("PEERNAME", signal)
-        .then(handshake)
-        .then(resolve)
-        .catch((e) => {
-          if (!signal.aborted) reject(e);
-        });
       channel.addEventListener(
         "close",
-        () => reject(new Error("Data channel closed during handshake")),
+        () =>
+          resolvable.reject(new Error("Data channel closed during handshake")),
         options,
       );
-      invoke(async () => {
-        const opened = createResolvable(signal);
-        channel.addEventListener("open", () => opened.resolve(), options);
-        channel.addEventListener(
-          "error",
-          () => opened.reject(new Error("Data channel failed")),
-          options,
-        );
-        if (channel.readyState === "open") opened.resolve();
-        await opened.promise;
-        if (signal.aborted) return;
+      try {
+        if (channel.readyState !== "open") {
+          await new Promise<void>((resolve, reject) => {
+            channel.addEventListener("open", () => resolve(), options);
+            channel.addEventListener(
+              "error",
+              () => reject(new Error("Data channel failed")),
+              options,
+            );
+          });
+        }
+        signal.throwIfAborted();
         await sendChannelMessage(
           channel,
           { type: "PEERNAME", data: userName },
           encrypt,
         );
-      }).catch(reject);
+        // The inbox keeps the peer's name if it arrived before this
+        await handshake(
+          await getChannelInbox(channel).take("PEERNAME", signal),
+        );
+        resolvable.resolve();
+      } catch (e) {
+        if (!signal.aborted) resolvable.reject(e);
+      }
     },
     [channel],
   );
