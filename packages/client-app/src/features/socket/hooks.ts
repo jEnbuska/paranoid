@@ -7,11 +7,10 @@ import type {
   ServerToClientEvents,
   ClientToServerEvents,
 } from "shared-lib/types";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
 import { useInbox } from "~/features/socket/inbox.ts";
 import useReject from "~/hooks/use-reject.ts";
-import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 
 export function useOnEvent<T extends keyof ServerToClientEvents>(
   type: T,
@@ -83,5 +82,5 @@ export function useOnEventDecrypted<
         .catch(onError);
     } while (!once && !controller.signal.aborted);
   });
-  useComponentDidMount(callback);
+  useAbortableEffect(callback, []);
 }

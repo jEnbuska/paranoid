@@ -5,7 +5,7 @@ import {
 import ConnectionProgressList from "~/features/invite/_components/ConnectionProgressList/ConnectionProgressList.tsx";
 import InviteView from "~/features/invite/_components/InviteView.tsx";
 import { useNavigate } from "react-router";
-import useComponentDidMount from "~/hooks/use-component-did-mount.ts";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import useReject from "~/hooks/use-reject.ts";
 import { useAbortController } from "~/hooks/use-abort-controller.ts";
 import {
@@ -43,7 +43,7 @@ export default function EstablishingAnswerPeerConnection() {
     },
   });
   const handshake = useHandleHandshake();
-  useComponentDidMount(() => handshake.catch(reject));
+  useAbortableEffect(() => handshake, []);
   useOnEventDecrypted({
     type: "DONE",
     once: true,

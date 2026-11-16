@@ -4,7 +4,7 @@ import { generateECDHKeyPair } from "~/features/crypt/utils/ecdh";
 import { createPeerConnection } from "~/features/peer-connection/utils";
 import { useMemoOnce } from "~/hooks/use-memo-once";
 import { v4 as uuid } from "uuid";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import InviteStateContext from "./InviteStateContext";
 import { decryptWithPassword } from "~/features/crypt/utils/password";
 import InviteCallbacksContext from "./InviteCallbacksContext";
@@ -85,8 +85,12 @@ export default function InviteCallbacksContextProvider() {
     },
     handshake: (peerName) => updateState({ peerName, stage: "connected" }),
   }));
-  useComponentDidMount(() =>
-    window.addEventListener("beforeunload", () => getState().channel?.close()),
+  useAbortableEffect(
+    () =>
+      window.addEventListener("beforeunload", () =>
+        getState().channel?.close(),
+      ),
+    [],
   );
   return (
     <InviteCallbacksContext.Provider value={callbacks}>

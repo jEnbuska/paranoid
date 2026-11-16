@@ -2,7 +2,7 @@ import { PropsWithChildren } from "react";
 import { MessageData } from "../types";
 import { useAbortController } from "~/hooks/use-abort-controller";
 import { useDecrypt } from "~/features/crypt/hooks";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import {
   useAddMessage,
   useCreateMessageCallbacks,
@@ -20,14 +20,14 @@ export default function MessageCallbacksContextProvider({
   const callbacks = useCreateMessageCallbacks(addMessage);
   const { channel } = inviteState;
   const decrypt = useDecrypt();
-  useComponentDidMount(() => {
+  useAbortableEffect(() => {
     channel?.addEventListener(
       "message",
       ({ data }: MessageEvent<string>) =>
         decrypt<MessageData>(data).then(addMessage),
       { signal },
     );
-  });
+  }, []);
   if (inviteState.stage !== "connected") {
     return <Navigate to={"/"} replace />;
   }

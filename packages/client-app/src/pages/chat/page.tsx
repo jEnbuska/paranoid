@@ -5,7 +5,7 @@ import Conditional from "~/components/Conditional";
 import { useState } from "react";
 import Alert from "~/components/Alert/Alert";
 import { useInviteState } from "~/features/invite/hooks";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import { useAbortController } from "~/hooks/use-abort-controller";
 import styles from "./styles.module.css";
 
@@ -13,8 +13,9 @@ export default function ChatPage() {
   const { channel } = useInviteState();
   const [closed, setClosed] = useState(false);
   const { signal } = useAbortController();
-  useComponentDidMount(() =>
-    channel!.addEventListener("close", () => setClosed(true), { signal }),
+  useAbortableEffect(
+    () => channel!.addEventListener("close", () => setClosed(true), { signal }),
+    [],
   );
   return (
     <main className={styles.chatPage}>

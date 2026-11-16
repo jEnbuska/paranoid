@@ -1,5 +1,5 @@
 import { useInviteCallbacks, useInviteState } from "~/features/invite/hooks";
-import useComponentDidMount from "~/hooks/use-component-did-mount";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import { RandomNameData } from "~/features/random-name/types.ts";
 import { useRandomNames } from "~/features/random-name/hooks.ts";
 import { useForm } from "react-hook-form";
@@ -18,7 +18,7 @@ type CreateOfferFormData = RandomNameData<{
 }>;
 export default function LandingPage() {
   const { resetInviteContext } = useInviteCallbacks();
-  useComponentDidMount(resetInviteContext);
+  useAbortableEffect(() => resetInviteContext(), []);
   const names = useRandomNames("userName");
   const form = useForm<CreateOfferFormData>({
     defaultValues: {

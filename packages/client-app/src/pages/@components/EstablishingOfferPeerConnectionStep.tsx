@@ -5,7 +5,7 @@ import {
 import ConnectionProgressList from "~/features/invite/_components/ConnectionProgressList/ConnectionProgressList.tsx";
 import InviteView from "~/features/invite/_components/InviteView.tsx";
 import { useNavigate } from "react-router";
-import useComponentDidMount from "~/hooks/use-component-did-mount.ts";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import {
   useInviteState,
   useHandleInviteConnectionIceCandidatesExchange,
@@ -19,11 +19,11 @@ export default function EstablishingOfferPeerConnectionStep() {
   const emit = useEmitIntroduction();
   const { connection } = useInviteState();
   assertIsNotNil(connection);
-  useComponentDidMount(() => {
+  useAbortableEffect(() => {
     const { localDescription } = connection;
     assertIsNotNil(localDescription);
     void emit("DESCRIPTION", localDescription);
-  });
+  }, []);
   useOnEventDecrypted({
     type: "DESCRIPTION",
     once: true,
