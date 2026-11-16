@@ -33,7 +33,11 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 
 ## CI and pull requests
 
-- CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm knip`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job (Chromium, plus Firefox and WebKit on PRs into `main`), on every PR with changed files (a PR with none skips both jobs) and on pushes to `main` and `dev`. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
+- CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm knip`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job (Chromium, plus Firefox and WebKit on PRs into `main`). Pushes to `main` and `dev` run everything. On a PR, a `changes` job decides from the changed files what runs, and a PR with no changed files skips both jobs. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
+  - Docs (`**/*.md`, `LICENSE`) run no checks and no end-to-end tests, except the format check for Markdown, because oxfmt formats it.
+  - The end-to-end tests run for changes under `packages/` (except docs) and to the root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` and `.nvmrc`. Every other change runs only the checks.
+  - A change to `ci.yml` runs everything.
+  - Skip a matrix job's steps, never the job: a skipped matrix job reports one check under its unexpanded name, `End-to-end tests (${{ matrix.browser }})`, so the required `End-to-end tests (chromium)` would wait forever. A non-matrix job can skip with `if:`, which counts as passing.
 - The rules for branches, PRs and releases are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs go into `dev`, except a release PR from `dev` into `main`. Sessions never release unless the user tells them to for that specific PR.
 - Branch names start with the ticket number: `<TICKET_NUMBER>-<name>`, for example `2-peers-stuck-connecting`. `hotfix/*` branches have no ticket and keep that name.
 - Sessions commit and push without asking first.

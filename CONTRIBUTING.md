@@ -17,7 +17,7 @@ Paranoid has two long-lived branches:
 | How it lands                   | Rebase and merge                                                                   | Fast-forward                                                    |
 | Who merges                     | The maintainer                                                                     | The maintainer                                                  |
 
-A PR with no changes fails `PR rules` unless it's a draft, so skipping CI can't count as passing.
+CI skips the work a PR's changes can't affect, for example the end-to-end tests on a docs-only PR, and a skipped check counts as passing. A PR with no changes at all fails `PR rules` unless it's a draft, so an empty PR can't get through by skipping CI.
 
 ## Opening a pull request
 
