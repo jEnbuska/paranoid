@@ -1,6 +1,5 @@
-import {useEffect, useMemo, useRef} from "react";
+import { useEffect, useRef } from "react";
 import useUpdateCallback from "~/hooks/use-stable.ts";
-import { useTimeout } from "~/hooks/use-timeout";
 
 /**
  * A hook that runs the provided cleanup function when the component is unmounted.
@@ -17,9 +16,9 @@ export function useComponentDidUnmount(cleanup: () => any) {
     return () => {
       mounted.current = false;
       queueMicrotask(() => {
-        if(mounted.current) return;
-        callback()
-      })
+        if (mounted.current) return;
+        callback();
+      });
     };
   }, []);
 }

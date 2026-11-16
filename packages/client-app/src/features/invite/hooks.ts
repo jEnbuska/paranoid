@@ -19,7 +19,7 @@ import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksCon
 import { useResolvable } from "~/hooks/use-resolvable";
 import invoke from "shared-lib/utils/invoke";
 import createResolvable from "shared-lib/utils/create-resolvable";
-import {useAbortableEffect} from "~/hooks/use-abortable-effect.ts";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 
 export function useInviteState() {
   return use(InviteStateContext).state;

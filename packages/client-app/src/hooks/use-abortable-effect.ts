@@ -1,15 +1,17 @@
-import {DependencyList, useEffect} from "react";
-import {useAbortController} from "~/hooks/use-abort-controller.ts";
+import { DependencyList, useEffect } from "react";
 
-export function useAbortableEffect(cb: (signal: AbortSignal) => any, deps?: DependencyList) {
-    useEffect(() => {
-        const controller = useAbortController();
-        queueMicrotask(() => {
-            if(controller.signal.aborted) return;
-            cb(controller.signal);
-        });
-        return () => {
-            controller.abort()
-        }
-    }, deps);
+export function useAbortableEffect(
+  cb: (signal: AbortSignal) => any,
+  deps?: DependencyList,
+) {
+  useEffect(() => {
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      cb(controller.signal);
+    });
+    return () => {
+      controller.abort();
+    };
+  }, deps);
 }

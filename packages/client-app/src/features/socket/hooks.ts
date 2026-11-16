@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { socketQueryKey } from "~/features/socket/constants";
 import { createSocket } from "~/features/socket/loader";
@@ -12,7 +11,7 @@ import useComponentDidMount from "~/hooks/use-component-did-mount";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
 import { useInbox } from "~/features/socket/inbox.ts";
 import useReject from "~/hooks/use-reject.ts";
-import {useAbortableEffect} from "~/hooks/use-abortable-effect.ts";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 
 export function useOnEvent<T extends keyof ServerToClientEvents>(
   type: T,
@@ -23,7 +22,7 @@ export function useOnEvent<T extends keyof ServerToClientEvents>(
   const reject = useReject();
 
   useAbortableEffect(async (signal) => {
-    while(!signal.aborted) {
+    while (!signal.aborted) {
       if (signal.aborted) return;
       try {
         await inbox.take(type, signal).then((args) => cb(...args));
