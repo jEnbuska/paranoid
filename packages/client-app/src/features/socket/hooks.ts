@@ -12,6 +12,7 @@ import useComponentDidMount from "~/hooks/use-component-did-mount";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
 import { useInbox } from "~/features/socket/inbox.ts";
 import useReject from "~/hooks/use-reject.ts";
+import {useAbortableEffect} from "~/hooks/use-abortable-effect.ts";
 
 export function useOnEvent<T extends keyof ServerToClientEvents>(
   type: T,
@@ -21,22 +22,16 @@ export function useOnEvent<T extends keyof ServerToClientEvents>(
   const cb: any = useStable(handler);
   const reject = useReject();
 
-  useEffect(() => {
-    const controller = new AbortController();
-    async function handleNext() {
-      if (controller.signal.aborted) return;
+  useAbortableEffect(async (signal) => {
+    while(!signal.aborted) {
+      if (signal.aborted) return;
       try {
-        await inbox.take(type, controller.signal).then((args) => cb(...args));
+        await inbox.take(type, signal).then((args) => cb(...args));
       } catch (e) {
-        if (controller.signal.aborted) return;
+        if (signal.aborted) return;
         return reject(e);
       }
-      void handleNext();
     }
-    void handleNext();
-    return () => {
-      controller.abort();
-    };
   }, []);
 }
 
