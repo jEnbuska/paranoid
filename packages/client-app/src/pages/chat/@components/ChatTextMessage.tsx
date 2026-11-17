@@ -15,7 +15,7 @@ const ChatTextMessage = memo(function ChatMessage({
   data,
   createdAt,
 }: OwnProps) {
-  const { peerName } = useInviteState();
+  const { peerDisplayName } = useInviteState();
   return (
     <li
       className={classNames(
@@ -24,7 +24,7 @@ const ChatTextMessage = memo(function ChatMessage({
       )}
     >
       <Conditional element={"b"} shown={!isSender}>
-        {peerName}
+        {peerDisplayName}
       </Conditional>
       <div className={styles.messageBody}>
         <p className={styles.messageText}>{data}</p>

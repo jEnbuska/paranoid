@@ -6,7 +6,7 @@ import type {
 } from "./types.ts";
 
 const CHANNEL_MESSAGE_TYPES = new Set<unknown>([
-  "PEERNAME",
+  "DISPLAY_NAME",
   "TEXT",
   "CANDIDATE",
 ] satisfies ChannelMessageType[]);

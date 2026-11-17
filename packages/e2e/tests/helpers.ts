@@ -77,11 +77,11 @@ export async function submitJoinForm(
   await page.getByRole("button", { name: "Join" }).click();
 }
 
-/** Waits until the page is in a chat with `peerName` */
-export async function expectInChat(page: Page, peerName: string) {
+/** Waits until the page is in a chat with `peerDisplayName` */
+export async function expectInChat(page: Page, peerDisplayName: string) {
   await expect(page).toHaveURL(/\/chat$/);
   await expect(
-    page.getByRole("heading", { level: 1, name: peerName }),
+    page.getByRole("heading", { level: 1, name: peerDisplayName }),
   ).toBeVisible();
   await expect(composer(page)).toBeEnabled();
 }

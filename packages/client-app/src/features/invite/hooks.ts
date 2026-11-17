@@ -119,7 +119,7 @@ export function useInviteConnectionProgress() {
 }
 
 export function useHandleHandshake() {
-  const { channel, connection, userName } = useInviteState();
+  const { channel, connection, displayName } = useInviteState();
   const { signal } = useAbortController();
   const { handshake } = useInviteCallbacks();
   const encrypt = useEncrypt();
@@ -134,7 +134,7 @@ export function useHandleHandshake() {
     });
   }, []);
   // Its own signal per run, so React.StrictMode's discarded first run neither
-  // sends the user name nor takes the peer's name
+  // sends the display name nor takes the peer's name
   useAbortableEffect(
     async (signal) => {
       if (!channel) return;
@@ -159,12 +159,12 @@ export function useHandleHandshake() {
         signal.throwIfAborted();
         await sendChannelMessage(
           channel,
-          { type: "PEERNAME", data: userName },
+          { type: "DISPLAY_NAME", data: displayName },
           encrypt,
         );
         // The inbox keeps the peer's name if it arrived before this
         await handshake(
-          await getChannelInbox(channel).take("PEERNAME", signal),
+          await getChannelInbox(channel).take("DISPLAY_NAME", signal),
         );
         resolvable.resolve();
       } catch (e) {

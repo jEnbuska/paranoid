@@ -30,7 +30,7 @@ export default function CreateOffer() {
         [names.password]: "",
       },
     });
-  const { userName } = useInviteState();
+  const { displayName } = useInviteState();
   const createOffer = useCreateOffer();
   const { isError, isPending, mutate } = useMutation({
     async mutationFn(data: InviteFormData) {
@@ -47,7 +47,7 @@ export default function CreateOffer() {
         label={"Your display name"}
         required
         disabled
-        value={userName}
+        value={displayName}
       />
       <TTLSlider
         watch={() => watch(names.ttl)}

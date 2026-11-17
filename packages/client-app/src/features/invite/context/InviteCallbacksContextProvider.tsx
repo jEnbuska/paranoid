@@ -20,12 +20,12 @@ export default function InviteCallbacksContextProvider() {
   const { updateState, getState } = use(InviteStateContext);
   const callbacks = useMemoOnce((): InviteContextCallbacks => ({
     onClosed: () => updateState({ active: false }),
-    async initOffer(userName) {
+    async initOffer(displayName) {
       const { privateKey, publicKey } = await generateECDHKeyPair();
       return updateState({
         privateKey,
         publicKey,
-        userName,
+        displayName,
         userId: uuid(),
         stage: "offer",
         active: true,
@@ -40,14 +40,14 @@ export default function InviteCallbacksContextProvider() {
         publicKey,
         userId: uuid(),
         stage: "answer",
-        // Public key will be encrypted when use input's their username and answers the offer
+        // Public key will be encrypted when user inputs their display name and answers the offer
         peerPublicKeyEncrypted,
         expiresAt: expiresAt,
         inviteId,
         active: true,
       });
     },
-    async answerOffer({ password, userName }) {
+    async answerOffer({ password, displayName }) {
       const { peerPublicKeyEncrypted, privateKey } = getState();
       const peerPublicKey = await decryptWithPassword<string>(
         peerPublicKeyEncrypted,
@@ -62,7 +62,7 @@ export default function InviteCallbacksContextProvider() {
         peerPublicKey,
         connection,
         password,
-        userName,
+        displayName,
         channel,
       });
     },
@@ -92,7 +92,8 @@ export default function InviteCallbacksContextProvider() {
         channel,
       });
     },
-    handshake: (peerName) => updateState({ peerName, stage: "connected" }),
+    handshake: (peerDisplayName) =>
+      updateState({ peerDisplayName, stage: "connected" }),
   }));
   useAbortableEffect(
     () =>

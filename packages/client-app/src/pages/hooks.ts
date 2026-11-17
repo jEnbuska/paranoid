@@ -54,12 +54,12 @@ export function useAnswerOffer() {
   const socket = useSocket();
   const { answerOffer } = useInviteCallbacks();
   const { publicKey } = useInviteState();
-  return useStable(async (args: { userName: string; password: string }) => {
-    const { userName, password } = args;
+  return useStable(async (args: { displayName: string; password: string }) => {
+    const { displayName, password } = args;
     socket.emit("JOIN", await encryptWithPassword(publicKey, { password }));
     return answerOffer({
       password,
-      userName,
+      displayName,
     });
   });
 }

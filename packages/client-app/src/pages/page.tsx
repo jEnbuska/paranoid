@@ -14,21 +14,21 @@ import Conditional from "~/components/Conditional.tsx";
 import Dialog from "~/components/Dialog/Dialog.tsx";
 
 type CreateOfferFormData = RandomNameData<{
-  userName: string;
+  displayName: string;
 }>;
 export default function LandingPage() {
   const { resetInviteContext } = useInviteCallbacks();
   useAbortableEffect(() => resetInviteContext(), []);
-  const names = useRandomNames("userName");
+  const names = useRandomNames("displayName");
   const form = useForm<CreateOfferFormData>({
     defaultValues: {
-      [names.userName]: "",
+      [names.displayName]: "",
     },
   });
   const { initOffer } = useInviteCallbacks();
   const { mutateAsync } = useMutation({
-    mutationFn: ({ [names.userName]: userName }: CreateOfferFormData) =>
-      initOffer(userName),
+    mutationFn: ({ [names.displayName]: displayName }: CreateOfferFormData) =>
+      initOffer(displayName),
   });
 
   const { stage, active } = useInviteState();
@@ -41,8 +41,8 @@ export default function LandingPage() {
           <FormTextField
             label={"Your display name"}
             required
-            error={form.formState.errors[names.userName]?.message}
-            {...form.register(names.userName, {
+            error={form.formState.errors[names.displayName]?.message}
+            {...form.register(names.displayName, {
               required: true,
               validate: validateDisplayName,
             })}
