@@ -30,7 +30,7 @@ const signal = new AbortController().signal;
 
 const text = (data: string): ChannelMessage => ({
   type: "TEXT",
-  data: { id: data, createdAt: 0, createdBy: "peer", data },
+  data: { id: data, createdAt: 0, createdBy: "other", data },
 });
 
 describe("createChannelInbox", () => {

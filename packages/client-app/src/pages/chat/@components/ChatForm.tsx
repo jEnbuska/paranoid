@@ -4,17 +4,17 @@ import Conditional from "~/components/Conditional";
 import IconButton from "~/components/IconButton/IconButton";
 import { ForwardToInboxIcon } from "~/components/Icon/icons";
 import { useRandomNames } from "~/features/random-name/hooks";
-import { useMessageCallbacks } from "~/features/message/hooks";
 import { RandomNameData } from "~/features/random-name/types";
-import { KeyboardEventHandler } from "react";
+import { KeyboardEventHandler, use } from "react";
 import styles from "./styles.module.css";
+import MessageContext from "~/features/message/context/MessageContext.ts";
 
 type ChatFormData = RandomNameData<{
   text: string;
 }>;
 export default function ChatForm() {
   const names = useRandomNames("text");
-  const { sendTextMessage } = useMessageCallbacks();
+  const { sendMessage } = use(MessageContext);
   const form = useForm<ChatFormData>({
     defaultValues: { [names.text]: "" },
   });
@@ -24,7 +24,7 @@ export default function ChatForm() {
   const send = form.handleSubmit(async (data) => {
     if (data[names.text].trim() === "") return;
     try {
-      await sendTextMessage(data[names.text]);
+      await sendMessage(data[names.text]);
       form.resetField(names.text);
     } catch {
       form.setError("root", { message: "Message not sent" });

@@ -2,11 +2,11 @@ import classNames from "classnames";
 import { memo } from "react";
 import Conditional from "~/components/Conditional";
 import { toSimpleTime } from "~/features/date/utils";
-import { MessageData } from "~/features/message/types";
+import { Message } from "~/features/message/types";
 import { useInviteState } from "~/features/invite/hooks";
 import styles from "./styles.module.css";
 
-type OwnProps = Pick<MessageData, "data" | "createdAt"> & {
+type OwnProps = Pick<Message, "data" | "createdAt"> & {
   isSender: boolean;
 };
 
