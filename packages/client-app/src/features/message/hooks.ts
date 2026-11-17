@@ -1,4 +1,7 @@
-import { createMessageCallbacks } from "~/features/message/utils";
+import {
+  appendMessage,
+  createMessageCallbacks,
+} from "~/features/message/utils";
 import { useInviteState } from "~/features/invite/hooks";
 import { useCallback, useMemo, use } from "react";
 import { MessageData } from "./types";
@@ -15,9 +18,9 @@ export function useMessageCallbacks() {
 }
 
 export function useAddMessage() {
-  const { getState, updateState } = use(MessageStateContext);
+  const { updateState } = use(MessageStateContext);
   return useCallback((message: MessageData) => {
-    void updateState({ messages: [...getState().messages, message] });
+    void updateState(appendMessage(message));
   }, []);
 }
 
