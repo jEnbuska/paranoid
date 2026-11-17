@@ -11,11 +11,16 @@ export default function MessageCallbacksContextProvider({
   children,
 }: PropsWithChildren) {
   const inviteState = useInviteState();
-  const addMessage = useAddMessage();
-  const callbacks = useCreateMessageCallbacks(addMessage);
   if (inviteState.stage !== "connected") {
     return <Navigate to={"/"} replace />;
   }
+  return <ConnectedMessageCallbacks>{children}</ConnectedMessageCallbacks>;
+}
+
+/** The callbacks need the channel, so they're only created once connected */
+function ConnectedMessageCallbacks({ children }: PropsWithChildren) {
+  const addMessage = useAddMessage();
+  const callbacks = useCreateMessageCallbacks(addMessage);
   return (
     <MessageCallbacksContext.Provider value={callbacks}>
       {children}
