@@ -116,18 +116,26 @@ describe.each(modes)("MessageStateContextProvider $name", ({ Wrapper }) => {
 
   test("keeps every message useAddMessage adds before React renders", async () => {
     const { channel } = fakeChannel();
-    let addMessage = (_: MessageData) => {};
     function Adder() {
-      addMessage = useAddMessage();
-      return <Messages />;
+      const addMessage = useAddMessage();
+      return (
+        <>
+          <button
+            onClick={() => {
+              addMessage(message("first"));
+              addMessage(message("second"));
+            }}
+          >
+            Add two
+          </button>
+          <Messages />
+        </>
+      );
     }
     render(ui(channel, <Adder />));
     await flush();
 
-    act(() => {
-      addMessage(message("first"));
-      addMessage(message("second"));
-    });
+    act(() => screen.getByRole("button", { name: "Add two" }).click());
 
     expect(shownMessages()).toEqual(["first", "second"]);
   });
