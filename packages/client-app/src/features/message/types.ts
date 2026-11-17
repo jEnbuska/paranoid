@@ -1,14 +1,6 @@
-export type MessageData = {
+export type Message = {
   id: string;
   createdAt: number;
-  createdBy: string;
+  createdBy: "self" | "other";
   data: string;
-};
-
-export type MessageCallbacksData = {
-  sendTextMessage(text: string): Promise<void>;
-};
-
-export type MessageStateData = {
-  messages: Array<MessageData>;
 };

@@ -1,23 +1,33 @@
 // @vitest-environment jsdom
-import { StrictMode, type PropsWithChildren } from "react";
+import { StrictMode, use, type PropsWithChildren } from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createChannelInbox } from "~/features/channel/inbox.ts";
 import type { ChannelMessage, Decrypt } from "~/features/channel/types.ts";
 import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import { defaultInviteContextState } from "~/features/invite/constants";
-import { useAddMessage, useMessageState } from "~/features/message/hooks";
-import type { MessageData } from "~/features/message/types";
-import MessageStateContextProvider from "./MessageStateContextProvider";
+import type { Message } from "~/features/message/types";
+import MessageContext from "./MessageContext.ts";
+import MessageContextProvider from "./MessageContextProvider.tsx";
 
-/** A channel to dispatch "message" on */
+// "Encrypts" by turning into JSON
+vi.mock("~/features/crypt/hooks.ts", () => ({
+  useEncrypt: () => async (data: unknown) => JSON.stringify(data),
+}));
+
+/** An open channel to dispatch "message" on, which keeps what it sends */
 function fakeChannel() {
   const target = new EventTarget();
-  const channel = target as RTCDataChannel;
+  const sent: ChannelMessage[] = [];
+  const channel = Object.assign(target, {
+    readyState: "open",
+    send: (data: string) => sent.push(JSON.parse(data)),
+  }) as unknown as RTCDataChannel;
   const inbox = createChannelInbox(channel, decrypt);
   return {
     channel,
     inbox,
+    sent,
     receive(message: ChannelMessage) {
       target.dispatchEvent(
         new MessageEvent("message", { data: JSON.stringify(message) }),
@@ -35,16 +45,16 @@ const settle = () => new Promise((resolve) => setTimeout(resolve));
 /** Runs the pending microtasks and the state updates they cause */
 const flush = () => act(settle);
 
-const message = (data: string): MessageData => ({
-  id: data,
-  createdAt: 0,
-  createdBy: "peer",
-  data,
-});
-
-const text = (data: string): ChannelMessage => ({
+/**
+ * A TEXT message from the peer. All have the same time, so the order comes
+ * from the state, not from sorting
+ */
+const text = (
+  data: string,
+  createdBy: Message["createdBy"] = "self",
+): ChannelMessage => ({
   type: "TEXT",
-  data: message(data),
+  data: { id: data, createdAt: 0, createdBy, data },
 });
 
 /** Renders its children as they are, to compare with StrictMode */
@@ -58,33 +68,48 @@ const modes = [
 ];
 
 function Messages() {
-  const { messages } = useMessageState();
+  const { messages, sendMessage } = use(MessageContext);
   return (
-    <ol>
-      {messages.map(({ id, data }) => (
-        <li key={id}>{data}</li>
-      ))}
-    </ol>
+    <>
+      <button
+        onClick={() => {
+          void sendMessage("sent first");
+          void sendMessage("sent second");
+        }}
+      >
+        Send two
+      </button>
+      <ol>
+        {messages.map(({ id, createdBy, data }) => (
+          <li key={id}>{`${createdBy}: ${data}`}</li>
+        ))}
+      </ol>
+    </>
   );
 }
 
 const shownMessages = () =>
   screen.queryAllByRole("listitem").map(({ textContent }) => textContent);
 
+const sendTwo = () =>
+  act(() => screen.getByRole("button", { name: "Send two" }).click());
+
 afterEach(() => {
   cleanup();
 });
 
-describe.each(modes)("MessageStateContextProvider $name", ({ Wrapper }) => {
+describe.each(modes)("MessageContextProvider $name", ({ Wrapper }) => {
   /** The provider under an invite whose data channel is `channel` */
-  function ui(channel: RTCDataChannel | undefined, children = <Messages />) {
+  function ui(channel: RTCDataChannel | undefined) {
     const state = { ...defaultInviteContextState, channel };
     return (
       <Wrapper>
         <InviteStateContext.Provider
           value={{ state, getState: () => state, updateState: async () => {} }}
         >
-          <MessageStateContextProvider>{children}</MessageStateContextProvider>
+          <MessageContextProvider>
+            <Messages />
+          </MessageContextProvider>
         </InviteStateContext.Provider>
       </Wrapper>
     );
@@ -99,7 +124,7 @@ describe.each(modes)("MessageStateContextProvider $name", ({ Wrapper }) => {
     render(ui(channel));
     await flush();
 
-    expect(shownMessages()).toEqual(["first", "second"]);
+    expect(shownMessages()).toEqual(["other: first", "other: second"]);
   });
 
   test("adds TEXT messages that arrive later", async () => {
@@ -111,33 +136,35 @@ describe.each(modes)("MessageStateContextProvider $name", ({ Wrapper }) => {
     receive(text("second"));
     await flush();
 
-    expect(shownMessages()).toEqual(["first", "second"]);
+    expect(shownMessages()).toEqual(["other: first", "other: second"]);
   });
 
-  test("keeps every message useAddMessage adds before React renders", async () => {
-    const { channel } = fakeChannel();
-    function Adder() {
-      const addMessage = useAddMessage();
-      return (
-        <>
-          <button
-            onClick={() => {
-              addMessage(message("first"));
-              addMessage(message("second"));
-            }}
-          >
-            Add two
-          </button>
-          <Messages />
-        </>
-      );
-    }
-    render(ui(channel, <Adder />));
+  test("sends messages over the channel and keeps every one as its own", async () => {
+    const { channel, sent } = fakeChannel();
+    render(ui(channel));
     await flush();
 
-    act(() => screen.getByRole("button", { name: "Add two" }).click());
+    sendTwo();
+    await flush();
 
-    expect(shownMessages()).toEqual(["first", "second"]);
+    expect(sent).toMatchObject([
+      { type: "TEXT", data: { createdBy: "self", data: "sent first" } },
+      { type: "TEXT", data: { createdBy: "self", data: "sent second" } },
+    ]);
+    expect(shownMessages()).toEqual(["self: sent first", "self: sent second"]);
+  });
+
+  test("keeps sent and received messages that are added together", async () => {
+    const { channel, receive } = fakeChannel();
+    render(ui(channel));
+    await flush();
+
+    sendTwo();
+    receive(text("received"));
+    await flush();
+
+    expect(shownMessages()).toHaveLength(3);
+    expect(shownMessages()).toContain("other: received");
   });
 
   test("clears the messages when the channel changes, and takes from the new one", async () => {
@@ -147,7 +174,7 @@ describe.each(modes)("MessageStateContextProvider $name", ({ Wrapper }) => {
     await settle();
     const { rerender } = render(ui(first.channel));
     await flush();
-    expect(shownMessages()).toEqual(["old"]);
+    expect(shownMessages()).toEqual(["other: old"]);
 
     rerender(ui(second.channel));
     await flush();
@@ -156,7 +183,7 @@ describe.each(modes)("MessageStateContextProvider $name", ({ Wrapper }) => {
     first.receive(text("old again"));
     second.receive(text("new"));
     await flush();
-    expect(shownMessages()).toEqual(["new"]);
+    expect(shownMessages()).toEqual(["other: new"]);
   });
 
   test("clears the messages when the invite is reset", async () => {
@@ -165,7 +192,7 @@ describe.each(modes)("MessageStateContextProvider $name", ({ Wrapper }) => {
     await settle();
     const { rerender } = render(ui(channel));
     await flush();
-    expect(shownMessages()).toEqual(["old"]);
+    expect(shownMessages()).toEqual(["other: old"]);
 
     // What `resetInviteContext` does: clear the inbox and drop the channel
     inbox.clear();

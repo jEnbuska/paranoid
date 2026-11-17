@@ -1,15 +1,13 @@
 import { toSimpleDate } from "~/features/date/utils";
 import ChatTextMessage from "~/pages/chat/@components/ChatTextMessage";
-import { MessageData } from "~/features/message/types";
-import { useInviteState } from "~/features/invite/hooks";
+import { Message } from "~/features/message/types";
 import styles from "./styles.module.css";
 
 type OwnProps = {
   date: string;
-  messages: MessageData[];
+  messages: Message[];
 };
 export default function DaysChatMessages({ messages, date }: OwnProps) {
-  const { userId } = useInviteState();
   return (
     <ul className={styles.day}>
       <li className={styles.dayDate}>
@@ -20,7 +18,7 @@ export default function DaysChatMessages({ messages, date }: OwnProps) {
           {messages.map((message) => (
             <ChatTextMessage
               key={message.id}
-              isSender={userId === message.createdBy}
+              isSender={message.createdBy === "self"}
               data={message.data}
               createdAt={message.createdAt}
             />

@@ -1,10 +1,8 @@
-import { Outlet } from "react-router";
-import MessageCallbacksContextProvider from "~/features/message/context/MessageCallbacksContextProvider";
+import { Navigate, Outlet } from "react-router";
+import { useInviteState } from "~/features/invite/hooks.ts";
 
 export default function ChatLayout() {
-  return (
-    <MessageCallbacksContextProvider>
-      <Outlet />
-    </MessageCallbacksContextProvider>
-  );
+  const { channel } = useInviteState();
+  if (!channel) return <Navigate to={"/"} replace />;
+  return <Outlet />;
 }

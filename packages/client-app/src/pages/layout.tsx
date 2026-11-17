@@ -1,13 +1,13 @@
 import { Outlet } from "react-router";
 import InviteStateContextProvider from "~/features/invite/context/InviteStateContextProvider";
-import MessageStateContextProvider from "~/features/message/context/MessageStateContextProvider";
+import MessageContextProvider from "~/features/message/context/MessageContextProvider.tsx";
 
 export default function RootLayout() {
   return (
     <InviteStateContextProvider>
-      <MessageStateContextProvider>
+      <MessageContextProvider>
         <Outlet />
-      </MessageStateContextProvider>
+      </MessageContextProvider>
     </InviteStateContextProvider>
   );
 }

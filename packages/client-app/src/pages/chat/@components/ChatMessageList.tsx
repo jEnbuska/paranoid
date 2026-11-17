@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useRef } from "react";
+import { use, useEffect, useMemo, useRef } from "react";
 import { toSimpleDate } from "~/features/date/utils";
 import DaysChatMessages from "./DaysChatMessages";
 import ChatAlert from "./ChatAlert";
-import { useMessageState } from "~/features/message/hooks";
+import MessageContext from "~/features/message/context/MessageContext.ts";
 import entries from "shared-lib/utils/entries";
-import { MessageData } from "~/features/message/types";
+import { Message } from "~/features/message/types";
 import styles from "./styles.module.css";
 
 export default function ChatMessageList() {
-  const { messages } = useMessageState();
+  const { messages } = use(MessageContext);
   const messagesByDay = useMemo(
-    (): Array<[string, MessageData[]]> =>
+    (): Array<[string, Message[]]> =>
       entries(
         messages.reduce(
-          (acc: Record<string, MessageData[]>, message: MessageData) => {
+          (acc: Record<string, Message[]>, message: Message) => {
             const key = toSimpleDate(message.createdAt);
             if (!acc[key]) {
               acc[key] = [];
@@ -21,7 +21,7 @@ export default function ChatMessageList() {
             acc[key].push(message);
             return acc;
           },
-          {} as Record<string, MessageData[]>,
+          {} as Record<string, Message[]>,
         ),
       ),
     [messages],

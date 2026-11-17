@@ -1,9 +1,9 @@
-import type { MessageData } from "~/features/message/types";
+import type { Message } from "~/features/message/types";
 
 /** Everything sent over the data channel. Encrypted as a whole, type included */
 export type ChannelMessage =
   | { type: "DISPLAY_NAME"; data: string }
-  | { type: "TEXT"; data: MessageData }
+  | { type: "TEXT"; data: Message }
   | { type: "CANDIDATE"; data: RTCIceCandidateInit };
 
 export type ChannelMessageType = ChannelMessage["type"];

@@ -4,15 +4,10 @@ import useAsyncResolver from "~/hooks/use-async-resolver";
 import createResolvable from "shared-lib/utils/create-resolvable";
 import always from "shared-lib/utils/always";
 
-/** A partial state, or a function of the previous state that returns one */
-export type StateUpdate<T> = Partial<T> | ((prevState: T) => Partial<T>);
-
 /**
  * A custom hook that manages state and provides an asynchronous update function.
  * It allows you to update the state and wait for the update to be resolved.
  * When invoked with a partial state it only updates the provided properties.
- * It also takes a function of the previous state that returns the partial
- * state, for updates that build on state that may not have rendered yet.
  * Example:
  * ```ts
  * const [state, updateState, getState] = useUpdateState({ count: 0, name: "John" });
@@ -39,12 +34,9 @@ export default function useUpdateState<T extends Record<string, any>>(
     resolvable.current.forEach((cb) => cb());
     resolvable.current = [];
   }, [state]);
-  const updateState = useStable(async (update: StateUpdate<T>) => {
+  const updateState = useStable(async (update: Partial<T>) => {
     const { resolve, promise } = createResolvable();
-    setState((prevState) => ({
-      ...prevState,
-      ...(typeof update === "function" ? update(prevState) : update),
-    }));
+    setState((prevState) => ({ ...prevState, ...update }));
     resolvable.current.push(resolve);
     // Wrapping state update in a promise to ensure that promise is not resolved
     // until the state is updated, and if the component is unmounted before that
