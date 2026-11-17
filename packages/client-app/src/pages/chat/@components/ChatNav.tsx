@@ -6,10 +6,10 @@ import styles from "./styles.module.css";
 
 export default function ChatNav() {
   const navigate = useNavigate();
-  const { peerName } = useInviteState();
+  const { peerDisplayName } = useInviteState();
   return (
     <header className={styles.header}>
-      <h1 className={styles.peerName}>{peerName}</h1>
+      <h1 className={styles.peerDisplayName}>{peerDisplayName}</h1>
       <IconButton aria-label="Exit room" onClick={() => navigate("/")}>
         <LogoutIcon />
       </IconButton>

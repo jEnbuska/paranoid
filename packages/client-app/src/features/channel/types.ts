@@ -2,7 +2,7 @@ import type { MessageData } from "~/features/message/types";
 
 /** Everything sent over the data channel. Encrypted as a whole, type included */
 export type ChannelMessage =
-  | { type: "PEERNAME"; data: string }
+  | { type: "DISPLAY_NAME"; data: string }
   | { type: "TEXT"; data: MessageData }
   | { type: "CANDIDATE"; data: RTCIceCandidateInit };
 

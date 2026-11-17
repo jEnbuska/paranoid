@@ -12,14 +12,14 @@ import styles from "../styles.module.css";
 import FormPasswordField from "~/components/FormPasswordField.tsx";
 
 type JoinInviteFormData = RandomNameData<{
-  userName: string;
+  displayName: string;
   password: string;
 }>;
 export default function AnswerOffer() {
-  const names = useRandomNames("userName", "password");
+  const names = useRandomNames("displayName", "password");
   const form = useForm<JoinInviteFormData>({
     defaultValues: {
-      [names.userName]: "",
+      [names.displayName]: "",
       [names.password]: "",
     },
   });
@@ -33,16 +33,16 @@ export default function AnswerOffer() {
       className={styles.answerForm}
       onReset={() => form.reset()}
       onSubmit={form.handleSubmit(
-        ({ [names.userName]: userName, [names.password]: password }) =>
-          mutate({ userName, password }),
+        ({ [names.displayName]: displayName, [names.password]: password }) =>
+          mutate({ displayName, password }),
       )}
     >
       <FormTextField
         label={"Your display name"}
         helperText={"Name that will be shared on your chats"}
         required
-        error={form.formState.errors[names.userName]?.message}
-        {...form.register(names.userName, {
+        error={form.formState.errors[names.displayName]?.message}
+        {...form.register(names.displayName, {
           required: true,
           validate: validateDisplayName,
         })}

@@ -4,14 +4,14 @@ export const defaultInviteContextState: InviteContextStateData = {
   active: false,
   expiresAt: 0,
   stage: "none",
-  userName: "",
+  displayName: "",
   publicKey: "",
   privateKey: "",
   peerPublicKey: "",
   peerPublicKeyEncrypted: "",
   password: "",
   userId: "",
-  peerName: "",
+  peerDisplayName: "",
   inviteId: "",
 };
 

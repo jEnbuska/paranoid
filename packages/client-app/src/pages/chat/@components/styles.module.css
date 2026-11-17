@@ -10,7 +10,7 @@
   border-block-end: 1px solid GrayText;
   background: Canvas;
 }
-.peerName {
+.peerDisplayName {
   flex-grow: 1;
   margin: 0;
   overflow: hidden;

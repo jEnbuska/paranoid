@@ -38,18 +38,18 @@ describe("createChannelInbox", () => {
     const { channel, receive } = fakeChannel();
     const inbox = createChannelInbox(channel, decrypt);
 
-    receive({ type: "PEERNAME", data: "Bob" });
+    receive({ type: "DISPLAY_NAME", data: "Bob" });
     await settle();
 
-    await expect(inbox.take("PEERNAME", signal)).resolves.toBe("Bob");
+    await expect(inbox.take("DISPLAY_NAME", signal)).resolves.toBe("Bob");
   });
 
   test("a waiting take gets the next message", async () => {
     const { channel, receive } = fakeChannel();
     const inbox = createChannelInbox(channel, decrypt);
 
-    const taken = inbox.take("PEERNAME", signal);
-    receive({ type: "PEERNAME", data: "Bob" });
+    const taken = inbox.take("DISPLAY_NAME", signal);
+    receive({ type: "DISPLAY_NAME", data: "Bob" });
 
     await expect(taken).resolves.toBe("Bob");
   });
@@ -99,10 +99,10 @@ describe("createChannelInbox", () => {
 
     receive(text("hello"));
     receive({ type: "CANDIDATE", data: { candidate: "candidate" } });
-    receive({ type: "PEERNAME", data: "Bob" });
+    receive({ type: "DISPLAY_NAME", data: "Bob" });
     await settle();
 
-    await expect(inbox.take("PEERNAME", signal)).resolves.toBe("Bob");
+    await expect(inbox.take("DISPLAY_NAME", signal)).resolves.toBe("Bob");
     await expect(inbox.take("CANDIDATE", signal)).resolves.toEqual({
       candidate: "candidate",
     });
@@ -116,24 +116,24 @@ describe("createChannelInbox", () => {
     const inbox = createChannelInbox(channel, decrypt);
     const controller = new AbortController();
 
-    const aborted = inbox.take("PEERNAME", controller.signal);
+    const aborted = inbox.take("DISPLAY_NAME", controller.signal);
     controller.abort(new Error("Unmounted"));
     await expect(aborted).rejects.toThrow("Unmounted");
 
-    receive({ type: "PEERNAME", data: "Bob" });
-    await expect(inbox.take("PEERNAME", signal)).resolves.toBe("Bob");
+    receive({ type: "DISPLAY_NAME", data: "Bob" });
+    await expect(inbox.take("DISPLAY_NAME", signal)).resolves.toBe("Bob");
   });
 
   test("a take with an aborted signal rejects without taking a message", async () => {
     const { channel, receive } = fakeChannel();
     const inbox = createChannelInbox(channel, decrypt);
-    receive({ type: "PEERNAME", data: "Bob" });
+    receive({ type: "DISPLAY_NAME", data: "Bob" });
     await settle();
 
     await expect(
-      inbox.take("PEERNAME", AbortSignal.abort(new Error("Aborted"))),
+      inbox.take("DISPLAY_NAME", AbortSignal.abort(new Error("Aborted"))),
     ).rejects.toThrow("Aborted");
-    await expect(inbox.take("PEERNAME", signal)).resolves.toBe("Bob");
+    await expect(inbox.take("DISPLAY_NAME", signal)).resolves.toBe("Bob");
   });
 
   test("skips a message that fails to decrypt", async () => {
@@ -146,9 +146,9 @@ describe("createChannelInbox", () => {
     const error = console.error;
     console.error = () => {};
     try {
-      receive({ type: "PEERNAME", data: "broken" });
-      receive({ type: "PEERNAME", data: "Bob" });
-      await expect(inbox.take("PEERNAME", signal)).resolves.toBe("Bob");
+      receive({ type: "DISPLAY_NAME", data: "broken" });
+      receive({ type: "DISPLAY_NAME", data: "Bob" });
+      await expect(inbox.take("DISPLAY_NAME", signal)).resolves.toBe("Bob");
     } finally {
       console.error = error;
     }
@@ -157,16 +157,16 @@ describe("createChannelInbox", () => {
   test("clearing drops unread messages and stops reading", async () => {
     const { channel, receive } = fakeChannel();
     const inbox = createChannelInbox(channel, decrypt);
-    receive({ type: "PEERNAME", data: "Bob" });
+    receive({ type: "DISPLAY_NAME", data: "Bob" });
     await settle();
 
     inbox.clear();
-    receive({ type: "PEERNAME", data: "Alice" });
+    receive({ type: "DISPLAY_NAME", data: "Alice" });
     await settle();
 
     expect(inbox.signal.aborted).toBe(true);
     const controller = new AbortController();
-    const taken = inbox.take("PEERNAME", controller.signal);
+    const taken = inbox.take("DISPLAY_NAME", controller.signal);
     let settled = false;
     taken.then(
       () => (settled = true),
@@ -186,8 +186,8 @@ describe("createChannelInbox", () => {
       return JSON.parse(encrypted);
     });
     const controller = new AbortController();
-    const taken = inbox.take("PEERNAME", controller.signal);
-    receive({ type: "PEERNAME", data: "Bob" });
+    const taken = inbox.take("DISPLAY_NAME", controller.signal);
+    receive({ type: "DISPLAY_NAME", data: "Bob" });
 
     inbox.clear();
     slow.resolve();
@@ -206,14 +206,14 @@ describe("createChannelInbox", () => {
   test("closing the channel clears the inbox", async () => {
     const { channel, receive, close } = fakeChannel();
     const inbox = createChannelInbox(channel, decrypt);
-    receive({ type: "PEERNAME", data: "Bob" });
+    receive({ type: "DISPLAY_NAME", data: "Bob" });
     await settle();
 
     close();
 
     expect(inbox.signal.aborted).toBe(true);
     const controller = new AbortController();
-    const taken = inbox.take("PEERNAME", controller.signal);
+    const taken = inbox.take("DISPLAY_NAME", controller.signal);
     controller.abort(new Error("Nothing came"));
     await expect(taken).rejects.toThrow("Nothing came");
   });
