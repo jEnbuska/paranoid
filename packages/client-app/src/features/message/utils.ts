@@ -1,5 +1,5 @@
 import { v4 as uuid } from "uuid";
-import { MessageCallbacksData, MessageData } from "./types";
+import { MessageCallbacksData, MessageData, MessageStateData } from "./types";
 import { sendChannelMessage } from "~/features/channel/send.ts";
 import type { Encrypt } from "~/features/channel/types.ts";
 
@@ -26,4 +26,14 @@ export function createMessageCallbacks(args: {
       addMessage(message);
     },
   };
+}
+
+/**
+ * An update that adds the message after the messages in the previous state,
+ * including ones that haven't rendered yet
+ */
+export function appendMessage(message: MessageData) {
+  return (prevState: MessageStateData): MessageStateData => ({
+    messages: [...prevState.messages, message],
+  });
 }

@@ -1,6 +1,4 @@
 import { PropsWithChildren } from "react";
-import { getChannelInbox } from "~/features/channel/inbox.ts";
-import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import {
   useAddMessage,
   useCreateMessageCallbacks,
@@ -15,13 +13,6 @@ export default function MessageCallbacksContextProvider({
   const inviteState = useInviteState();
   const addMessage = useAddMessage();
   const callbacks = useCreateMessageCallbacks(addMessage);
-  const { channel } = inviteState;
-  // Messages that arrived before the chat mounted wait in the inbox
-  useAbortableEffect(async (signal) => {
-    if (!channel) return;
-    const inbox = getChannelInbox(channel);
-    while (!signal.aborted) addMessage(await inbox.take("TEXT", signal));
-  }, []);
   if (inviteState.stage !== "connected") {
     return <Navigate to={"/"} replace />;
   }
