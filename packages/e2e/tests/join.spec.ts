@@ -2,9 +2,11 @@ import { expect, test } from "./fixtures.ts";
 import {
   PASS_PHRASE,
   createInvite,
+  createInviteOnStartPage,
   displayNameField,
   errorPage,
   inviteDialog,
+  leaveErrorPage,
   openJoinForm,
   passPhraseField,
   submitJoinForm,
@@ -14,6 +16,22 @@ test("an unknown invite shows an error", async ({ openPeer }) => {
   const page = await openPeer();
   await page.goto("/join/00000000-0000-4000-8000-000000000000");
   await expect(errorPage(page)).toBeVisible();
+});
+
+test("the joiner's error page leads back to a new invite", async ({
+  openPeer,
+}) => {
+  const bob = await openPeer();
+  const carol = await openPeer();
+  await bob.goto("/join/00000000-0000-4000-8000-000000000000");
+  await expect(errorPage(bob)).toBeVisible();
+
+  await leaveErrorPage(bob);
+
+  await openJoinForm(
+    carol,
+    await createInviteOnStartPage(bob, { name: "Bob" }),
+  );
 });
 
 test("an invite can only be opened once", async ({ openPeer }) => {
@@ -48,6 +66,21 @@ test("the inviter sees an error when the person joining leaves", async ({
   await openJoinForm(bob, await createInvite(alice));
   await bob.close();
   await expect(errorPage(alice)).toBeVisible();
+});
+
+test("the inviter's error page leads back to a new invite", async ({
+  openPeer,
+}) => {
+  const alice = await openPeer();
+  const bob = await openPeer();
+  const carol = await openPeer();
+  await openJoinForm(bob, await createInvite(alice));
+  await bob.close();
+  await expect(errorPage(alice)).toBeVisible();
+
+  await leaveErrorPage(alice);
+
+  await openJoinForm(carol, await createInviteOnStartPage(alice));
 });
 
 test("the join form requires a name and a pass phrase", async ({
