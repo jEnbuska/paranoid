@@ -4,9 +4,9 @@ import { useCallback, useRef } from "react";
  * though when called it invokes the latest version of the provided callback */
 export default function useStable<T extends any[], R>(cb: (...args: T) => R) {
   const ref = useRef(cb);
-  // Assigned during render, not in an effect: the function may be called during
-  // render, and an effect would leave it calling the previous render's callback
-  // until the commit
+  // Assigned during render, not in an effect. This is a generic hook, so its
+  // function may be called anywhere, during render too, and an effect would
+  // leave it calling the previous render's callback until the commit
   ref.current = cb;
   return useCallback((...args: T) => ref.current(...args), []);
 }
