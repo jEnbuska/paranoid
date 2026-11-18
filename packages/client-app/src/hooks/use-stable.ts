@@ -4,7 +4,7 @@ import { useCallback, useRef } from "react";
  * though when called it invokes the latest version of the provided callback */
 export default function useStable<T extends any[], R>(cb: (...args: T) => R) {
   const ref = useRef(cb);
-  // Assigned during render, not in an effect: the function may be called during
+  // Test for #53, never merge: this line conflicts with dev
   // render, and an effect would leave it calling the previous render's callback
   // until the commit
   ref.current = cb;
