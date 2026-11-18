@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import createResolvable from "shared-lib/utils/create-resolvable";
 import { createChannelInbox } from "./inbox";
 import type { ChannelMessage, Decrypt } from "./types";
@@ -152,6 +152,98 @@ describe("createChannelInbox", () => {
     } finally {
       console.error = error;
     }
+  });
+
+  test.each([
+    ["no data", { type: "TEXT" }],
+    ["data that isn't an object", { type: "TEXT", data: "hello" }],
+    ["null data", { type: "TEXT", data: null }],
+    ["no text", { type: "TEXT", data: { id: "a", createdAt: 0 } }],
+    [
+      "text that isn't a string",
+      {
+        type: "TEXT",
+        data: { id: "a", createdAt: 0, data: { text: "secret" } },
+      },
+    ],
+    ["no id", { type: "TEXT", data: { createdAt: 0, data: "secret" } }],
+    [
+      "a createdAt that isn't a number",
+      { type: "TEXT", data: { id: "a", createdAt: "0", data: "secret" } },
+    ],
+  ])("drops a TEXT with %s and delivers the next one", async (_, malformed) => {
+    const { channel, receive } = fakeChannel();
+    const inbox = createChannelInbox(channel, decrypt);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const taken = inbox.take("TEXT", signal);
+      receive(malformed as ChannelMessage);
+      receive(text("hello"));
+
+      await expect(taken).resolves.toMatchObject({ data: "hello" });
+      expect(error).toHaveBeenCalledOnce();
+      // The log never has the content
+      expect(JSON.stringify(error.mock.calls)).not.toContain("secret");
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  test.each([
+    ["no data", { type: "DISPLAY_NAME" }],
+    ["a number", { type: "DISPLAY_NAME", data: 7 }],
+    ["an object", { type: "DISPLAY_NAME", data: { name: "Mallory" } }],
+  ])(
+    "drops a DISPLAY_NAME with %s and delivers the next one",
+    async (_, malformed) => {
+      const { channel, receive } = fakeChannel();
+      const inbox = createChannelInbox(channel, decrypt);
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        receive(malformed as ChannelMessage);
+        receive({ type: "DISPLAY_NAME", data: "Bob" });
+        await settle();
+
+        await expect(inbox.take("DISPLAY_NAME", signal)).resolves.toBe("Bob");
+        expect(error).toHaveBeenCalledOnce();
+        expect(JSON.stringify(error.mock.calls)).not.toContain("Mallory");
+      } finally {
+        error.mockRestore();
+      }
+    },
+  );
+
+  test("drops a CANDIDATE without a candidate string", async () => {
+    const { channel, receive } = fakeChannel();
+    const inbox = createChannelInbox(channel, decrypt);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      receive({ type: "CANDIDATE", data: { sdpMid: "0" } });
+      receive({
+        type: "CANDIDATE",
+        data: { candidate: "candidate", sdpMid: "0", sdpMLineIndex: 0 },
+      });
+      await settle();
+
+      await expect(inbox.take("CANDIDATE", signal)).resolves.toMatchObject({
+        candidate: "candidate",
+      });
+      expect(error).toHaveBeenCalledOnce();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  test("ignores a message that isn't an object", async () => {
+    const { channel, receive } = fakeChannel();
+    const inbox = createChannelInbox(channel, decrypt);
+
+    receive(null as unknown as ChannelMessage);
+    receive("TEXT" as unknown as ChannelMessage);
+    receive({ type: "toString", data: "Bob" } as unknown as ChannelMessage);
+    receive({ type: "DISPLAY_NAME", data: "Bob" });
+
+    await expect(inbox.take("DISPLAY_NAME", signal)).resolves.toBe("Bob");
   });
 
   test("clearing drops unread messages and stops reading", async () => {
