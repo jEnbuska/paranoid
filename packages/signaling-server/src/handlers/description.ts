@@ -5,10 +5,10 @@ export const handleDescription: HandleEncrypted<"DESCRIPTION"> = (
   socket,
   description,
 ) => {
-  const { descriptionProvided, otherCalleeSocket, onDescriptionProvided } =
+  const { handshake, otherCalleeSocket, setHandshake } =
     requireInviteContext(socket);
   if (!otherCalleeSocket) return;
-  if (descriptionProvided) return;
+  if (handshake !== "waiting") return;
   socket.to(otherCalleeSocket).emit("DESCRIPTION", description);
-  onDescriptionProvided();
+  setHandshake("described");
 };

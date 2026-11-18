@@ -4,6 +4,14 @@ import { propEquals, propNotEquals } from "shared-lib/utils/prop";
 
 let invites: Array<InviteData> = [];
 
+/**
+ * How far a side has got with the handshake through the server:
+ * - `waiting`: hasn't sent its description
+ * - `described`: its description has been relayed to the other side
+ * - `finished`: sent DONE, so it finished the handshake over the data channel
+ */
+export type HandshakeStep = "waiting" | "described" | "finished";
+
 type InviteData = {
   id: string;
   expiresAt: number;
@@ -12,15 +20,11 @@ type InviteData = {
   _timeoutId?: NodeJS.Timeout;
   offerer: {
     socketId: string;
-    descriptionProvided: boolean;
-    /** Sent DONE: finished the handshake over the data channel */
-    handshakeFinished: boolean;
+    handshake: HandshakeStep;
   };
   answerer: {
     socketId?: string;
-    descriptionProvided: boolean;
-    /** Sent DONE: finished the handshake over the data channel */
-    handshakeFinished: boolean;
+    handshake: HandshakeStep;
   };
 };
 
@@ -61,12 +65,10 @@ export function createInvite(data: {
     expiresAt,
     offerer: {
       socketId,
-      handshakeFinished: false,
-      descriptionProvided: false,
+      handshake: "waiting",
     },
     answerer: {
-      descriptionProvided: false,
-      handshakeFinished: false,
+      handshake: "waiting",
     },
   };
 

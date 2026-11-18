@@ -30,7 +30,7 @@ export const handleEnter: HandleNonEncrypted<"ENTER"> = (
   }
   const { expiresAt, offerer, publicKey, answerer } = invite;
   // Somebody has already entered the invite, so it's no longer available
-  if (answerer.descriptionProvided || !invite.publicKey) {
+  if (answerer.handshake !== "waiting" || !invite.publicKey) {
     return ack({ success: false, type: "NOT_FOUND" });
   }
 

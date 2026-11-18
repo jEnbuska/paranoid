@@ -3,19 +3,17 @@ import {
   getInviteCalleeRole,
   updateInvite,
 } from "./invites.ts";
+import type { HandshakeStep } from "./invites.ts";
 import curry from "shared-lib/utils/curry";
 import type { ServerSocket } from "./types.ts";
 
 type InviteContext = {
   inviteId: string;
   calleeRole: "offerer" | "answerer";
-  handshakeFinished: boolean;
-  descriptionProvided: boolean;
+  handshake: HandshakeStep;
   otherCalleeSocket: string | undefined;
-  otherCalleeDescriptionProvided: boolean;
-  otherCalleeHandshakeFinished: boolean;
-  onDescriptionProvided(): void;
-  onHandshakeFinished(): void;
+  otherCalleeHandshake: HandshakeStep;
+  setHandshake(step: HandshakeStep): void;
   onInviteJoined(): void;
 };
 
@@ -37,21 +35,13 @@ export function requireInviteContext(socket: ServerSocket): InviteContext {
   return {
     inviteId: invite.id,
     calleeRole,
-    handshakeFinished: calleeState.handshakeFinished,
-    descriptionProvided: calleeState.descriptionProvided,
+    handshake: calleeState.handshake,
     otherCalleeSocket: otherState.socketId,
-    otherCalleeDescriptionProvided: otherState.descriptionProvided,
-    otherCalleeHandshakeFinished: otherState.handshakeFinished,
-    onDescriptionProvided() {
+    otherCalleeHandshake: otherState.handshake,
+    setHandshake(handshake) {
       update((state) => ({
         ...state,
-        [calleeRole]: { ...state[calleeRole], descriptionProvided: true },
-      }));
-    },
-    onHandshakeFinished() {
-      update((state) => ({
-        ...state,
-        [calleeRole]: { ...state[calleeRole], handshakeFinished: true },
+        [calleeRole]: { ...state[calleeRole], handshake },
       }));
     },
     onInviteJoined() {

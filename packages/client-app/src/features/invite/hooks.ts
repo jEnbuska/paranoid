@@ -120,10 +120,27 @@ export function useInviteConnectionProgress() {
 }
 
 /**
+ * Creates the inviter's offer and sends it to the peer. Only once per
+ * connection: leaving the chat renders the connecting step again for a moment,
+ * before the invite is reset (#46)
+ */
+export function useSendOffer() {
+  const { connection } = useInviteState();
+  const emit = useEmitIntroduction();
+  useAbortableEffect(async () => {
+    assertIsNotNil(connection);
+    if (connection.localDescription) return;
+    const offer = await connection.createOffer();
+    await connection.setLocalDescription(offer);
+    await emit("DESCRIPTION", offer);
+  }, []);
+}
+
+/**
  * Moves to the chat once the handshake over the data channel has finished,
  * however long ICE gathering goes on: the peers need nothing more from the
  * signaling server. Then tells the server, which forgets the invite once both
- * sides have
+ * sides have told it
  */
 export function useMoveToChatAfterHandshake() {
   const handshake = useHandleHandshake();
@@ -131,7 +148,7 @@ export function useMoveToChatAfterHandshake() {
   const navigate = useNavigate();
   useAbortableEffect(async (signal) => {
     await handshake;
-    signal.throwIfAborted();
+    if (signal.aborted) return;
     // The chat doesn't depend on the server, so a failed send doesn't stop it.
     // The invite then expires on its own
     void emit("DONE").catch(() => {});
