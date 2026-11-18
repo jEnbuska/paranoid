@@ -48,11 +48,13 @@ git push --force-with-lease
 
 Or press "Update branch" on the PR and pick "Update with rebase", not "Update with merge commit": PR branches stay linear, like `dev` and `main`. After GitHub rebases the branch, fetch and reset or rebase your local branch onto it before pushing again.
 
+GitHub's rebase drops empty commits, but `git rebase` keeps them. So "Update branch" on a draft PR that holds only its empty "Start" commit moves the branch to the base's tip, and GitHub then closes the PR because it has no commits. Rebase such a PR with `git rebase` instead, or don't update it until it has a real commit. If it was already closed, push a new commit to its branch and reopen it.
+
 ## Opening a pull request
 
 1. Find or open an issue, and start your branch from `dev`. Name it `<TICKET_NUMBER>-<name>`, for example `2-peers-stuck-connecting`.
 2. Open the PR against `dev`, with `Closes #N`, `Fixes #N` or `Resolves #N` in its description. The issue has to be open. It closes when the PR merges.
-3. Keep the branch up to date by rebasing, with `git rebase origin/dev` or the "Update with rebase" option on the PR.
+3. Keep the branch up to date by rebasing, with `git rebase origin/dev` or the "Update with rebase" option on the PR (see [When a PR can merge](#when-a-pr-can-merge), including why not to use that option on a PR whose only commit is empty).
 
 Run the checks listed in the [README](README.md#scripts) before pushing. CI only runs Chromium on PRs into `dev`, so run `pnpm test:e2e` locally to cover Firefox and WebKit as well. If a browser fails, move the PR to draft and add a comment saying which browser and test failed.
 
