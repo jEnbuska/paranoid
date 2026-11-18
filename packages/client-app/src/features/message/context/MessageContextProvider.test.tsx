@@ -140,7 +140,7 @@ describe.each(modes)("MessageContextProvider $name", ({ Wrapper }) => {
     expect(shownMessages()).toEqual(["other: first", "other: second"]);
   });
 
-  test("sends messages over the channel and keeps every one as its own", async () => {
+  test("sends messages over the channel without createdBy and keeps every one as its own", async () => {
     const { channel, sent } = fakeChannel();
     render(ui(channel));
     await flush();
@@ -148,10 +148,15 @@ describe.each(modes)("MessageContextProvider $name", ({ Wrapper }) => {
     sendTwo();
     await flush();
 
-    expect(sent).toMatchObject([
-      { type: "TEXT", data: { createdBy: "self", data: "sent first" } },
-      { type: "TEXT", data: { createdBy: "self", data: "sent second" } },
-    ]);
+    const sentText = (data: string) => ({
+      type: "TEXT",
+      data: { id: expect.any(String), createdAt: expect.any(Number), data },
+    });
+    // Exactly these keys: who wrote a message isn't sent
+    expect(sent).toEqual([sentText("sent first"), sentText("sent second")]);
+    for (const message of sent) {
+      expect(message.data).not.toHaveProperty("createdBy");
+    }
     expect(shownMessages()).toEqual(["self: sent first", "self: sent second"]);
   });
 
