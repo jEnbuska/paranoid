@@ -6,15 +6,14 @@ import { useState } from "react";
 import Alert from "~/components/Alert/Alert";
 import { useInviteState } from "~/features/invite/hooks";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
-import { useAbortController } from "~/hooks/use-abort-controller";
 import styles from "./styles.module.css";
 
 export default function ChatPage() {
   const { channel } = useInviteState();
   const [closed, setClosed] = useState(false);
-  const { signal } = useAbortController();
   useAbortableEffect(
-    () => channel!.addEventListener("close", () => setClosed(true), { signal }),
+    (signal) =>
+      channel!.addEventListener("close", () => setClosed(true), { signal }),
     [],
   );
   return (
