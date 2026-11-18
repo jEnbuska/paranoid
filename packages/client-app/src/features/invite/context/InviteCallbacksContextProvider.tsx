@@ -84,8 +84,8 @@ export default function InviteCallbacksContextProvider() {
         connection,
         createChannelCrypt({ password, peerPublicKey, privateKey }),
       );
-      const offer = await connection.createOffer();
-      await connection.setLocalDescription(offer);
+      // EstablishingOfferPeerConnectionStep creates the offer once it listens
+      // for candidates
       return updateState({
         peerPublicKey,
         connection,

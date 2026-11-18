@@ -6,7 +6,6 @@ const HANDSHAKE_EVENTS: Array<ServerToClientEventType> = [
   "JOIN",
   "DESCRIPTION",
   "CANDIDATE",
-  "DONE",
   "CLOSE",
 ] as const;
 type HandshakeEvent = (typeof HANDSHAKE_EVENTS)[number];

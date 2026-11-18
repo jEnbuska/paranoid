@@ -36,7 +36,8 @@ export type InviteContextCallbacks = {
   /** This should be called when user submits their display name and the password for the invite */
   answerOffer(args: { password: string; displayName: string }): Promise<void>;
 
-  /** This should be called by the offerer when the other party has answered the offer with corret password */
+  /** This should be called by the offerer when the other party has answered the offer with corret password.
+   * Creates the connection and its channel, but not the offer */
   createOfferPeerConnection(peerPublicKeyEncrypted: string): Promise<void>;
 
   /** This should be called after peer connection is made and data channel is acquired   */

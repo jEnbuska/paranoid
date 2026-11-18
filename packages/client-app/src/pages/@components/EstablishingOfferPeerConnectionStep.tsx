@@ -4,39 +4,30 @@ import {
 } from "~/features/socket/hooks.ts";
 import ConnectionProgressList from "~/features/invite/_components/ConnectionProgressList/ConnectionProgressList.tsx";
 import InviteView from "~/features/invite/_components/InviteView.tsx";
-import { useNavigate } from "react-router";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import {
   useInviteState,
   useHandleInviteConnectionIceCandidatesExchange,
-  useHandleHandshake,
+  useMoveToChatAfterHandshake,
 } from "~/features/invite/hooks.ts";
 import { assertIsNotNil } from "shared-lib/utils/nil";
 
 export default function EstablishingOfferPeerConnectionStep() {
+  // Listens for candidates before the offer below starts gathering them
   useHandleInviteConnectionIceCandidatesExchange();
-  const navigate = useNavigate();
   const emit = useEmitIntroduction();
   const { connection } = useInviteState();
   assertIsNotNil(connection);
-  useAbortableEffect(() => {
-    const { localDescription } = connection;
-    assertIsNotNil(localDescription);
-    void emit("DESCRIPTION", localDescription);
+  useAbortableEffect(async () => {
+    const offer = await connection.createOffer();
+    await connection.setLocalDescription(offer);
+    await emit("DESCRIPTION", offer);
   }, []);
   useOnEventDecrypted({
     type: "DESCRIPTION",
     once: true,
     callback: (description) => connection.setRemoteDescription(description),
   });
-  const handshake = useHandleHandshake();
-  useOnEventDecrypted({
-    type: "DONE",
-    once: true,
-    async callback() {
-      await handshake;
-      navigate("/chat", { replace: true });
-    },
-  });
+  useMoveToChatAfterHandshake();
   return <InviteView Component={ConnectionProgressList} />;
 }
