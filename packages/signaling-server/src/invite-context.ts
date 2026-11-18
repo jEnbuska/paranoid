@@ -9,13 +9,13 @@ import type { ServerSocket } from "./types.ts";
 type InviteContext = {
   inviteId: string;
   calleeRole: "offerer" | "answerer";
-  candidatesProvided: boolean;
+  handshakeFinished: boolean;
   descriptionProvided: boolean;
   otherCalleeSocket: string | undefined;
   otherCalleeDescriptionProvided: boolean;
-  otherCalleeCandidatesProvided: boolean;
+  otherCalleeHandshakeFinished: boolean;
   onDescriptionProvided(): void;
-  onCandidatesProvided(): void;
+  onHandshakeFinished(): void;
   onInviteJoined(): void;
 };
 
@@ -37,21 +37,21 @@ export function requireInviteContext(socket: ServerSocket): InviteContext {
   return {
     inviteId: invite.id,
     calleeRole,
-    candidatesProvided: calleeState.candidatesProvided,
+    handshakeFinished: calleeState.handshakeFinished,
     descriptionProvided: calleeState.descriptionProvided,
     otherCalleeSocket: otherState.socketId,
     otherCalleeDescriptionProvided: otherState.descriptionProvided,
-    otherCalleeCandidatesProvided: otherState.candidatesProvided,
+    otherCalleeHandshakeFinished: otherState.handshakeFinished,
     onDescriptionProvided() {
       update((state) => ({
         ...state,
-        [calleeRole]: { ...state[calleeRole], description: true },
+        [calleeRole]: { ...state[calleeRole], descriptionProvided: true },
       }));
     },
-    onCandidatesProvided() {
+    onHandshakeFinished() {
       update((state) => ({
         ...state,
-        [calleeRole]: { ...state[calleeRole], candidatesProvided: true },
+        [calleeRole]: { ...state[calleeRole], handshakeFinished: true },
       }));
     },
     onInviteJoined() {

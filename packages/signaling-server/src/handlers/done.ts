@@ -1,21 +1,22 @@
 import { requireInviteContext } from "../invite-context.ts";
 import { removeInvite } from "../invites.ts";
 import type { HandleNonEncrypted } from "../types.ts";
-import { assertIsNotNil } from "shared-lib/utils/nil";
 
+/**
+ * This side has finished the handshake over the data channel, so it needs
+ * nothing more from the server. Once both sides have, the invite is forgotten
+ */
 export const handleDone: HandleNonEncrypted<"DONE"> = (socket) => {
   const {
     inviteId,
     descriptionProvided,
-    otherCalleeCandidatesProvided,
-    otherCalleeSocket,
-    onCandidatesProvided,
+    handshakeFinished,
+    otherCalleeHandshakeFinished,
+    onHandshakeFinished,
   } = requireInviteContext(socket);
-  if (descriptionProvided) return;
-  onCandidatesProvided();
-  if (!otherCalleeCandidatesProvided) return;
-  removeInvite(inviteId);
-  assertIsNotNil(otherCalleeSocket);
-  socket.to(otherCalleeSocket).emit("DONE");
-  socket.emit("DONE");
+  // The handshake can't have finished without this side's description, and
+  // the other side's DONE implies its own
+  if (!descriptionProvided || handshakeFinished) return;
+  onHandshakeFinished();
+  if (otherCalleeHandshakeFinished) removeInvite(inviteId);
 };

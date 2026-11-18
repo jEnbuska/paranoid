@@ -13,12 +13,14 @@ type InviteData = {
   offerer: {
     socketId: string;
     descriptionProvided: boolean;
-    candidatesProvided: boolean;
+    /** Sent DONE: finished the handshake over the data channel */
+    handshakeFinished: boolean;
   };
   answerer: {
     socketId?: string;
     descriptionProvided: boolean;
-    candidatesProvided: boolean;
+    /** Sent DONE: finished the handshake over the data channel */
+    handshakeFinished: boolean;
   };
 };
 
@@ -59,12 +61,12 @@ export function createInvite(data: {
     expiresAt,
     offerer: {
       socketId,
-      candidatesProvided: false,
+      handshakeFinished: false,
       descriptionProvided: false,
     },
     answerer: {
       descriptionProvided: false,
-      candidatesProvided: false,
+      handshakeFinished: false,
     },
   };
 
