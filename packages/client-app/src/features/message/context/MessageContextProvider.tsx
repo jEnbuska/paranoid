@@ -8,6 +8,7 @@ import { v4 as uuid } from "uuid";
 import { useEncrypt } from "~/features/crypt/hooks.ts";
 import useStable from "~/hooks/use-stable.ts";
 import { sendChannelMessage } from "~/features/channel/send.ts";
+import type { ChannelMessageData } from "~/features/channel/types.ts";
 
 /**
  * Holds the chat messages for as long as the data channel lives. Messages
@@ -38,14 +39,14 @@ export default function MessageContextProvider({
   );
   const encrypt = useEncrypt();
   const sendMessage = useStable(async (text: string) => {
-    const message: Message = {
+    // Who wrote a message is local knowledge, so `createdBy` stays here
+    const sent: ChannelMessageData<"TEXT"> = {
       id: uuid(),
-      createdBy: "self",
       createdAt: Date.now(),
       data: text,
     };
-    await sendChannelMessage(channel, { type: "TEXT", data: message }, encrypt);
-    setMessages((messages) => [...messages, message]);
+    await sendChannelMessage(channel, { type: "TEXT", data: sent }, encrypt);
+    setMessages((messages) => [...messages, { ...sent, createdBy: "self" }]);
   });
   const value = useMemo(() => {
     return {
