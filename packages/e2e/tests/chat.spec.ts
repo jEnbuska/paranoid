@@ -16,10 +16,6 @@ import {
 } from "./helpers.ts";
 
 test.describe("two people chatting", WEBRTC, () => {
-  // FIXME: Peers can get stuck connecting. Sometimes fails with the inviter left
-  // on the start page.
-  test.fixme();
-
   test("connect through an invite and exchange messages both ways", async ({
     openPeer,
   }) => {

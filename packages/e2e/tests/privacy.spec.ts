@@ -33,9 +33,7 @@ function recordSignaling(page: Page) {
   return traffic;
 }
 
-// FIXME: Peers can get stuck connecting. Sometimes fails with the inviter left
-// on the start page.
-test.fixme(
+test(
   "the signaling server only sees ciphertext",
   WEBRTC,
   async ({ openPeer }) => {

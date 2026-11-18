@@ -1,4 +1,6 @@
-import { expect, test } from "./fixtures.ts";
+import { createSocket } from "node:dgram";
+import { networkInterfaces } from "node:os";
+import { expect, pageRecord, test } from "./fixtures.ts";
 import {
   WEBRTC,
   composer,
@@ -8,9 +10,27 @@ import {
   startChat,
 } from "./helpers.ts";
 
-// FIXME: Peers can get stuck connecting. Sometimes fails with the inviter left
-// on the start page.
-test.fixme();
+/**
+ * A STUN server that receives requests and never answers, like a network that
+ * drops UDP to the STUN servers. Browsers then keep gathering candidates for
+ * several seconds. On the machine's own address, so nothing leaves the
+ * machine, and not on loopback, which browsers don't gather from.
+ */
+async function openSilentStunServer() {
+  const address = Object.values(networkInterfaces())
+    .flat()
+    .find((info) => info?.family === "IPv4" && !info.internal)?.address;
+  if (!address) throw new Error("This machine has no IPv4 address");
+  const socket = createSocket("udp4");
+  let requests = 0;
+  socket.on("message", () => requests++);
+  await new Promise<void>((resolve) => socket.bind(0, address, resolve));
+  return {
+    iceServers: [{ urls: `stun:${address}:${socket.address().port}` }],
+    requests: () => requests,
+    close: () => new Promise<void>((resolve) => socket.close(() => resolve())),
+  };
+}
 
 test(
   "someone on a slower device than the joiner can invite",
@@ -43,5 +63,33 @@ test(
     await sendMessage(alice, "Still here");
     await expect(messageText(bob, "Still here")).toBeVisible();
     await expect(composer(alice)).toBeEnabled();
+  },
+);
+
+test(
+  "connects without waiting for a STUN server that doesn't answer",
+  WEBRTC,
+  async ({ openPeer }) => {
+    const stun = await openSilentStunServer();
+    try {
+      const alice = await openPeer({ iceServers: stun.iceServers });
+      const bob = await openPeer({ iceServers: stun.iceServers });
+      await startChat(alice, bob);
+
+      expect(stun.requests(), "requests to the STUN server").toBeGreaterThan(0);
+      for (const page of [alice, bob]) {
+        const gathering = await pageRecord(
+          page,
+          ({ connections: [connection] }) => connection.iceGatheringState,
+        );
+        expect(gathering, "ICE gathering when the chat opens").toBe(
+          "gathering",
+        );
+      }
+      await sendMessage(alice, "Not waiting for STUN");
+      await expect(messageText(bob, "Not waiting for STUN")).toBeVisible();
+    } finally {
+      await stun.close();
+    }
   },
 );
