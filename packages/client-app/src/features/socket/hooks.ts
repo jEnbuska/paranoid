@@ -10,7 +10,6 @@ import type {
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import { useDecrypt, useEncrypt } from "~/features/crypt/hooks";
 import { useInbox } from "~/features/socket/inbox.ts";
-import useReject from "~/hooks/use-reject.ts";
 
 export function useOnEvent<T extends keyof ServerToClientEvents>(
   type: T,
@@ -18,17 +17,13 @@ export function useOnEvent<T extends keyof ServerToClientEvents>(
 ) {
   const inbox = useInbox();
   const cb: any = useStable(handler);
-  const reject = useReject();
 
+  // An error the handler throws stops the loop and reaches the error boundary
+  // through useAbortableEffect
   useAbortableEffect(async (signal) => {
     while (!signal.aborted) {
-      if (signal.aborted) return;
-      try {
-        await inbox.take(type, signal).then((args) => cb(...args));
-      } catch (e) {
-        if (signal.aborted) return;
-        return reject(e);
-      }
+      const args = await inbox.take(type, signal);
+      await cb(...args);
     }
   }, []);
 }
