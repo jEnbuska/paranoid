@@ -30,7 +30,7 @@ const signal = new AbortController().signal;
 
 const text = (data: string): ChannelMessage => ({
   type: "TEXT",
-  data: { id: data, createdAt: 0, createdBy: "other", data },
+  data: { id: data, createdAt: 0, data },
 });
 
 describe("createChannelInbox", () => {
@@ -213,12 +213,15 @@ describe("createChannelInbox", () => {
     },
   );
 
-  test("drops a CANDIDATE without a candidate string", async () => {
+  test("drops a CANDIDATE whose candidate isn't a string", async () => {
     const { channel, receive } = fakeChannel();
     const inbox = createChannelInbox(channel, decrypt);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      receive({ type: "CANDIDATE", data: { sdpMid: "0" } });
+      receive({
+        type: "CANDIDATE",
+        data: { candidate: 7 },
+      } as unknown as ChannelMessage);
       receive({
         type: "CANDIDATE",
         data: { candidate: "candidate", sdpMid: "0", sdpMLineIndex: 0 },
@@ -232,6 +235,22 @@ describe("createChannelInbox", () => {
     } finally {
       error.mockRestore();
     }
+  });
+
+  test("strips keys a type doesn't have, such as createdBy", async () => {
+    const { channel, receive } = fakeChannel();
+    const inbox = createChannelInbox(channel, decrypt);
+
+    receive({
+      type: "TEXT",
+      data: { id: "a", createdAt: 0, data: "hello", createdBy: "self" },
+    } as ChannelMessage);
+
+    await expect(inbox.take("TEXT", signal)).resolves.toStrictEqual({
+      id: "a",
+      createdAt: 0,
+      data: "hello",
+    });
   });
 
   test("ignores a message that isn't an object", async () => {
