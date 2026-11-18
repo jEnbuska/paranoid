@@ -57,7 +57,7 @@ export function useEmitIntroduction() {
 }
 
 export function useOnEventDecrypted<
-  E extends "CANDIDATE" | "DESCRIPTION" | "JOIN" | "DONE",
+  E extends "CANDIDATE" | "DESCRIPTION" | "JOIN",
 >(options: {
   type: E;
   once?: boolean;

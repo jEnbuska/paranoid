@@ -1,4 +1,5 @@
 import { useReducer, useMemo, use } from "react";
+import { useNavigate } from "react-router";
 import {
   useOnEventDecrypted,
   useEmitIntroduction,
@@ -38,13 +39,13 @@ export function useHandleInviteConnectionIceCandidatesExchange(
     () =>
       addPeerConnectionEventListeners(connection, signal, {
         icecandidate({ candidate }) {
-          if (!candidate) {
-            void emit("DONE").catch(onError);
-          } else if (channel?.readyState !== "open") {
-            // Once the channel is open, candidates go over it instead
-            // (`exchangeCandidatesOverChannel`)
-            void emit("CANDIDATE", candidate).catch(onError);
-          }
+          // The end of gathering (`null`) doesn't matter: the move to the chat
+          // waits for the handshake only (`useMoveToChatAfterHandshake`)
+          if (!candidate) return;
+          // Once the channel is open, candidates go over it instead
+          // (`exchangeCandidatesOverChannel`)
+          if (channel?.readyState === "open") return;
+          void emit("CANDIDATE", candidate).catch(onError);
         },
       }),
     [],
@@ -118,7 +119,27 @@ export function useInviteConnectionProgress() {
   return progress;
 }
 
-export function useHandleHandshake() {
+/**
+ * Moves to the chat once the handshake over the data channel has finished,
+ * however long ICE gathering goes on: the peers need nothing more from the
+ * signaling server. Then tells the server, which forgets the invite once both
+ * sides have
+ */
+export function useMoveToChatAfterHandshake() {
+  const handshake = useHandleHandshake();
+  const emit = useEmitIntroduction();
+  const navigate = useNavigate();
+  useAbortableEffect(async (signal) => {
+    await handshake;
+    signal.throwIfAborted();
+    // The chat doesn't depend on the server, so a failed send doesn't stop it.
+    // The invite then expires on its own
+    void emit("DONE").catch(() => {});
+    navigate("/chat", { replace: true });
+  }, []);
+}
+
+function useHandleHandshake() {
   const { channel, connection, displayName } = useInviteState();
   const { signal } = useAbortController();
   const { handshake } = useInviteCallbacks();
