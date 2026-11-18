@@ -37,9 +37,9 @@ jobs:
     steps:
       # With no owner or repositories given, the token only covers this
       # repository, with only these permissions, and it's revoked when the job
-      # ends. Workflows: write is there because GitHub
-      # refuses an app's push that changes a file under .github/workflows, and
-      # a rebase does whenever the PR or the new base changes a workflow.
+      # ends. Workflows: write is there because GitHub refuses an app's push
+      # that changes a file under .github/workflows, and a rebase does whenever
+      # the PR or the new base changes a workflow.
       - name: Get a token for the app
         id: app
         uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
