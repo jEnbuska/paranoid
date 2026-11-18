@@ -29,6 +29,21 @@ describe("useStable", () => {
     expect(stable(10)).toBe(12);
   });
 
+  test("calls the latest callback during render", () => {
+    const seen: number[] = [];
+    function Child({ report }: { report: () => number }) {
+      seen.push(report());
+      return null;
+    }
+    function Parent({ value }: { value: number }) {
+      const report = useStable(() => value);
+      return <Child report={report} />;
+    }
+    const { rerender } = render(<Parent value={1} />);
+    rerender(<Parent value={2} />);
+    expect(seen).toEqual([1, 2]);
+  });
+
   test("gives a child's effect the callback of the same render", () => {
     const seen = vi.fn();
     function Child({ report }: { report: () => void }) {
