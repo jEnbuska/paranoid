@@ -3,6 +3,7 @@ import { expect, test, pageRecord } from "./fixtures.ts";
 import {
   PASS_PHRASE,
   cancelInvite,
+  controlSignaling,
   copyInviteLink,
   createInvite,
   displayNameField,
@@ -340,6 +341,19 @@ test.describe("closing the invite dialog", () => {
     await inviteDialog(alice).getByRole("button", { name: "Cancel" }).click();
     await expect(errorPage(bob)).toBeVisible();
   });
+});
+
+test("the inviter sees an error when the signaling connection drops", async ({
+  openPeer,
+}) => {
+  const alice = await openPeer();
+  const cutSignaling = await controlSignaling(alice);
+  await createInvite(alice);
+
+  // The server forgets the invite when its socket disconnects
+  await cutSignaling();
+  await expect(errorPage(alice)).toBeVisible();
+  await expect(inviteDialog(alice)).toBeHidden();
 });
 
 test.describe("invite expiry", () => {

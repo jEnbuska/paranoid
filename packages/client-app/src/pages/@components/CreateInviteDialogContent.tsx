@@ -10,7 +10,8 @@ import InviteView from "~/features/invite/_components/InviteView.tsx";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import useStable from "~/hooks/use-stable.ts";
 import InviteStateContext from "~/features/invite/context/InviteStateContext.tsx";
-import { use } from "react";
+import { use, useEffect } from "react";
+import useReject from "~/hooks/use-reject.ts";
 
 export default function CreateInviteDialogContent() {
   const { getState } = use(InviteStateContext);
@@ -38,6 +39,24 @@ export default function CreateInviteDialogContent() {
   useOnEvent("CLOSE", () => {
     throw new Error("Invite was closed");
   });
+  // The server forgets the invite when its socket disconnects. A socket
+  // listener runs outside an effect, so it reports through useReject
+  const reject = useReject();
+  useEffect(() => {
+    const onDisconnect = () => {
+      // The current state: after the handshake the peers talk directly, so a
+      // drop doesn't end the chat, and before the invite is created there is
+      // nothing on the server to lose
+      const { inviteId, stage } = getState();
+      if (inviteId && stage !== "connected") {
+        reject(new Error("Signaling server disconnected"));
+      }
+    };
+    socket.on("disconnect", onDisconnect);
+    return () => {
+      socket.off("disconnect", onDisconnect);
+    };
+  }, [socket]);
   const step = invoke(() => {
     if (peerPublicKey) return 2;
     if (inviteId) return 1;
