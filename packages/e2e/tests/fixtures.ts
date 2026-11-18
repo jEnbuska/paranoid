@@ -36,12 +36,6 @@ const recordKey = "__e2e";
  * traffic there, so each peer connection gets only the
  * given ICE servers: none by default. Peers on one machine connect with host
  * candidates alone.
- *
- * The app's handshake needs ICE gathering to end after signaling and before
- * the handshake itself ends. Without STUN servers it can end within
- * milliseconds, and on a busy machine too late. So the app gets the end of
- * candidates exactly when ICE connects, whenever gathering really ends: by then
- * both sides have each other's descriptions, and the handshake hasn't started.
  */
 function preparePage(options: {
   key: string;
@@ -83,25 +77,6 @@ function preparePage(options: {
     constructor(configuration?: RTCConfiguration) {
       super({ ...configuration, iceServers: options.iceServers });
       record.connections.push(this);
-      let released = false;
-      let releasing = false;
-      // Added before any listener of the app, so the app never sees the original
-      this.addEventListener("icecandidate", (event) => {
-        if (event.candidate || releasing) return;
-        event.stopImmediatePropagation();
-      });
-      this.addEventListener("iceconnectionstatechange", () => {
-        const connected = ["connected", "completed"].includes(
-          this.iceConnectionState,
-        );
-        if (released || !connected) return;
-        released = true;
-        releasing = true;
-        this.dispatchEvent(
-          new RTCPeerConnectionIceEvent("icecandidate", { candidate: null }),
-        );
-        releasing = false;
-      });
     }
   }
   window.RTCPeerConnection = TestPeerConnection;

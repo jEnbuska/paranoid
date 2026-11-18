@@ -65,10 +65,7 @@ export default defineConfig({
       },
     },
     {
-      // Peers sometimes get stuck connecting here, so the tests that connect are
-      // off until that's fixed
       name: "firefox",
-      grepInvert: /@webrtc/,
       use: {
         ...devices["Desktop Firefox"],
         launchOptions: {
