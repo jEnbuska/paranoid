@@ -17,7 +17,36 @@ Paranoid has two long-lived branches:
 | How it lands                   | Rebase and merge                                                                   | Fast-forward                                                    |
 | Who merges                     | The maintainer                                                                     | The maintainer                                                  |
 
-CI skips the work a PR's changes can't affect, for example the end-to-end tests on a docs-only PR, and a skipped check counts as passing. A PR with no changes at all fails `PR rules` unless it's a draft, so an empty PR can't get through by skipping CI.
+CI skips the work a PR's changes can't affect, and a skipped check counts as passing. This is intended:
+
+- A docs-only PR (`**/*.md`, `LICENSE`) runs only the format check, for Markdown, and `End-to-end tests (chromium)` passes with its steps skipped.
+- A PR that changes no package and nothing that installs them, for example only a root config file, runs the checks, and the end-to-end steps skip the same way.
+- A PR with no changed files skips both CI jobs. It fails `PR rules` unless it's a draft, and `End-to-end tests (chromium)` is never reported, so an empty PR can't get through by skipping CI. GitHub won't merge a draft.
+
+## When a PR can merge
+
+A PR merges only when both are true:
+
+- It's up to date with its base branch: the base's latest commit is in the PR's history.
+- Every required check has passed on the PR's current head commit.
+
+A PR that falls behind its base can't merge, even if its checks passed before. This holds for the maintainer too, since the rulesets have no bypass. Once you bring it up to date, its head is a new commit, CI runs again, and the PR stays blocked until the required checks pass on that commit.
+
+When a PR is behind, rebase it onto its base and push:
+
+```bash
+git fetch origin
+```
+
+```bash
+git rebase origin/dev
+```
+
+```bash
+git push --force-with-lease
+```
+
+Or press "Update branch" on the PR and pick "Update with rebase", not "Update with merge commit": PR branches stay linear, like `dev` and `main`. After GitHub rebases the branch, fetch and reset or rebase your local branch onto it before pushing again.
 
 ## Opening a pull request
 
