@@ -69,7 +69,7 @@ test(
 test(
   "connects without waiting for a STUN server that doesn't answer",
   WEBRTC,
-  async ({ openPeer }) => {
+  async ({ openPeer, browserName }) => {
     const stun = await openSilentStunServer();
     try {
       const alice = await openPeer({ iceServers: stun.iceServers });
@@ -77,14 +77,18 @@ test(
       await startChat(alice, bob);
 
       expect(stun.requests(), "requests to the STUN server").toBeGreaterThan(0);
-      for (const page of [alice, bob]) {
-        const gathering = await pageRecord(
-          page,
-          ({ connections: [connection] }) => connection.iceGatheringState,
-        );
-        expect(gathering, "ICE gathering when the chat opens").toBe(
-          "gathering",
-        );
+      // Chromium stops gathering as soon as the peers connect. Firefox keeps
+      // waiting for the STUN server for several seconds, and the chat doesn't
+      if (browserName === "firefox") {
+        for (const page of [alice, bob]) {
+          const gathering = await pageRecord(
+            page,
+            ({ connections: [connection] }) => connection.iceGatheringState,
+          );
+          expect(gathering, "ICE gathering when the chat opens").toBe(
+            "gathering",
+          );
+        }
       }
       await sendMessage(alice, "Not waiting for STUN");
       await expect(messageText(bob, "Not waiting for STUN")).toBeVisible();

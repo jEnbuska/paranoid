@@ -77,7 +77,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 - Playwright in `packages/e2e`. `webServer` builds the client into `packages/e2e/dist` and starts it and the signaling server on ports 8193 and 5193 (`E2E_SIGNALING_PORT`, `E2E_CLIENT_PORT`), or uses an app that already runs (`E2E_BASE_URL`).
 - Use roles and labels (`getByRole`, `getByLabel`), and wait on outcomes rather than fixed sleeps. No retries: fix a flaky test instead of hiding it.
 - Tests must not reach anything outside the machine. Use the `openPeer` fixture from `tests/fixtures.ts`: it removes the app's STUN servers from peer connections and fails a test that requests an external URL.
-- Tag tests that need two peers to connect with `WEBRTC` from `tests/helpers.ts`. WebKit skips them, because its mDNS host candidates don't resolve under Playwright. Firefox skips them until the connection bug is fixed, because peers sometimes get stuck connecting. For now they're `test.fixme` in every browser, because of a connection bug: they sometimes fail in Chromium with the inviter left on the start page. Remove those marks when it's fixed.
+- Tag tests that need two peers to connect with `WEBRTC` from `tests/helpers.ts`. WebKit skips them, because its mDNS host candidates don't resolve under Playwright.
 - A test exposing an app bug gets `test.fixme`, a comment and a linked issue labeled `bug` and `todo`. Don't change app behavior to make a test pass.
 
 ## Client UI

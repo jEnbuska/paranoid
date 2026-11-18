@@ -10,7 +10,7 @@ Messages go straight from one browser to the other over WebRTC. A small signalin
 2. **Share it.** The invite goes to the other person as a direct link (Web Share API) or as a link copied to the clipboard. The pass phrase can be sent with the invite, or separately over another channel for extra safety.
 3. **Join.** The other person opens the invite and enters the pass phrase. The server gives them the inviter's public key once and then deletes it from the invite.
 4. **Handshake.** Both sides derive a shared AES-GCM key using ECDH. Every signaling payload (pass phrase check, SDP descriptions, ICE candidates) is encrypted twice: first with the ECDH-derived key, then with a key derived from the pass phrase (PBKDF2, 100k iterations). The server only relays this ciphertext between the two sockets.
-5. **Chat.** Once the WebRTC connection is up, text messages go directly between the peers. Invites live only in server memory and are removed when they expire, when the chat closes or when either side disconnects.
+5. **Chat.** Once the WebRTC connection is up, text messages go directly between the peers. Invites live only in server memory. The server forgets an invite once both sides have finished the handshake over the data channel, or earlier when it expires, when it's closed or when either side disconnects.
 
 > NAT traversal uses Google's public STUN servers by default, and they see users' IP addresses. Setting `VITE_ICE_SERVERS` to a self-hosted STUN server avoids this. No TURN server is set up, so some restrictive networks may fail to connect.
 
@@ -170,19 +170,17 @@ The tests start their own servers on ports `8193` (signaling) and `5193` (client
 
 The tests send nothing outside the machine:
 
-- Every peer connection gets an empty ICE server list in place of the app's Google STUN servers, so peers connect with host candidates. Browsers also expose plain host candidates, because resolving mDNS names depends on multicast.
+- Every peer connection gets an empty ICE server list in place of the app's Google STUN servers, so peers connect with host candidates. One test gives them a STUN server of its own that never answers, on the machine's own address. Browsers also expose plain host candidates, because resolving mDNS names depends on multicast.
 - A test fails if its page requests anything outside `localhost`.
 - Reports and traces hold only test data, and git ignores them.
 
 | Browser  | Coverage                                                                                                                                                                                                                                                                     |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Chromium | Everything except the `test.fixme` tests, with the real clipboard.                                                                                                                                                                                                           |
-| Firefox  | Everything except reading the real clipboard, as Playwright can't grant the permission, and for now tests tagged `@webrtc`: peers sometimes get stuck connecting.                                                                                                            |
+| Chromium | Everything, with the real clipboard.                                                                                                                                                                                                                                         |
+| Firefox  | Everything except reading the real clipboard, as Playwright can't grant the permission.                                                                                                                                                                                      |
 | WebKit   | Everything except the real clipboard, which could replace the clipboard of the machine, and tests tagged `@webrtc`: Playwright's WebKit only offers mDNS host candidates, and they don't resolve, so two peers never connect. The forms, dialogs and invite flows still run. |
 
 Tests that document a known bug are marked `test.fixme`, with a comment saying what goes wrong.
-
-For now, every test that connects two people, including the core flow, is marked `test.fixme`: until that bug is fixed they sometimes fail in Chromium with the inviter left on the start page. So neither CI nor `pnpm test:e2e` checks that two people can chat.
 
 ## Continuous integration
 
