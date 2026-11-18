@@ -6,12 +6,6 @@ import type {
 } from "./types.ts";
 import { channelMessageDataSchemas } from "./schemas.ts";
 
-function isChannelMessageType(type: unknown): type is ChannelMessageType {
-  return (
-    typeof type === "string" && Object.hasOwn(channelMessageDataSchemas, type)
-  );
-}
-
 /** Cap per type: only the peer can fill it */
 const MAX_QUEUED = 100;
 
@@ -32,15 +26,31 @@ function createInbox(channel: RTCDataChannel, decrypt: Decrypt) {
 
   function deliver(message: ChannelMessage | undefined) {
     if (signal.aborted) return;
-    const type: unknown = message?.type;
-    if (!isChannelMessageType(type)) return;
-    const parsed = channelMessageDataSchemas[type].safeParse(message!.data);
-    if (!parsed.success) {
-      // Never the content, which is the peer's
-      console.error(`Dropped a data channel message with malformed ${type}`);
-      return;
+    const type = message?.type;
+    switch (type) {
+      case "DISPLAY_NAME":
+      case "TEXT":
+      case "CANDIDATE": {
+        const { success, data } = channelMessageDataSchemas[type].safeParse(
+          message!.data,
+        );
+        // Never the content, which is the peer's
+        if (!success) {
+          console.error(
+            `Dropped a data channel message with malformed ${type}`,
+          );
+          return;
+        }
+        return enqueue(type, data);
+      }
+      default:
+        // An unknown type, which the peer can send, is ignored. `satisfies`
+        // fails to compile when a known type has no case
+        return type satisfies undefined;
     }
-    const { data } = parsed;
+  }
+
+  function enqueue(type: ChannelMessageType, data: unknown) {
     const waiter = waiters.get(type)?.shift();
     if (waiter) return waiter(data);
     let queue = queues.get(type);
