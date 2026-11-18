@@ -1,0 +1,233 @@
+# The rulesets require a PR to be up to date with its base before it merges, so
+# every merge leaves the other open PRs behind. This rebases them onto the new
+# base, the same as the PR's "Update with rebase" button, unless they conflict.
+#
+# It acts as a GitHub App, because pushes made with GITHUB_TOKEN don't start
+# workflows, and a rebased PR needs CI to run on its new head. CONTRIBUTING.md
+# lists what the app needs and how to set it up.
+name: Rebase PRs onto their base
+
+on:
+  push:
+    branches: [main, dev]
+  # For a run without a push, for example after setting the app up
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Rebase the PRs into this branch
+        type: choice
+        options: [dev, main]
+        default: dev
+
+permissions:
+  contents: read
+
+# One run per base branch. A newer push cancels the run it makes outdated, so a
+# burst of merges rebases each PR once, onto the latest base.
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.base || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  rebase:
+    name: Rebase PRs that are behind
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # With no owner or repositories given, the token only covers this
+      # repository, with only these permissions, and it's revoked when the job
+      # ends. Workflows: write is there because GitHub
+      # refuses an app's push that changes a file under .github/workflows, and
+      # a rebase does whenever the PR or the new base changes a workflow.
+      - name: Get a token for the app
+        id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.AUTO_REBASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTO_REBASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      # Nothing here checks out or runs a PR's code. PR data comes from the API
+      # and the base branch through env, never through ${{ }} in the script.
+      - name: Rebase the PRs
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BASE: ${{ inputs.base || github.ref_name }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        with:
+          github-token: ${{ steps.app.outputs.token }}
+          script: |
+            const base = process.env.BASE;
+            const bot = `${process.env.APP_SLUG}[bot]`;
+            const { owner, repo } = context.repo;
+            const conflictMarker = "<!-- auto-rebase:conflict -->";
+            const resolvedMarker = "<!-- auto-rebase:resolved -->";
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            // A token or permission problem would fail every PR the same way,
+            // so it fails the run instead of being reported on each PR.
+            const isAuthError = (error) =>
+              error.status === 401 || error.status === 403
+              || error.errors?.some((e) => e.type === "FORBIDDEN");
+
+            const prFields = `
+              id number isDraft isCrossRepository headRefName headRefOid
+              mergeable mergeStateStatus
+            `;
+
+            async function openPullRequests() {
+              const prs = [];
+              let cursor = null;
+              do {
+                const { repository } = await github.graphql(
+                  `query ($owner: String!, $repo: String!, $base: String!, $cursor: String) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequests(states: OPEN, baseRefName: $base, first: 50, after: $cursor) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes { ${prFields} }
+                      }
+                    }
+                  }`,
+                  { owner, repo, base, cursor },
+                );
+                const page = repository.pullRequests;
+                prs.push(...page.nodes);
+                cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+              } while (cursor);
+              return prs;
+            }
+
+            // GitHub works out whether a PR conflicts in the background after
+            // its base moves, and answers UNKNOWN until then.
+            async function pullRequest(number) {
+              for (let attempt = 1; ; attempt++) {
+                const { repository } = await github.graphql(
+                  `query ($owner: String!, $repo: String!, $number: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $number) { ${prFields} }
+                    }
+                  }`,
+                  { owner, repo, number },
+                );
+                const pr = repository.pullRequest;
+                if (pr.mergeable !== "UNKNOWN" || attempt === 12) return pr;
+                await sleep(5000);
+              }
+            }
+
+            // The app's open conflict comment on the PR, if there is one.
+            async function conflictComment(number) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: number, per_page: 100,
+              });
+              return comments.findLast(
+                (c) => c.user?.login === bot && c.body.includes(conflictMarker),
+              );
+            }
+
+            // One comment per conflict: it's posted when the PR starts
+            // conflicting and edited once it no longer does, so the next
+            // conflict gets a new comment.
+            async function reportConflict(pr) {
+              if (await conflictComment(pr.number)) {
+                core.info(`#${pr.number}: conflicts, already commented`);
+                return;
+              }
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pr.number,
+                body: [
+                  conflictMarker,
+                  `This PR conflicts with \`${base}\`, so it couldn't be rebased automatically. Rebase it yourself and push:`,
+                  "",
+                  "```bash",
+                  "git fetch origin",
+                  `git rebase origin/${base}`,
+                  "git push --force-with-lease",
+                  "```",
+                  "",
+                  "This comment is updated once the PR no longer conflicts.",
+                ].join("\n"),
+              });
+              core.info(`#${pr.number}: conflicts, commented`);
+            }
+
+            async function clearConflict(pr) {
+              const comment = await conflictComment(pr.number);
+              if (!comment) return;
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: comment.id,
+                body: `${resolvedMarker}\nThis PR no longer conflicts with \`${base}\`.`,
+              });
+            }
+
+            async function behindBy(pr) {
+              const { data } = await github.rest.repos.compareCommitsWithBasehead({
+                owner, repo, basehead: `${base}...${pr.headRefOid}`, per_page: 1,
+              });
+              return data.behind_by;
+            }
+
+            async function rebase(pr) {
+              try {
+                const { updatePullRequestBranch } = await github.graphql(
+                  `mutation ($id: ID!, $head: GitObjectID!) {
+                    updatePullRequestBranch(input: {
+                      pullRequestId: $id, expectedHeadOid: $head, updateMethod: REBASE
+                    }) { pullRequest { headRefOid } }
+                  }`,
+                  { id: pr.id, head: pr.headRefOid },
+                );
+                core.info(`#${pr.number}: rebased onto ${base}, new head ${updatePullRequestBranch.pullRequest.headRefOid}`);
+                await clearConflict(pr);
+              } catch (error) {
+                if (isAuthError(error)) throw error;
+                // Someone pushed to the PR in the meantime. The next run
+                // looks at it again.
+                const now = await pullRequest(pr.number);
+                if (now.headRefOid !== pr.headRefOid) {
+                  core.info(`#${pr.number}: its head moved during the rebase, skipped`);
+                  return;
+                }
+                core.warning(`#${pr.number}: rebase failed: ${error.message}`);
+                await reportConflict(pr);
+              }
+            }
+
+            let failed = 0;
+            for (const listed of await openPullRequests()) {
+              const number = listed.number;
+              // Drafts are still being worked on, and a rebase would make the
+              // author's next push fail. They can't merge anyway, and the
+              // author rebases before marking the PR ready.
+              if (listed.isDraft) { core.info(`#${number}: draft, skipped`); continue; }
+              // The app can't push to forks.
+              if (listed.isCrossRepository) { core.info(`#${number}: from a fork, skipped`); continue; }
+              // The release PR from dev into main: rebasing it would rewrite
+              // dev, and main only ever fast-forwards to dev anyway.
+              if (listed.headRefName === "dev") { core.info(`#${number}: release PR, skipped`); continue; }
+
+              try {
+                const pr = await pullRequest(number);
+                core.info(`#${number}: mergeable ${pr.mergeable}, merge state ${pr.mergeStateStatus}`);
+                if (pr.mergeable === "UNKNOWN") {
+                  core.warning(`#${number}: GitHub didn't say whether it conflicts, skipped`);
+                  continue;
+                }
+                if (pr.mergeable === "CONFLICTING") { await reportConflict(pr); continue; }
+                const behind = await behindBy(pr);
+                if (behind === 0) {
+                  core.info(`#${number}: up to date`);
+                  await clearConflict(pr);
+                  continue;
+                }
+                core.info(`#${number}: ${behind} commits behind ${base}, rebasing`);
+                await rebase(pr);
+              } catch (error) {
+                if (isAuthError(error)) throw error;
+                failed++;
+                core.error(`#${number}: ${error.message}`);
+              }
+            }
+            if (failed) core.setFailed(`${failed} PRs failed, see the errors above`);
