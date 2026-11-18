@@ -166,3 +166,5 @@ export async function sendMessage(page: Page, text: string) {
   await expect(composer(page)).toBeEditable();
   await expect(composer(page)).toBeFocused();
 }
+
+// Test PR for #52: a branch behind dev. Never merge.
