@@ -4,36 +4,12 @@ import type {
   ChannelMessageType,
   Decrypt,
 } from "./types.ts";
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const isOptional = (value: unknown, type: "string" | "number") =>
-  value === undefined || value === null || typeof value === type;
-
-/**
- * Whether the peer's data has the shape its type needs. The peer can send
- * anything, and data that doesn't match would crash whatever reads it
- */
-const IS_VALID_DATA: Record<ChannelMessageType, (data: unknown) => boolean> = {
-  DISPLAY_NAME: (data) => typeof data === "string",
-  // `createdBy` isn't checked: the receiver marks every message the other's
-  TEXT: (data) =>
-    isObject(data) &&
-    typeof data.id === "string" &&
-    typeof data.data === "string" &&
-    Number.isFinite(data.createdAt),
-  // What `addIceCandidate` takes
-  CANDIDATE: (data) =>
-    isObject(data) &&
-    typeof data.candidate === "string" &&
-    isOptional(data.sdpMid, "string") &&
-    isOptional(data.sdpMLineIndex, "number") &&
-    isOptional(data.usernameFragment, "string"),
-};
+import { channelMessageDataSchemas } from "./schemas.ts";
 
 function isChannelMessageType(type: unknown): type is ChannelMessageType {
-  return typeof type === "string" && Object.hasOwn(IS_VALID_DATA, type);
+  return (
+    typeof type === "string" && Object.hasOwn(channelMessageDataSchemas, type)
+  );
 }
 
 /** Cap per type: only the peer can fill it */
@@ -58,12 +34,13 @@ function createInbox(channel: RTCDataChannel, decrypt: Decrypt) {
     if (signal.aborted) return;
     const type: unknown = message?.type;
     if (!isChannelMessageType(type)) return;
-    const { data } = message!;
-    if (!IS_VALID_DATA[type](data)) {
+    const parsed = channelMessageDataSchemas[type].safeParse(message!.data);
+    if (!parsed.success) {
       // Never the content, which is the peer's
       console.error(`Dropped a data channel message with malformed ${type}`);
       return;
     }
+    const { data } = parsed;
     const waiter = waiters.get(type)?.shift();
     if (waiter) return waiter(data);
     let queue = queues.get(type);

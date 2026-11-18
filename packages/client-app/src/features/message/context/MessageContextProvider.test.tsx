@@ -47,15 +47,16 @@ const flush = () => act(settle);
 
 /**
  * A TEXT message from the peer. All have the same time, so the order comes
- * from the state, not from sorting
+ * from the state, not from sorting. A peer can send `createdBy`, though it
+ * isn't part of the channel message
  */
 const text = (
   data: string,
   createdBy: Message["createdBy"] = "self",
-): ChannelMessage => ({
-  type: "TEXT",
-  data: { id: data, createdAt: 0, createdBy, data },
-});
+): ChannelMessage => {
+  const message: Message = { id: data, createdAt: 0, createdBy, data };
+  return { type: "TEXT", data: message };
+};
 
 /** Renders its children as they are, to compare with StrictMode */
 function Plain({ children }: PropsWithChildren) {

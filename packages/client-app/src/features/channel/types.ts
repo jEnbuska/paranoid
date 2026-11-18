@@ -1,17 +1,18 @@
-import type { Message } from "~/features/message/types";
+import type { z } from "zod";
+import type { channelMessageDataSchemas } from "./schemas.ts";
+
+type Schemas = typeof channelMessageDataSchemas;
+
+export type ChannelMessageType = keyof Schemas;
+
+export type ChannelMessageData<T extends ChannelMessageType> = z.infer<
+  Schemas[T]
+>;
 
 /** Everything sent over the data channel. Encrypted as a whole, type included */
-export type ChannelMessage =
-  | { type: "DISPLAY_NAME"; data: string }
-  | { type: "TEXT"; data: Message }
-  | { type: "CANDIDATE"; data: RTCIceCandidateInit };
-
-export type ChannelMessageType = ChannelMessage["type"];
-
-export type ChannelMessageData<T extends ChannelMessageType> = Extract<
-  ChannelMessage,
-  { type: T }
->["data"];
+export type ChannelMessage = {
+  [T in ChannelMessageType]: { type: T; data: ChannelMessageData<T> };
+}[ChannelMessageType];
 
 export type Encrypt = <T>(data: T) => Promise<string>;
 export type Decrypt = <T>(encrypted: string) => Promise<T>;
