@@ -4,7 +4,7 @@ import { RandomNameData } from "~/features/random-name/types.ts";
 import { useRandomNames } from "~/features/random-name/hooks.ts";
 import { useForm } from "react-hook-form";
 import { useMutation } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Fieldset from "~/components/Fieldset/Fieldset.tsx";
 import FormTextField from "~/components/FormTextField/FormTextField.tsx";
 import { validateDisplayName } from "~/validation/display-name.ts";
@@ -31,8 +31,13 @@ export default function LandingPage() {
       initOffer(displayName),
   });
 
-  const { stage, active } = useInviteState();
+  const { stage, active, userId } = useInviteState();
   useEffect(() => form.reset(), [stage]);
+  // Leaving the chat renders this page once with that chat's invite, before
+  // the effect above resets it. The dialog is only for an invite created here,
+  // so it stays closed and its steps don't run on the old connection (#46)
+  const [userIdOnMount] = useState(userId);
+  const createdHere = userId !== userIdOnMount;
   const { onClosed } = useInviteCallbacks();
   return (
     <>
@@ -54,7 +59,9 @@ export default function LandingPage() {
       </form>
       <Conditional
         Component={Dialog}
-        shown={active && (stage === "offer" || stage === "connected")}
+        shown={
+          active && createdHere && (stage === "offer" || stage === "connected")
+        }
         onClose={onClosed}
         title={"Create Invite"}
       >

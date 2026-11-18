@@ -7,6 +7,7 @@ import {
   createInvite,
   displayNameField,
   expectInChat,
+  inviteDialog,
   messageItem,
   messageText,
   openJoinForm,
@@ -128,6 +129,44 @@ test.describe("two people chatting", WEBRTC, () => {
       alice.getByRole("alert").filter({ hasText: "Connection to peer lost" }),
     ).toBeVisible();
     await expect(composer(alice)).toHaveCount(0);
+  });
+
+  test("leaving the chat doesn't open the invite dialog", async ({
+    openPeer,
+  }) => {
+    const { alice, bob } = await connectPeers(openPeer);
+    // The joiner leaves first, then the inviter, whose peer is already gone
+    for (const page of [bob, alice]) {
+      // The start page could open the dialog for a single render, so this
+      // records every dialog added rather than checking the page afterwards
+      await page.evaluate(() => {
+        const titles: string[] = [];
+        Object.assign(window, { addedDialogs: titles });
+        new MutationObserver((records) => {
+          for (const { addedNodes } of records) {
+            for (const node of addedNodes) {
+              if (!(node instanceof Element)) continue;
+              const dialogs = node.matches("dialog")
+                ? [node]
+                : [...node.querySelectorAll("dialog")];
+              for (const dialog of dialogs) {
+                titles.push(dialog.querySelector("h2")?.textContent ?? "");
+              }
+            }
+          }
+        }).observe(document.body, { childList: true, subtree: true });
+      });
+      await page.getByRole("button", { name: "Exit room" }).click();
+      await expect(displayNameField(page)).toBeVisible();
+      await expect(page).toHaveURL(/\/$/);
+
+      await expect(inviteDialog(page)).toBeHidden();
+      expect(
+        await page.evaluate(
+          () => (window as unknown as { addedDialogs: string[] }).addedDialogs,
+        ),
+      ).toEqual([]);
+    }
   });
 
   test("the other person sees when someone closes the page", async ({
