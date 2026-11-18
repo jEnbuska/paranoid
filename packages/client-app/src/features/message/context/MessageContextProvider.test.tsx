@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { StrictMode, use, type PropsWithChildren } from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { MemoryRouter, useNavigate } from "react-router";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createChannelInbox } from "~/features/channel/inbox.ts";
 import type { ChannelMessage, Decrypt } from "~/features/channel/types.ts";
@@ -70,8 +71,11 @@ const modes = [
 
 function Messages() {
   const { messages, sendMessage } = use(MessageContext);
+  const navigate = useNavigate();
   return (
     <>
+      <button onClick={() => navigate("/")}>Leave</button>
+      <button onClick={() => navigate("/chat")}>Enter</button>
       <button
         onClick={() => {
           void sendMessage("sent first");
@@ -92,6 +96,9 @@ function Messages() {
 const shownMessages = () =>
   screen.queryAllByRole("listitem").map(({ textContent }) => textContent);
 
+const click = (name: string) =>
+  act(() => screen.getByRole("button", { name }).click());
+
 const sendTwo = () =>
   act(() => screen.getByRole("button", { name: "Send two" }).click());
 
@@ -100,18 +107,27 @@ afterEach(() => {
 });
 
 describe.each(modes)("MessageContextProvider $name", ({ Wrapper }) => {
-  /** The provider under an invite whose data channel is `channel` */
+  /**
+   * The provider under an invite whose data channel is `channel`, starting in
+   * the chat
+   */
   function ui(channel: RTCDataChannel | undefined) {
     const state = { ...defaultInviteContextState, channel };
     return (
       <Wrapper>
-        <InviteStateContext.Provider
-          value={{ state, getState: () => state, updateState: async () => {} }}
-        >
-          <MessageContextProvider>
-            <Messages />
-          </MessageContextProvider>
-        </InviteStateContext.Provider>
+        <MemoryRouter initialEntries={["/chat"]}>
+          <InviteStateContext.Provider
+            value={{
+              state,
+              getState: () => state,
+              updateState: async () => {},
+            }}
+          >
+            <MessageContextProvider>
+              <Messages />
+            </MessageContextProvider>
+          </InviteStateContext.Provider>
+        </MemoryRouter>
       </Wrapper>
     );
   }
@@ -173,38 +189,54 @@ describe.each(modes)("MessageContextProvider $name", ({ Wrapper }) => {
     expect(shownMessages()).toContain("other: received");
   });
 
-  test("clears the messages when the channel changes, and takes from the new one", async () => {
+  test("clears the messages when leaving the chat", async () => {
+    const { channel, receive } = fakeChannel();
+    receive(text("old"));
+    await settle();
+    render(ui(channel));
+    await flush();
+    expect(shownMessages()).toEqual(["other: old"]);
+
+    await click("Leave");
+
+    expect(shownMessages()).toEqual([]);
+  });
+
+  test("keeps the messages while in the chat, even when the channel changes", async () => {
     const first = fakeChannel();
     const second = fakeChannel();
     first.receive(text("old"));
     await settle();
     const { rerender } = render(ui(first.channel));
     await flush();
-    expect(shownMessages()).toEqual(["other: old"]);
 
     rerender(ui(second.channel));
     await flush();
-    expect(shownMessages()).toEqual([]);
-
     first.receive(text("old again"));
     second.receive(text("new"));
     await flush();
-    expect(shownMessages()).toEqual(["other: new"]);
+
+    expect(shownMessages()).toEqual(["other: old", "other: new"]);
   });
 
-  test("clears the messages when the invite is reset", async () => {
-    const { channel, inbox, receive } = fakeChannel();
-    receive(text("old"));
+  test("a chat after leaving one starts empty", async () => {
+    const first = fakeChannel();
+    const second = fakeChannel();
+    first.receive(text("old"));
     await settle();
-    const { rerender } = render(ui(channel));
+    const { rerender } = render(ui(first.channel));
     await flush();
-    expect(shownMessages()).toEqual(["other: old"]);
 
+    await click("Leave");
     // What `resetInviteContext` does: clear the inbox and drop the channel
-    inbox.clear();
+    first.inbox.clear();
     rerender(ui(undefined));
     await flush();
+    rerender(ui(second.channel));
+    await click("Enter");
+    second.receive(text("new"));
+    await flush();
 
-    expect(shownMessages()).toEqual([]);
+    expect(shownMessages()).toEqual(["other: new"]);
   });
 });

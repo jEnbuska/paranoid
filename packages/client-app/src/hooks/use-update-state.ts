@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useRef, useEffect, DependencyList } from "react";
 import useStable from "~/hooks/use-stable.ts";
 import useAsyncResolver from "~/hooks/use-async-resolver";
 import createResolvable from "shared-lib/utils/create-resolvable";
 import always from "shared-lib/utils/always";
+import useDerivedState from "~/hooks/use-derived-state.ts";
 
 /**
  * A custom hook that manages state and provides an asynchronous update function.
@@ -25,8 +26,9 @@ import always from "shared-lib/utils/always";
  */
 export default function useUpdateState<T extends Record<string, any>>(
   initialState: T | (() => T),
+  deps: DependencyList = [],
 ) {
-  const [state, setState] = useState<T>(initialState);
+  const [state, setState] = useDerivedState<T>(initialState, deps);
   const resolvable = useRef<Array<() => void>>([]);
   const resolver = useAsyncResolver();
 
