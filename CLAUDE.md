@@ -68,6 +68,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 ## Signaling server
 
 - Keep it thin: Node.js built-ins plus socket.io. No web framework, middleware or dotenv; its only job is holding invites in memory and relaying encrypted payloads.
+- The server forgets an invite once the peers have connected. It never keeps peers paired, stores reconnect state or relays anything after the chat starts, so there is no ICE restart through the server. A connection that fails for good ends the chat, and recovery is a new invite. This is for privacy: a running chat shouldn't tell the server who is talking to whom.
 - Configuration comes from environment variables (`PORT`, `CORS_ORIGINS`), loaded from `packages/signaling-server/.env` with Node's `--env-file-if-exists`. Document new variables in that file and the README configuration table.
 - Never log event payloads, even encrypted ones. Log startup, shutdown, connections, disconnections and errors only.
 - socket.io's `cors` option is the only CORS handling. The client sends no cookies, so don't enable `credentials`.
