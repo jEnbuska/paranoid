@@ -6,13 +6,25 @@ import { useState } from "react";
 import Alert from "~/components/Alert/Alert";
 import { useInviteState } from "~/features/invite/hooks";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
+import { addPeerConnectionEventListeners } from "~/features/peer-connection/utils";
 import styles from "./styles.module.css";
 
 export default function ChatPage() {
-  const { channel } = useInviteState();
+  const { channel, connection } = useInviteState();
   const [closed, setClosed] = useState(false);
   useAbortableEffect((signal) => {
     channel?.addEventListener("close", () => setClosed(true), { signal });
+    // A peer that disappears without closing, for example when its tab
+    // crashes, its network drops or its close is lost, never closes the
+    // channel in Chromium. The connection fails instead, and with no
+    // signaling server to reconnect through, the peer is gone for good
+    if (connection) {
+      addPeerConnectionEventListeners(connection, signal, {
+        connectionstatechange() {
+          if (connection.connectionState === "failed") setClosed(true);
+        },
+      });
+    }
     signal.addEventListener("abort", () => channel?.close());
   }, []);
   return (

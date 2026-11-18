@@ -95,10 +95,13 @@ export default function InviteCallbacksContextProvider() {
     handshake: (peerDisplayName) =>
       updateState({ peerDisplayName, stage: "connected" }),
   }));
+  // Closing the connection tells the peer at once. Closing only the channel
+  // sends its close later, and Chromium doesn't send it once the page is gone,
+  // so the peer would never learn that this page left
   useAbortableEffect(
     () =>
       window.addEventListener("beforeunload", () =>
-        getState().channel?.close(),
+        getState().connection?.close(),
       ),
     [],
   );
