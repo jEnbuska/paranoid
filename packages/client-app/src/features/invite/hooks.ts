@@ -158,11 +158,10 @@ export function useMoveToChatAfterHandshake() {
 
 function useHandleHandshake() {
   const { channel, connection, displayName } = useInviteState();
-  const { signal } = useAbortController();
   const { handshake } = useInviteCallbacks();
   const encrypt = useEncrypt();
   const resolvable = useResolvable();
-  useAbortableEffect(() => {
+  useAbortableEffect((signal) => {
     assertIsNotNil(connection);
     addPeerConnectionEventListeners(connection, signal, {
       connectionstatechange() {
