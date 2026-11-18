@@ -128,9 +128,8 @@ export function useInviteConnectionProgress() {
 }
 
 /**
- * Creates the inviter's offer and sends it to the peer. Only once per
- * connection: leaving the chat renders the connecting step again for a moment,
- * before the invite is reset (#46)
+ * Creates the inviter's offer and sends it to the peer, only once per
+ * connection: a connection with a local description has already sent its offer
  */
 export function useSendOffer() {
   const { connection } = useInviteState();
