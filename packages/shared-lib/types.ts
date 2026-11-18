@@ -45,8 +45,8 @@ export interface ClientToServerEvents<Decrypted extends boolean = true> {
   /** One of the parties offer candidates to the other party (Might be called multiple times by the inviter with different candidates) */
   CANDIDATE(candidate: Decryptable<Decrypted, RTCIceCandidate>): void;
 
-  /** Party has no longer more candidates to provide.
-   * Note: the other party might still be sending their candidates */
+  /** Party has finished the handshake over the data channel and needs nothing
+   * more from the server. The server forgets the invite once both have sent it */
   DONE(): void;
 }
 
@@ -59,10 +59,7 @@ export interface ServerToClientEvents<Decrypted extends boolean = true> {
   DESCRIPTION(
     description: Decryptable<Decrypted, RTCSessionDescriptionInit>,
   ): void;
-  CANDIDATE(
-    candidate: Decryptable<Decrypted, RTCIceCandidate>,
-  ): void /** The other party has provided all ice candidates */;
-  DONE(): void;
+  CANDIDATE(candidate: Decryptable<Decrypted, RTCIceCandidate>): void;
 
   CLOSE(): void;
 }
