@@ -20,6 +20,7 @@ import { sendChannelMessage } from "~/features/channel/send.ts";
 import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksContext";
 import { useResolvable } from "~/hooks/use-resolvable";
+import useReject from "~/hooks/use-reject.ts";
 
 export function useInviteState() {
   return use(InviteStateContext).state;
@@ -28,15 +29,15 @@ export function useInviteCallbacks() {
   return use(InviteCallbacksContext);
 }
 
-export function useHandleInviteConnectionIceCandidatesExchange(
-  onError?: (error: unknown) => void,
-) {
+export function useHandleInviteConnectionIceCandidatesExchange() {
   const emit = useEmitIntroduction();
-  const { signal } = useAbortController();
+  // The sends happen in a peer connection listener, outside the effect's
+  // promise, so useAbortableEffect doesn't see their errors
+  const reject = useReject();
   const { connection, channel } = useInviteState();
   assertIsNotNil(connection);
   useAbortableEffect(
-    () =>
+    (signal) =>
       addPeerConnectionEventListeners(connection, signal, {
         icecandidate({ candidate }) {
           // The end of gathering (`null`) doesn't matter: the move to the chat
@@ -45,7 +46,7 @@ export function useHandleInviteConnectionIceCandidatesExchange(
           // Once the channel is open, candidates go over it instead
           // (`exchangeCandidatesOverChannel`)
           if (channel?.readyState === "open") return;
-          void emit("CANDIDATE", candidate).catch(onError);
+          void emit("CANDIDATE", candidate).catch(reject);
         },
       }),
     [],

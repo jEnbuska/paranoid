@@ -4,7 +4,6 @@ import {
 } from "~/features/socket/hooks.ts";
 import ConnectionProgressList from "~/features/invite/_components/ConnectionProgressList/ConnectionProgressList.tsx";
 import InviteView from "~/features/invite/_components/InviteView.tsx";
-import useReject from "~/hooks/use-reject.ts";
 import {
   useInviteState,
   useHandleInviteConnectionIceCandidatesExchange,
@@ -13,8 +12,7 @@ import {
 import { assertIsNotNil } from "shared-lib/utils/nil";
 
 export default function EstablishingAnswerPeerConnection() {
-  const reject = useReject();
-  useHandleInviteConnectionIceCandidatesExchange(reject);
+  useHandleInviteConnectionIceCandidatesExchange();
   const emit = useEmitIntroduction();
   const { connection } = useInviteState();
   useOnEventDecrypted({
