@@ -20,6 +20,12 @@ export default function AppError() {
           })}
         </Alert>
         <p aria-hidden="true">(╯°□°)╯︵ ┻━┻</p>
+        <p>
+          {/* A plain link, not the router's: loading the app again closes the
+              socket and peer connection the failed invite left open, so the
+              signaling server drops its invite and the start is clean */}
+          <a href="/">Back to the start page</a>
+        </p>
       </Main>
     </CommonPageLayout>
   );

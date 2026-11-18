@@ -22,12 +22,27 @@ export const passPhraseField = (page: Page) => page.getByLabel(/^Pass phrase/);
 export const errorPage = (page: Page) =>
   page.getByRole("alert").filter({ hasText: "An unexpected error occurred" });
 
+/** Follows the error page's link and waits for the start page */
+export async function leaveErrorPage(page: Page) {
+  await page.getByRole("link", { name: "Back to the start page" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(errorPage(page)).toBeHidden();
+  await expect(
+    page.getByRole("group", { name: "Create a private invite" }),
+  ).toBeVisible();
+}
+
 export const composer = (page: Page) =>
   page.getByRole("textbox", { name: "Message" });
 
 /** Opens the app and gets to the invite dialog */
 export async function openInviteDialog(page: Page, name = "Alice") {
   await page.goto("/");
+  await submitCreateForm(page, name);
+}
+
+/** Fills in the start page's form and waits for the invite dialog */
+async function submitCreateForm(page: Page, name: string) {
   await displayNameField(page).fill(name);
   await page.getByRole("button", { name: "Create" }).click();
   await expect(inviteDialog(page)).toBeVisible();
@@ -36,9 +51,18 @@ export async function openInviteDialog(page: Page, name = "Alice") {
 /** Creates an invite and returns its link, copied the way a person would */
 export async function createInvite(
   page: Page,
+  options?: { name?: string; passPhrase?: string },
+) {
+  await page.goto("/");
+  return createInviteOnStartPage(page, options);
+}
+
+/** Like `createInvite`, from the start page the page is already on */
+export async function createInviteOnStartPage(
+  page: Page,
   { name = "Alice", passPhrase = PASS_PHRASE } = {},
 ) {
-  await openInviteDialog(page, name);
+  await submitCreateForm(page, name);
   await passwordField(page).fill(passPhrase);
   await inviteDialog(page).getByRole("button", { name: "Submit" }).click();
   return copyInviteLink(page);
