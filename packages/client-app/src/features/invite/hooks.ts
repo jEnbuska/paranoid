@@ -99,11 +99,18 @@ export function useInviteConnectionProgress() {
         addConnectionProgress("iceConnectionState"),
     });
   });
-  useAbortableEffect(() => {
-    if (!channel) return;
-    const type = "Data Channel" as const;
-    constList("open", "close", "closing", "error", "bufferedamountlow").forEach(
-      (event) => {
+  // The effect's signal, so a replaced channel's listeners are removed
+  useAbortableEffect(
+    (signal) => {
+      if (!channel) return;
+      const type = "Data Channel" as const;
+      constList(
+        "open",
+        "close",
+        "closing",
+        "error",
+        "bufferedamountlow",
+      ).forEach((event) => {
         channel.addEventListener(
           event,
           () =>
@@ -113,9 +120,10 @@ export function useInviteConnectionProgress() {
             }),
           { signal },
         );
-      },
-    );
-  }, [channel]);
+      });
+    },
+    [channel],
+  );
   return progress;
 }
 
