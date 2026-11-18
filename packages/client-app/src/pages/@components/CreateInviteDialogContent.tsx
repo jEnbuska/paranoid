@@ -7,7 +7,6 @@ import { useOnEvent, useSocket } from "~/features/socket/hooks.ts";
 import { useInviteState, useInviteCallbacks } from "~/features/invite/hooks.ts";
 import { useMutation } from "@tanstack/react-query";
 import InviteView from "~/features/invite/_components/InviteView.tsx";
-import useReject from "~/hooks/use-reject.ts";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 import useStable from "~/hooks/use-stable.ts";
 import InviteStateContext from "~/features/invite/context/InviteStateContext.tsx";
@@ -31,13 +30,14 @@ export default function CreateInviteDialogContent() {
   }, []);
   const { peerPublicKey, inviteId } = useInviteState();
   const { createOfferPeerConnection } = useInviteCallbacks();
-  const reject = useReject();
   const { mutateAsync } = useMutation({
     mutationFn: createOfferPeerConnection,
     throwOnError: true,
   });
   useOnEvent("JOIN", mutateAsync);
-  useOnEvent("CLOSE", () => reject(new Error("Invite was closed")));
+  useOnEvent("CLOSE", () => {
+    throw new Error("Invite was closed");
+  });
   const step = invoke(() => {
     if (peerPublicKey) return 2;
     if (inviteId) return 1;
