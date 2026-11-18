@@ -79,6 +79,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 - Use roles and labels (`getByRole`, `getByLabel`), and wait on outcomes rather than fixed sleeps. No retries: fix a flaky test instead of hiding it.
 - Tests must not reach anything outside the machine. Use the `openPeer` fixture from `tests/fixtures.ts`: it removes the app's STUN servers from peer connections and fails a test that requests an external URL.
 - Tag tests that need two peers to connect with `WEBRTC` from `tests/helpers.ts`. WebKit skips them, because its mDNS host candidates don't resolve under Playwright.
+- Check for flakiness after changing connection code or a test that connects two people: `pnpm test:e2e --project=<browser> --repeat-each=20` in each browser, both with the default workers and under load with `--workers=20`. Every run must pass. Other sessions run end-to-end tests on this machine too, so use your own `E2E_SIGNALING_PORT` and `E2E_CLIENT_PORT` (for example 8293 and 5293), and record whether another run overlapped. See "Checking for flakiness" in the README.
 - A test exposing an app bug gets `test.fixme`, a comment and a linked issue labeled `bug` and `todo`. Don't change app behavior to make a test pass.
 
 ## Client UI

@@ -184,6 +184,20 @@ The tests send nothing outside the machine:
 
 Tests that document a known bug are marked `test.fixme`, with a comment saying what goes wrong.
 
+### Checking for flakiness
+
+Playwright never retries a test, so a test that passes only sometimes fails the run. To find one, run every test 20 times in each browser, once on an idle machine and once under load:
+
+```bash
+pnpm test:e2e --project=chromium --repeat-each=20
+```
+
+```bash
+pnpm test:e2e --project=chromium --repeat-each=20 --workers=20
+```
+
+The second command runs more workers than the machine has cores, so the browsers compete for the CPU, as on a busy CI runner. Repeat both for `firefox` and `webkit`. Every run should pass with no failures. Treat a failure that happens only sometimes as a bug in the app or the test, and fix its cause. Don't add a retry, a longer timeout or a fixed wait. When another end-to-end run shares the machine, give each run its own `E2E_SIGNALING_PORT` and `E2E_CLIENT_PORT`, and count the overlap as load.
+
 ## Continuous integration
 
 GitHub Actions workflows live in [`.github/workflows`](.github/workflows):
