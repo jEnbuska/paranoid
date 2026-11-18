@@ -19,6 +19,9 @@ export default function EstablishingOfferPeerConnectionStep() {
   const { connection } = useInviteState();
   assertIsNotNil(connection);
   useAbortableEffect(async () => {
+    // Only once per connection: leaving the chat renders this step again for
+    // a moment, before the invite is reset
+    if (connection.localDescription) return;
     const offer = await connection.createOffer();
     await connection.setLocalDescription(offer);
     await emit("DESCRIPTION", offer);
