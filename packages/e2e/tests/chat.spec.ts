@@ -179,6 +179,20 @@ test.describe("two people chatting", WEBRTC, () => {
     ).toBeVisible();
   });
 
+  test("the other person sees when someone's page goes away without closing", async ({
+    openPeer,
+  }) => {
+    const { alice, bob } = await connectPeers(openPeer);
+    // Without beforeunload, like a crashed tab: Chromium then sends the other
+    // person nothing, and Firefox still closes the connection
+    await bob.close();
+    await expect(
+      alice.getByRole("alert").filter({ hasText: "Connection to peer lost" }),
+      // Chromium declares a silent connection failed 15 to 16 seconds after
+      // its last packet, a fixed timer rather than a slow machine
+    ).toBeVisible({ timeout: 30_000 });
+  });
+
   test("reloading leaves the chat, as nothing is stored", async ({
     openPeer,
   }) => {
