@@ -5,9 +5,9 @@ export const handleCandidate: HandleEncrypted<"CANDIDATE"> = (
   socket,
   candidate,
 ) => {
-  const { otherCalleeSocket, handshakeFinished } = requireInviteContext(socket);
+  const { otherCalleeSocket, handshake } = requireInviteContext(socket);
   if (!otherCalleeSocket) return;
   // After the handshake, candidates go over the data channel
-  if (handshakeFinished) return;
+  if (handshake === "finished") return;
   socket.to(otherCalleeSocket).emit("CANDIDATE", candidate);
 };

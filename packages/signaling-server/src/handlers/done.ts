@@ -7,16 +7,11 @@ import type { HandleNonEncrypted } from "../types.ts";
  * nothing more from the server. Once both sides have, the invite is forgotten
  */
 export const handleDone: HandleNonEncrypted<"DONE"> = (socket) => {
-  const {
-    inviteId,
-    descriptionProvided,
-    handshakeFinished,
-    otherCalleeHandshakeFinished,
-    onHandshakeFinished,
-  } = requireInviteContext(socket);
+  const { inviteId, handshake, otherCalleeHandshake, setHandshake } =
+    requireInviteContext(socket);
   // The handshake can't have finished without this side's description, and
-  // the other side's DONE implies its own
-  if (!descriptionProvided || handshakeFinished) return;
-  onHandshakeFinished();
-  if (otherCalleeHandshakeFinished) removeInvite(inviteId);
+  // a second DONE changes nothing
+  if (handshake !== "described") return;
+  setHandshake("finished");
+  if (otherCalleeHandshake === "finished") removeInvite(inviteId);
 };
