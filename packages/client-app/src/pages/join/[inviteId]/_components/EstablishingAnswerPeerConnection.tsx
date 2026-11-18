@@ -20,7 +20,6 @@ export default function EstablishingAnswerPeerConnection() {
   useOnEventDecrypted({
     type: "DESCRIPTION",
     once: true,
-    onError: reject,
     async callback(description) {
       assertIsNotNil(connection);
       await connection.setRemoteDescription(description);

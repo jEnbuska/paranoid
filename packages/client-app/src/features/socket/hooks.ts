@@ -2,7 +2,6 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { socketQueryKey } from "~/features/socket/constants";
 import { createSocket } from "~/features/socket/loader";
 import useStable from "~/hooks/use-stable.ts";
-import { useAbortController } from "~/hooks/use-abort-controller";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
@@ -56,26 +55,21 @@ export function useOnEventDecrypted<
 >(options: {
   type: E;
   once?: boolean;
-  /** Called when decrypting the event or its callback fails */
-  onError?: (error: unknown) => void;
+  /**
+   * An error decrypting the event or thrown by the callback stops listening and
+   * reaches the error boundary through useAbortableEffect
+   */
   callback: (...args: Parameters<ServerToClientEvents[E]>) => any;
 }) {
   const inbox = useInbox();
-  const controller = useAbortController();
   const decrypt = useDecrypt();
-  const callback = useStable(async () => {
-    const { type, once, callback, onError } = options;
-    function handleEvent(...args: any) {
-      return Promise.all(args.map(decrypt))
-        .then((params) => (callback as any)(...params))
-        .catch(onError);
-    }
+  const callback = useStable(async (signal: AbortSignal) => {
+    const { type, once, callback } = options;
     do {
-      await inbox
-        .take(type, controller.signal)
-        .then((args) => handleEvent(...args))
-        .catch(onError);
-    } while (!once && !controller.signal.aborted);
+      const args = await inbox.take(type, signal);
+      const params = await Promise.all((args as string[]).map(decrypt));
+      await (callback as any)(...params);
+    } while (!once && !signal.aborted);
   });
   useAbortableEffect(callback, []);
 }

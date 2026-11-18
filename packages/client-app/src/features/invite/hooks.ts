@@ -52,7 +52,6 @@ export function useHandleInviteConnectionIceCandidatesExchange(
   );
   useOnEventDecrypted({
     type: "CANDIDATE",
-    onError,
     async callback(candidate) {
       while (!connection.remoteDescription) await sleep(100);
       return connection.addIceCandidate(candidate);
