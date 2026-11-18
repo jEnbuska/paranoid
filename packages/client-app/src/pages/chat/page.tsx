@@ -11,11 +11,10 @@ import styles from "./styles.module.css";
 export default function ChatPage() {
   const { channel } = useInviteState();
   const [closed, setClosed] = useState(false);
-  useAbortableEffect(
-    (signal) =>
-      channel!.addEventListener("close", () => setClosed(true), { signal }),
-    [],
-  );
+  useAbortableEffect((signal) => {
+    channel?.addEventListener("close", () => setClosed(true), { signal });
+    signal.addEventListener("abort", () => channel?.close());
+  }, []);
   return (
     <main className={styles.chatPage}>
       <ChatNav />

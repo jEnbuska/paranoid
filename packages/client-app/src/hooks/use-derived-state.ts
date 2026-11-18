@@ -1,4 +1,6 @@
-import { useState, useMemo, useRef, useCallback, DependencyList } from "react";
+import { useMemo, useRef, DependencyList } from "react";
+import { useForceUpdate } from "~/hooks/use-force-update.ts";
+import useStable from "~/hooks/use-stable.ts";
 
 type GetInitialState<T> = T | (() => T);
 
@@ -32,20 +34,19 @@ export default function useDerivedState<T>(
   initialState: T | (() => T),
   deps: DependencyList,
 ): [T, (updater: ((prevState: T) => T) | T) => void] {
-  const [state, setState] = useState(initialState);
-  const stateRef = useRef(state);
+  const forceUpdate = useForceUpdate();
+  const stateRef = useRef<T>(undefined as any);
   useMemo(() => {
     stateRef.current = getInitialState(initialState);
   }, deps);
 
   return [
     stateRef.current,
-    useCallback(
-      (updater) =>
-        setState(
-          (prevState) => (stateRef.current = getNextState(prevState, updater)),
-        ),
-      [setState],
-    ),
+    useStable((updater) => {
+      const nextState = getNextState(stateRef.current, updater);
+      if (nextState === stateRef.current) return;
+      stateRef.current = nextState;
+      forceUpdate();
+    }),
   ];
 }

@@ -1,4 +1,4 @@
-import { PropsWithChildren, useMemo, useState } from "react";
+import { PropsWithChildren, useMemo } from "react";
 import { Message } from "~/features/message/types";
 import { useInviteState } from "~/features/invite/hooks";
 import { getChannelInbox } from "~/features/channel/inbox.ts";
@@ -9,22 +9,22 @@ import { useEncrypt } from "~/features/crypt/hooks.ts";
 import useStable from "~/hooks/use-stable.ts";
 import { sendChannelMessage } from "~/features/channel/send.ts";
 import type { ChannelMessageData } from "~/features/channel/types.ts";
+import useDerivedState from "~/hooks/use-derived-state.ts";
+import { useChatExits } from "~/features/misc/hooks.ts";
 
 /**
- * Holds the chat messages for as long as the data channel lives. Messages
- * that arrive before the chat mounts wait in the inbox until this takes them
+ * Holds the chat messages until the person leaves the chat. Messages that
+ * arrive before the chat mounts wait in the inbox until this takes them
  */
 export default function MessageContextProvider({
   children,
 }: PropsWithChildren) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const chatExists = useChatExits();
+  const [messages, setMessages] = useDerivedState<Message[]>([], [chatExists]);
   const { channel } = useInviteState();
   useAbortableEffect(
     async function setupTextMessageReceiving(signal) {
       if (!channel) return;
-      // The channel changed, or the invite was reset. A listener, because
-      // `take` rejects on abort, so nothing after the loop would run
-      signal.addEventListener("abort", () => setMessages([]));
       const inbox = getChannelInbox(channel);
       while (!signal.aborted) {
         const message = await inbox.take("TEXT", signal);
@@ -50,7 +50,7 @@ export default function MessageContextProvider({
   });
   const value = useMemo(() => {
     return {
-      messages: [...messages].sort((a, b) => a.createdAt - b.createdAt),
+      messages: messages.sort((a, b) => a.createdAt - b.createdAt),
       sendMessage,
     };
   }, [messages]);
