@@ -3,7 +3,7 @@ import ChatForm from "./@components/ChatForm";
 import ChatNav from "./@components/ChatNav";
 import ChatAlert from "./@components/ChatAlert";
 import Conditional from "~/components/Conditional";
-import { useChatConnection } from "./hooks.ts";
+import useChatConnection from "./@hooks/use-chat-connection.ts";
 import styles from "./styles.module.css";
 
 export default function ChatPage() {
