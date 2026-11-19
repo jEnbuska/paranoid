@@ -1,16 +1,20 @@
 import {
   test as base,
   expect,
+  type Browser,
   type BrowserContext,
   type BrowserContextOptions,
   type Page,
 } from "@playwright/test";
+import { browsers, type BrowserName } from "./browsers.ts";
 import {
   startSignalingServer,
   type SignalingServer,
 } from "./signaling-server.ts";
 
 export type PeerOptions = {
+  /** The browser to open the person in. The project's own by default */
+  browser?: BrowserName;
   /** ICE servers for the peer connections. Never a server outside this machine */
   iceServers?: RTCIceServer[];
   /**
@@ -127,18 +131,47 @@ const isLocalUrl = (url: string) =>
   ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
 
 type Fixtures = {
-  /** A person with their own browser context, on a blank page */
+  /**
+   * A person with their own browser context, on a blank page, in the
+   * project's browser or the one given
+   */
   openPeer(options?: PeerOptions): Promise<Page>;
   /** A signaling server process of the test's own, stopped after the test */
   startSignalingServer(env: Record<string, string>): Promise<SignalingServer>;
 };
 
 export const test = base.extend<Fixtures>({
-  openPeer: async ({ browser }, use) => {
+  openPeer: async ({ browser, browserName, playwright }, use) => {
     const contexts: BrowserContext[] = [];
+    const launched = new Map<BrowserName, Promise<Browser>>();
     const externalRequests: string[] = [];
+    /**
+     * Another browser, launched once per test. The project's launch options
+     * apply to every browser launched in its worker, so each setting is
+     * replaced by the other browser's own.
+     */
+    const launch = (name: BrowserName) => {
+      if (!launched.has(name)) {
+        launched.set(
+          name,
+          playwright[name].launch({
+            args: [],
+            firefoxUserPrefs: {},
+            ...browsers[name].launchOptions,
+          }),
+        );
+      }
+      return launched.get(name)!;
+    };
     await use(async (options = {}) => {
-      const context = await browser.newContext(options.context);
+      const name = options.browser ?? browserName;
+      const context = await (name === browserName
+        ? browser.newContext(options.context)
+        : launch(name).then((other) =>
+            // The project's context options, such as its user agent, apply to
+            // other browsers' contexts too, so these get their own device's
+            other.newContext({ ...browsers[name].device, ...options.context }),
+          ));
       contexts.push(context);
       await context.route(
         (url) => !isLocalUrl(url.href),
@@ -157,6 +190,9 @@ export const test = base.extend<Fixtures>({
       return context.newPage();
     });
     await Promise.all(contexts.map((context) => context.close()));
+    await Promise.all(
+      [...launched.values()].map(async (other) => (await other).close()),
+    );
     expect(externalRequests, "requests outside this machine").toEqual([]);
   },
   startSignalingServer: async ({ baseURL }, use) => {

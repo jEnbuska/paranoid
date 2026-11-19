@@ -181,6 +181,8 @@ The tests send nothing outside the machine:
 | Firefox  | Everything except reading the real clipboard, as Playwright can't grant the permission. |
 | WebKit   | Everything except the real clipboard, which could replace the clipboard of the machine. |
 
+Each project runs both people in its own browser. [`browser-pairs.spec.ts`](packages/e2e/tests/browser-pairs.spec.ts) connects two people in different browsers, in every ordered pair of Chromium, Firefox and WebKit, because browsers set up WebRTC differently. `openPeer({ browser })` launches the other browser with the same device and launch settings as its project, defined once in [`browsers.ts`](packages/e2e/tests/browsers.ts). Each pair runs once when every project runs, in its inviter's project, and the other projects skip it.
+
 Tests that document a known bug are marked `test.fixme`, with a comment saying what goes wrong.
 
 ### Checking for flakiness

@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig } from "@playwright/test";
+import { browsers } from "./tests/browsers.ts";
 
 /** Not 8181 and 5173, so the tests run next to `pnpm dev` */
 const signalingPort = Number(process.env.E2E_SIGNALING_PORT || 8193);
@@ -64,30 +65,25 @@ export default defineConfig({
     {
       name: "chromium",
       use: {
-        ...devices["Desktop Chrome"],
-        launchOptions: {
-          // Plain host candidates instead of mDNS names, which depend on
-          // multicast working on the machine
-          args: ["--disable-features=WebRtcHideLocalIpsWithMdns"],
-        },
+        ...browsers.chromium.device,
+        launchOptions: browsers.chromium.launchOptions,
       },
     },
     {
       name: "firefox",
       use: {
-        ...devices["Desktop Firefox"],
-        launchOptions: {
-          firefoxUserPrefs: {
-            "media.peerconnection.ice.obfuscate_host_addresses": false,
-          },
-        },
+        ...browsers.firefox.device,
+        launchOptions: browsers.firefox.launchOptions,
       },
     },
     {
       // WebKit only offers mDNS host candidates and has no setting to turn them
       // off. The `openPeer` fixture points them at 127.0.0.1 instead
       name: "webkit",
-      use: { ...devices["Desktop Safari"] },
+      use: {
+        ...browsers.webkit.device,
+        launchOptions: browsers.webkit.launchOptions,
+      },
     },
   ],
 });
