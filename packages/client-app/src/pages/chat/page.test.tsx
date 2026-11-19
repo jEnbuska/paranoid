@@ -53,7 +53,6 @@ afterEach(() => {
 describe.each(modes)("the chat page $name", ({ Wrapper }) => {
   const connection = Object.assign(new EventTarget(), {
     connectionState: "connected" as RTCPeerConnectionState,
-    close: vi.fn(),
   });
   const channel = Object.assign(new EventTarget(), {
     readyState: "open" as RTCDataChannelState,
@@ -74,8 +73,6 @@ describe.each(modes)("the chat page $name", ({ Wrapper }) => {
   beforeEach(async () => {
     connection.connectionState = "connected";
     channel.readyState = "open";
-    connection.close.mockClear();
-    channel.close.mockClear();
     sendMessage.mockClear();
     const state = {
       ...defaultInviteContextState,
@@ -147,8 +144,6 @@ describe.each(modes)("the chat page $name", ({ Wrapper }) => {
     changeState("failed");
     await flush();
     expect(errorPage()?.textContent).toBe("Connection to peer lost");
-    expect(connection.close).toHaveBeenCalled();
-    expect(channel.close).toHaveBeenCalled();
   });
 
   test("a channel that closes shows the error page", async () => {

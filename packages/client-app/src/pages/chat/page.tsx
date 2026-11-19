@@ -25,8 +25,6 @@ export default function ChatPage() {
         connection.connectionState === "failed" ||
         channel.readyState === "closed"
       ) {
-        channel.close();
-        connection.close();
         reject(new Error("Connection to peer lost"));
       }
       // Anything else, like `disconnected`, can still recover by itself

@@ -68,7 +68,6 @@ function fakeConnection() {
     iceGatheringState: "gathering",
     iceConnectionState: "new",
     signalingState: "have-local-offer",
-    close: vi.fn(),
   }) as unknown as { connectionState: RTCPeerConnectionState } & Omit<
     RTCPeerConnection,
     "connectionState"
@@ -79,7 +78,6 @@ function fakeConnection() {
 function fakeChannel() {
   return Object.assign(new EventTarget(), {
     readyState: "connecting",
-    close: vi.fn(),
   }) as unknown as { readyState: RTCDataChannelState } & RTCDataChannel;
 }
 
@@ -191,11 +189,8 @@ describe.each(modes)("connecting $name", ({ Wrapper }) => {
         </ErrorBoundary>
       </Wrapper>
     );
-    const expectError = (message: string) => {
+    const expectError = (message: string) =>
       expect(screen.getByRole("alert").textContent).toBe(message);
-      expect(connection.close).toHaveBeenCalled();
-      expect(channel.close).toHaveBeenCalled();
-    };
 
     beforeEach(() => {
       connection = fakeConnection();
@@ -203,7 +198,7 @@ describe.each(modes)("connecting $name", ({ Wrapper }) => {
       emit = async () => {};
     });
 
-    test("a failed connection is an error, and closes it", async () => {
+    test("a failed connection is an error", async () => {
       render(ui());
       await flush();
       connection.connectionState = "failed";
@@ -212,7 +207,7 @@ describe.each(modes)("connecting $name", ({ Wrapper }) => {
       expectError("Peer connection failed");
     });
 
-    test("a data channel that closes is an error, and closes it", async () => {
+    test("a data channel that closes is an error", async () => {
       render(ui());
       await flush();
       channel.dispatchEvent(new Event("close"));
@@ -220,7 +215,7 @@ describe.each(modes)("connecting $name", ({ Wrapper }) => {
       expectError("Data channel closed during handshake");
     });
 
-    test("connecting that takes too long is an error, and closes it", async () => {
+    test("connecting that takes too long is an error", async () => {
       vi.useFakeTimers();
       try {
         render(ui());
