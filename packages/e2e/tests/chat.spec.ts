@@ -6,8 +6,10 @@ import {
   controlSignaling,
   createInvite,
   displayNameField,
+  expectConnectionErrorPage,
   expectInChat,
   inviteDialog,
+  leaveErrorPage,
   messageItem,
   messageText,
   openJoinForm,
@@ -125,18 +127,18 @@ test.describe("two people chatting", WEBRTC, () => {
 
     await expect(displayNameField(bob)).toBeVisible();
     await expect(bob).toHaveURL(/\/$/);
-    await expect(
-      alice.getByRole("alert").filter({ hasText: "Connection to peer lost" }),
-    ).toBeVisible();
+    await expectConnectionErrorPage(alice, "Connection to the peer lost");
     await expect(composer(alice)).toHaveCount(0);
   });
 
   test("leaving the chat doesn't open the invite dialog", async ({
     openPeer,
   }) => {
-    const { alice, bob } = await connectPeers(openPeer);
-    // The joiner leaves first, then the inviter, whose peer is already gone
-    for (const page of [bob, alice]) {
+    // In one chat the joiner leaves, in another the inviter. The one who stays
+    // ends on the error page, so only one person can leave a chat this way
+    for (const leaver of ["joiner", "inviter"] as const) {
+      const { alice, bob } = await connectPeers(openPeer);
+      const page = leaver === "joiner" ? bob : alice;
       // The start page could open the dialog for a single render, so this
       // records every dialog added rather than checking the page afterwards
       await page.evaluate(() => {
@@ -174,9 +176,8 @@ test.describe("two people chatting", WEBRTC, () => {
   }) => {
     const { alice, bob } = await connectPeers(openPeer);
     await bob.close({ runBeforeUnload: true });
-    await expect(
-      alice.getByRole("alert").filter({ hasText: "Connection to peer lost" }),
-    ).toBeVisible();
+    await expectConnectionErrorPage(alice, "Connection to the peer lost");
+    await expect(composer(alice)).toHaveCount(0);
   });
 
   test("the other person sees when someone's page goes away without closing", async ({
@@ -186,11 +187,11 @@ test.describe("two people chatting", WEBRTC, () => {
     // Without beforeunload, like a crashed tab: Chromium then sends the other
     // person nothing, and Firefox still closes the connection
     await bob.close();
-    await expect(
-      alice.getByRole("alert").filter({ hasText: "Connection to peer lost" }),
-      // Chromium declares a silent connection failed 15 to 16 seconds after
-      // its last packet, a fixed timer rather than a slow machine
-    ).toBeVisible({ timeout: 30_000 });
+    // Chromium declares a silent connection failed 15 to 16 seconds after its
+    // last packet, a fixed timer rather than a slow machine
+    await expectConnectionErrorPage(alice, "Connection to the peer lost", {
+      timeout: 30_000,
+    });
   });
 
   test("reloading leaves the chat, as nothing is stored", async ({
@@ -205,19 +206,14 @@ test.describe("two people chatting", WEBRTC, () => {
     await expect(displayNameField(bob)).toBeVisible();
     await expect(bob).toHaveURL(/\/$/);
     await expect(bob.getByText("Gone after a reload")).toHaveCount(0);
-    await expect(
-      alice.getByRole("alert").filter({ hasText: "Connection to peer lost" }),
-    ).toBeVisible();
+    await expectConnectionErrorPage(alice, "Connection to the peer lost");
   });
 
   test("can start a new chat after leaving one", async ({ openPeer }) => {
     const { alice, bob } = await connectPeers(openPeer);
     await bob.getByRole("button", { name: "Exit room" }).click();
-    await expect(
-      alice.getByRole("alert").filter({ hasText: "Connection to peer lost" }),
-    ).toBeVisible();
-    await alice.getByRole("button", { name: "Exit room" }).click();
-    await expect(displayNameField(alice)).toBeVisible();
+    await expectConnectionErrorPage(alice, "Connection to the peer lost");
+    await leaveErrorPage(alice);
 
     const link = await createInvite(alice, { name: "Alice again" });
     await openJoinForm(bob, link);
