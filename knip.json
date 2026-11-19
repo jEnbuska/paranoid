@@ -6,8 +6,12 @@
   "workspaces": {
     ".": {
       // The reporter that the `knip` script passes with --reporter. Knip
-      // loads its default export itself, so entry exports aren't checked here
-      "entry": ["scripts/knip-explain.mts"],
+      // loads its default export itself, so entry exports aren't checked here.
+      // The rebase-prs skill's script is run with node by the skill's SKILL.md
+      "entry": [
+        "scripts/knip-explain.mts",
+        ".claude/skills/rebase-prs/rebase-prs.mts"
+      ],
       "includeEntryExports": false
     },
     "packages/client-app": {

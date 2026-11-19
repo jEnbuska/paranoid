@@ -1,12 +1,13 @@
 /**
  * Rebases every open, ready PR into a base branch that has fallen behind it,
- * the same as "Update with rebase" on the PR, unless it conflicts. Run it
- * from the root after a merge: `pnpm rebase-prs` for PRs into `dev`, or
- * `pnpm rebase-prs main`. Add `--dry-run` to only print what it would do.
+ * the same as "Update with rebase" on the PR, unless it conflicts. The
+ * `rebase-prs` skill (SKILL.md next to this file) runs it from the root:
+ * `node .claude/skills/rebase-prs/rebase-prs.mts` for PRs into `dev`, with
+ * `main` for PRs into `main`, and `--dry-run` to only print what it would do.
  *
  * It acts as whoever `gh` is signed in as. Pushes made with a user's login
  * start CI, so the rebased PRs get their checks again, with no GitHub App or
- * token. "Automatic rebases" in CONTRIBUTING.md says when to run it.
+ * token.
  */
 import { execFileSync } from "node:child_process";
 import { parseArgs } from "node:util";

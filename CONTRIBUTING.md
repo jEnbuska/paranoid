@@ -29,13 +29,13 @@ Run the checks listed in the [README](README.md#scripts) before pushing. CI only
 
 ## Rebasing PRs after a merge
 
-A PR has to be up to date with its base to merge, so each merge leaves every other open PR behind. After merging, catch them up from the repository root:
+A PR has to be up to date with its base to merge, so each merge leaves every other open PR behind. After merging, the maintainer catches them up with the `rebase-prs` Claude Code skill ([`.claude/skills/rebase-prs`](.claude/skills/rebase-prs/SKILL.md)), which sessions run after each merge. Without Claude Code, run its script from the repository root:
 
 ```bash
-pnpm rebase-prs
+node .claude/skills/rebase-prs/rebase-prs.mts
 ```
 
-[`scripts/rebase-prs.mts`](scripts/rebase-prs.mts) goes through the open PRs into `dev` and rebases each one that has fallen behind, the same as "Update with rebase" on the PR. `pnpm rebase-prs main` does the same for PRs into `main`, and `pnpm rebase-prs --dry-run` only prints what it would do.
+It goes through the open PRs into `dev` and rebases each one that has fallen behind, the same as "Update with rebase" on the PR. Add `main` for PRs into `main`, or `--dry-run` to only print what it would do.
 
 - **Drafts are skipped.** Their author is still pushing to them, and a draft can't merge anyway. Rebase it yourself before marking it ready.
 - **PRs from forks and the release PR from `dev` are skipped.** Rebasing the release PR would rewrite `dev`.

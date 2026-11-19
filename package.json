@@ -16,8 +16,7 @@
     "knip": "knip --reporter symbols --reporter ./scripts/knip-explain.mts",
     "build": "pnpm -r run build",
     "format": "oxfmt",
-    "format:check": "oxfmt --check",
-    "rebase-prs": "node scripts/rebase-prs.mts"
+    "format:check": "oxfmt --check"
   },
   "devDependencies": {
     "knip": "^6.45.1",
