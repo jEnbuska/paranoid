@@ -12,7 +12,12 @@ import MessageContext from "~/features/message/context/MessageContext.ts";
 type ChatFormData = RandomNameData<{
   text: string;
 }>;
-export default function ChatForm() {
+type OwnProps = {
+  /** False while the connection is interrupted, so nothing looks sent that
+   * might never arrive. What's typed stays */
+  canSend: boolean;
+};
+export default function ChatForm({ canSend }: OwnProps) {
   const names = useRandomNames("text");
   const { sendMessage } = use(MessageContext);
   const form = useForm<ChatFormData>({
@@ -22,7 +27,7 @@ export default function ChatForm() {
   // Not a TanStack Query mutation: those pause while the browser reports being
   // offline, and the peers may still be connected over the data channel
   const send = form.handleSubmit(async (data) => {
-    if (data[names.text].trim() === "") return;
+    if (!canSend || data[names.text].trim() === "") return;
     try {
       await sendMessage(data[names.text]);
       form.resetField(names.text);
@@ -36,7 +41,7 @@ export default function ChatForm() {
     if (e.shiftKey) return;
     if (e.key === "Enter") {
       e.preventDefault();
-      if (!isSubmitting) void send();
+      if (canSend && !isSubmitting) void send();
     }
   };
   return (
@@ -61,7 +66,7 @@ export default function ChatForm() {
       />
       <IconButton
         aria-label={"Send"}
-        disabled={!form.watch(names.text) || isSubmitting}
+        disabled={!canSend || !form.watch(names.text) || isSubmitting}
         type={"submit"}
       >
         <ForwardToInboxIcon />

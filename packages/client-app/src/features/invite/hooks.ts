@@ -1,4 +1,4 @@
-import { useReducer, useMemo, use } from "react";
+import { useReducer, useMemo, use, useRef } from "react";
 import { useNavigate } from "react-router";
 import {
   useOnEventDecrypted,
@@ -7,11 +7,18 @@ import {
 import { useAbortController } from "~/hooks/use-abort-controller";
 import { assertIsNotNil } from "shared-lib/utils/nil";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
-import { addPeerConnectionEventListeners } from "~/features/peer-connection/utils";
+import {
+  addPeerConnectionEventListeners,
+  closePeerConnection,
+} from "~/features/peer-connection/utils";
+import { PeerConnectionError } from "~/features/peer-connection/PeerConnectionError";
 import { useMemoOnce } from "~/hooks/use-memo-once";
 import constList from "shared-lib/utils/const-list";
 import { InviteConnectionProgressState } from "~/features/invite/types";
-import { inviteConnectionStateTypes } from "~/features/invite/constants";
+import {
+  CONNECTING_TIMEOUT_MS,
+  inviteConnectionStateTypes,
+} from "~/features/invite/constants";
 import { getConnectionStateProgress } from "~/features/invite/utils";
 import sleep from "shared-lib/utils/sleep";
 import { useEncrypt } from "~/features/crypt/hooks";
@@ -21,6 +28,7 @@ import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksContext";
 import { useResolvable } from "~/hooks/use-resolvable";
 import useReject from "~/hooks/use-reject.ts";
+import useStable from "~/hooks/use-stable.ts";
 
 export function useInviteState() {
   return use(InviteStateContext).state;
@@ -163,19 +171,42 @@ export function useMoveToChatAfterHandshake() {
   }, []);
 }
 
+/**
+ * Resolves once the handshake over the data channel has finished. Rejects when
+ * it can't finish: with a `PeerConnectionError` when the connection or the
+ * channel fails first, or when it takes longer than `CONNECTING_TIMEOUT_MS`.
+ * A rejection closes the connection and the channel first, so the peer stops
+ * waiting too
+ */
 function useHandleHandshake() {
   const { channel, connection, displayName } = useInviteState();
   const { handshake } = useInviteCallbacks();
   const encrypt = useEncrypt();
   const resolvable = useResolvable();
+  const settled = useRef(false);
+  /** Settles once: whatever comes after the first outcome changes nothing */
+  const settle = useStable((error?: unknown) => {
+    if (settled.current) return;
+    settled.current = true;
+    if (error === undefined) return resolvable.resolve();
+    closePeerConnection(connection, channel);
+    resolvable.reject(error);
+  });
   useAbortableEffect((signal) => {
     assertIsNotNil(connection);
     addPeerConnectionEventListeners(connection, signal, {
       connectionstatechange() {
         if (connection.connectionState !== "failed") return;
-        resolvable.reject(new Error("Peer connection failed"));
+        settle(new PeerConnectionError("failed"));
       },
     });
+    // Both people are on the invite once this step shows, so connecting has
+    // started
+    const timeout = setTimeout(
+      () => settle(new PeerConnectionError("timed-out")),
+      CONNECTING_TIMEOUT_MS,
+    );
+    signal.addEventListener("abort", () => clearTimeout(timeout));
   }, []);
   // Its own signal per run, so React.StrictMode's discarded first run neither
   // sends the display name nor takes the peer's name
@@ -185,8 +216,7 @@ function useHandleHandshake() {
       const options = { once: true, signal };
       channel.addEventListener(
         "close",
-        () =>
-          resolvable.reject(new Error("Data channel closed during handshake")),
+        () => settle(new PeerConnectionError("failed")),
         options,
       );
       try {
@@ -195,7 +225,7 @@ function useHandleHandshake() {
             channel.addEventListener("open", () => resolve(), options);
             channel.addEventListener(
               "error",
-              () => reject(new Error("Data channel failed")),
+              () => reject(new PeerConnectionError("failed")),
               options,
             );
           });
@@ -210,9 +240,9 @@ function useHandleHandshake() {
         await handshake(
           await getChannelInbox(channel).take("DISPLAY_NAME", signal),
         );
-        resolvable.resolve();
+        settle();
       } catch (e) {
-        if (!signal.aborted) resolvable.reject(e);
+        if (!signal.aborted) settle(e);
       }
     },
     [channel],
