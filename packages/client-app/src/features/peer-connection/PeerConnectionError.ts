@@ -17,4 +17,3 @@ export class PeerConnectionError extends Error {
     super(messages[cause]);
   }
 }
-

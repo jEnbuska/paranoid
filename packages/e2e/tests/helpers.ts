@@ -22,6 +22,27 @@ export const passPhraseField = (page: Page) => page.getByLabel(/^Pass phrase/);
 export const errorPage = (page: Page) =>
   page.getByRole("alert").filter({ hasText: "An unexpected error occurred" });
 
+/**
+ * Waits for the error page that a connection to the peer ending for good
+ * leads to: its alert naming the cause, the table flip and the link back
+ */
+export async function expectConnectionErrorPage(
+  page: Page,
+  cause:
+    | "Connecting to the peer failed"
+    | "Connecting to the peer timed out"
+    | "Connection to the peer lost",
+  options?: { timeout?: number },
+) {
+  await expect(page.getByRole("alert").filter({ hasText: cause })).toBeVisible(
+    options,
+  );
+  await expect(page.getByText("(╯°□°)╯︵ ┻━┻")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to the start page" }),
+  ).toBeVisible();
+}
+
 /** Follows the error page's link and waits for the start page */
 export async function leaveErrorPage(page: Page) {
   await page.getByRole("link", { name: "Back to the start page" }).click();

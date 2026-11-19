@@ -5,7 +5,10 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksContext";
-import { defaultInviteContextState } from "~/features/invite/constants";
+import {
+  CONNECTING_TIMEOUT_MS,
+  defaultInviteContextState,
+} from "~/features/invite/constants";
 import type {
   InviteContextCallbacks,
   InviteContextStateData,
@@ -65,14 +68,19 @@ function fakeConnection() {
     iceGatheringState: "gathering",
     iceConnectionState: "new",
     signalingState: "have-local-offer",
-  }) as unknown as RTCPeerConnection;
+    close: vi.fn(),
+  }) as unknown as { connectionState: RTCPeerConnectionState } & Omit<
+    RTCPeerConnection,
+    "connectionState"
+  >;
 }
 
 /** A data channel whose `readyState` the test sets before dispatching */
 function fakeChannel() {
   return Object.assign(new EventTarget(), {
     readyState: "connecting",
-  }) as { readyState: RTCDataChannelState } & RTCDataChannel;
+    close: vi.fn(),
+  }) as unknown as { readyState: RTCDataChannelState } & RTCDataChannel;
 }
 
 function iceCandidate(candidate: RTCIceCandidateInit | null) {
@@ -121,7 +129,7 @@ const sides = [
 
 describe.each(modes)("exchanging ICE candidates $name", ({ Wrapper }) => {
   describe.each(sides)("on $side's side", ({ Step }) => {
-    let connection: RTCPeerConnection;
+    let connection: ReturnType<typeof fakeConnection>;
     const ui = () => (
       <Wrapper>
         <ErrorBoundary>
@@ -166,6 +174,111 @@ describe.each(modes)("exchanging ICE candidates $name", ({ Wrapper }) => {
         "CANDIDATE",
       ]);
       expect(screen.queryByRole("alert")).toBeNull();
+    });
+  });
+});
+
+describe.each(modes)("connecting $name", ({ Wrapper }) => {
+  describe.each(sides)("on $side's side", ({ Step }) => {
+    let connection: ReturnType<typeof fakeConnection>;
+    let channel: ReturnType<typeof fakeChannel>;
+    const ui = () => (
+      <Wrapper>
+        <ErrorBoundary>
+          <Providers state={{ connection, channel }}>
+            <Step />
+          </Providers>
+        </ErrorBoundary>
+      </Wrapper>
+    );
+    const shownError = () => screen.queryByRole("alert")?.textContent;
+    const expectClosed = () => {
+      expect(connection.close).toHaveBeenCalled();
+      expect(channel.close).toHaveBeenCalled();
+    };
+
+    beforeEach(() => {
+      connection = fakeConnection();
+      channel = fakeChannel();
+      emit = async () => {};
+    });
+
+    test("a failed connection shows that connecting failed, and closes it", async () => {
+      render(ui());
+      await flush();
+      expect(screen.getByText("Connecting")).toBeTruthy();
+
+      connection.connectionState = "failed";
+      connection.dispatchEvent(new Event("connectionstatechange"));
+      await flush();
+      expect(shownError()).toBe("Connecting to the peer failed");
+      expectClosed();
+    });
+
+    test("a data channel that closes shows that connecting failed, and closes the connection", async () => {
+      render(ui());
+      await flush();
+
+      channel.readyState = "closed";
+      channel.dispatchEvent(new Event("close"));
+      await flush();
+      expect(shownError()).toBe("Connecting to the peer failed");
+      expectClosed();
+    });
+
+    test("a data channel that fails to open shows that connecting failed", async () => {
+      render(ui());
+      await flush();
+
+      channel.dispatchEvent(new Event("error"));
+      await flush();
+      expect(shownError()).toBe("Connecting to the peer failed");
+      expectClosed();
+    });
+
+    test("connecting that doesn't finish in time shows that it timed out, and closes it", async () => {
+      vi.useFakeTimers();
+      try {
+        const advance = (ms: number) =>
+          act(() => vi.advanceTimersByTimeAsync(ms));
+        render(ui());
+        await advance(CONNECTING_TIMEOUT_MS - 1);
+        expect(screen.getByText("Connecting")).toBeTruthy();
+        expect(connection.close).not.toHaveBeenCalled();
+
+        await advance(1);
+        expect(shownError()).toBe("Connecting to the peer timed out");
+        expectClosed();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("leaving the step stops the timeout", async () => {
+      vi.useFakeTimers();
+      try {
+        const { unmount } = render(ui());
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        unmount();
+        await vi.advanceTimersByTimeAsync(CONNECTING_TIMEOUT_MS);
+        expect(connection.close).not.toHaveBeenCalled();
+        expect(channel.close).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("only the first failure counts", async () => {
+      render(ui());
+      await flush();
+
+      connection.connectionState = "failed";
+      connection.dispatchEvent(new Event("connectionstatechange"));
+      channel.readyState = "closed";
+      channel.dispatchEvent(new Event("close"));
+      await flush();
+      expect(shownError()).toBe("Connecting to the peer failed");
+      expect(connection.close).toHaveBeenCalledTimes(1);
     });
   });
 });
