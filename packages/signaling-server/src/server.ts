@@ -47,7 +47,7 @@ httpServer.listen(port, () => {
   );
   console.log(
     maxInvites
-      ? `Exiting after ${maxInvites} invites`
+      ? `Invite limit: ${maxInvites}, exiting once they're all finished`
       : "No invite limit, not exiting on its own",
   );
 });
