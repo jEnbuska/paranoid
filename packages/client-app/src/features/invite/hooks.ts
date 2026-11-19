@@ -24,7 +24,6 @@ import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import InviteCallbacksContext from "~/features/invite/context/InviteCallbacksContext";
 import { useResolvable } from "~/hooks/use-resolvable";
 import useReject from "~/hooks/use-reject.ts";
-import useStable from "~/hooks/use-stable.ts";
 
 export function useInviteState() {
   return use(InviteStateContext).state;
@@ -167,28 +166,22 @@ export function useMoveToChatAfterHandshake() {
   }, []);
 }
 
-/** Rejects if the handshake fails or times out, after closing the connection */
 function useHandleHandshake() {
   const { channel, connection, displayName } = useInviteState();
   const { handshake } = useInviteCallbacks();
   const encrypt = useEncrypt();
   const resolvable = useResolvable();
-  const fail = useStable((error: unknown) => {
-    channel?.close();
-    connection?.close();
-    resolvable.reject(error);
-  });
   useAbortableEffect((signal) => {
     assertIsNotNil(connection);
     addPeerConnectionEventListeners(connection, signal, {
       connectionstatechange() {
         if (connection.connectionState !== "failed") return;
-        fail(new Error("Peer connection failed"));
+        resolvable.reject(new Error("Peer connection failed"));
       },
     });
     // This step shows once both people are on the invite
     const timeout = setTimeout(
-      () => fail(new Error("Connecting timed out")),
+      () => resolvable.reject(new Error("Connecting timed out")),
       CONNECTING_TIMEOUT_MS,
     );
     signal.addEventListener("abort", () => clearTimeout(timeout));
@@ -201,7 +194,8 @@ function useHandleHandshake() {
       const options = { once: true, signal };
       channel.addEventListener(
         "close",
-        () => fail(new Error("Data channel closed during handshake")),
+        () =>
+          resolvable.reject(new Error("Data channel closed during handshake")),
         options,
       );
       try {
@@ -227,7 +221,7 @@ function useHandleHandshake() {
         );
         resolvable.resolve();
       } catch (e) {
-        if (!signal.aborted) fail(e);
+        if (!signal.aborted) resolvable.reject(e);
       }
     },
     [channel],

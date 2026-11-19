@@ -4,6 +4,7 @@ import useUpdateState from "~/hooks/use-update-state";
 import { defaultInviteContextState } from "~/features/invite/constants";
 import InviteStateContext from "./InviteStateContext";
 import { useChatExits } from "~/features/misc/hooks.ts";
+import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
 
 export default function InviteStateContextProvider({
   children,
@@ -13,6 +14,15 @@ export default function InviteStateContextProvider({
     defaultInviteContextState,
     [chatExists],
   );
+  // The error page replaces this, so a connection that failed is closed, and
+  // the peer learns at once that it's over
+  useAbortableEffect((signal) => {
+    signal.addEventListener("abort", () => {
+      const { channel, connection } = getState();
+      channel?.close();
+      connection?.close();
+    });
+  }, []);
   const value = useMemo(() => {
     return { state, updateState, getState };
   }, [state]);
