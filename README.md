@@ -125,6 +125,7 @@ From the repository root:
 | `pnpm build`        | Build every package that has a build (client-app)                                                                     |
 | `pnpm format`       | Format the whole repo with oxfmt (`.oxfmtrc.json`)                                                                    |
 | `pnpm format:check` | Check formatting without changing files                                                                               |
+| `pnpm rebase-prs`   | Rebase every ready PR into `dev` that's behind it, see [CONTRIBUTING.md](CONTRIBUTING.md#rebasing-prs-after-a-merge)  |
 
 For a single package:
 
