@@ -4,7 +4,15 @@ import { defineConfig, devices } from "@playwright/test";
 /** Not 8181 and 5173, so the tests run next to `pnpm dev` */
 const signalingPort = Number(process.env.E2E_SIGNALING_PORT || 8193);
 const clientPort = Number(process.env.E2E_CLIENT_PORT || 5193);
-const clientOrigin = `http://localhost:${clientPort}`;
+/**
+ * IPv4, not `localhost`. Without camera or microphone permission, Firefox
+ * gathers ICE candidates only on the interface that routes to the server the
+ * page came from. For a loopback server it looks up the route to a public
+ * address of the same IP version instead. `localhost` resolves to `::1`
+ * first, and machines without an IPv6 route, such as GitHub's runners and
+ * Docker containers, then get no candidates at all, so peers never connect.
+ */
+const clientOrigin = `http://127.0.0.1:${clientPort}`;
 /** An app that already runs. The tests then start no servers of their own */
 const externalApp = process.env.E2E_BASE_URL;
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -43,7 +51,7 @@ export default defineConfig({
           // The production build, so the tests cover what is deployed
           command:
             `pnpm --filter client-app exec vite build --outDir ${outDir} --emptyOutDir` +
-            ` && pnpm --filter client-app exec vite preview --outDir ${outDir} --port ${clientPort} --strictPort`,
+            ` && pnpm --filter client-app exec vite preview --outDir ${outDir} --host 127.0.0.1 --port ${clientPort} --strictPort`,
           cwd: repositoryRoot,
           url: clientOrigin,
           env: { VITE_SIGNALING_SERVER: `localhost:${signalingPort}` },
