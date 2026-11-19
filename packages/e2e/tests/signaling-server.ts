@@ -11,7 +11,7 @@ export type SignalingServer = {
   /** Resolves with the exit code, or null if a signal ended it */
   exited: Promise<number | null>;
   /** Sends this page's socket.io traffic here instead of the shared server */
-  use(page: Page): Promise<void>;
+  routePage(page: Page): Promise<void>;
   /** Ends the process if it still runs */
   stop(): Promise<void>;
 };
@@ -41,7 +41,7 @@ export async function startSignalingServer(options: {
   return {
     port,
     exited,
-    use: (page) => routeSignaling(page, port),
+    routePage: (page) => routeSignaling(page, port),
     async stop() {
       if (child.exitCode === null && child.signalCode === null) {
         child.kill("SIGTERM");
