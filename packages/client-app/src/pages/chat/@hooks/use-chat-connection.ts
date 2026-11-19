@@ -9,7 +9,7 @@ import { assertIsNotNil } from "shared-lib/utils/nil";
  * Whether the chat's connection is `connected` with the channel open. Throws
  * to the error page when it's lost, and closes the channel on leaving the chat
  */
-export function useChatConnection() {
+export default function useChatConnection() {
   const { channel, connection } = useInviteState();
   assertIsNotNil(channel);
   assertIsNotNil(connection);
