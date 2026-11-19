@@ -140,6 +140,15 @@ jobs:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
+    # Playwright's image already has every browser and the system packages
+    # they need, so nothing runs apt, which hangs when Ubuntu's mirror is
+    # unreachable. Its version must match `@playwright/test` in
+    # pnpm-lock.yaml; the "Check the image's browsers" step fails if it
+    # doesn't. It runs as root, which Playwright's own CI setup does too.
+    # `--ipc=host` keeps Chromium from running out of shared memory.
+    container:
+      image: mcr.microsoft.com/playwright@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f # v1.64.1-noble
+      options: --ipc=host
 
     steps:
       - name: Skip, as no file the end-to-end tests check has changed
@@ -153,10 +162,13 @@ jobs:
 
       - name: Set up pnpm
         if: needs.changes.outputs.e2e != 'false'
+        timeout-minutes: 3
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
+      # The image comes with its own Node.js, which isn't the one in .nvmrc
       - name: Set up Node.js
         if: needs.changes.outputs.e2e != 'false'
+        timeout-minutes: 3
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -164,35 +176,37 @@ jobs:
 
       - name: Install dependencies
         if: needs.changes.outputs.e2e != 'false'
+        timeout-minutes: 5
         run: pnpm install --frozen-lockfile
 
-      - name: Read the Playwright version
-        id: playwright
+      # Each Playwright version needs its own browser builds. A dry run lists
+      # where the installed Playwright looks for them, without downloading.
+      - name: Check the image's browsers
         if: needs.changes.outputs.e2e != 'false'
-        run: echo "version=$(pnpm --filter e2e exec playwright --version | cut -d ' ' -f 2)" >> "$GITHUB_OUTPUT"
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          version=$(pnpm --filter e2e exec playwright --version | cut -d ' ' -f 2)
+          dirs=$(pnpm --filter e2e exec playwright install --dry-run "$BROWSER" | sed -n 's/^ *Install location: *//p')
+          if [ -z "$dirs" ]; then
+            echo "::error::playwright install --dry-run listed no browsers."
+            exit 1
+          fi
+          missing=0
+          for dir in $dirs; do
+            if [ ! -d "$dir" ]; then
+              echo "::error::The Playwright image has no $dir, which Playwright $version needs. Update the image in ci.yml to the version of @playwright/test in pnpm-lock.yaml."
+              missing=1
+            fi
+          done
+          exit "$missing"
 
-      - name: Cache the browser
-        id: browser-cache
-        if: needs.changes.outputs.e2e != 'false'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ matrix.browser }}-${{ runner.os }}-${{ steps.playwright.outputs.version }}
-
-      # GitHub's Ubuntu image already has the libraries Chromium needs, so
-      # Chromium skips apt, which hangs when Ubuntu's mirror is unreachable.
-      # Firefox and WebKit need more packages.
-      - name: Install the browser
-        if: needs.changes.outputs.e2e != 'false' && steps.browser-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter e2e exec playwright install ${{ matrix.browser != 'chromium' && '--with-deps' || '' }} ${{ matrix.browser }}
-
-      # The cache holds the browser, not the system packages it needs
-      - name: Install system dependencies of the cached browser
-        if: needs.changes.outputs.e2e != 'false' && steps.browser-cache.outputs.cache-hit == 'true' && matrix.browser != 'chromium'
-        run: pnpm --filter e2e exec playwright install-deps ${{ matrix.browser }}
-
+      # Firefox refuses to run as root when HOME belongs to another user, and
+      # GitHub sets HOME to /github/home, which the runner's user owns.
       - name: Run end-to-end tests
         if: needs.changes.outputs.e2e != 'false'
+        env:
+          HOME: /root
         run: pnpm test:e2e --project=${{ matrix.browser }}
 
       - name: Upload the report
