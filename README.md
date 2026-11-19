@@ -12,7 +12,7 @@ Messages go straight from one browser to the other over WebRTC. A small signalin
 4. **Handshake.** Both sides derive a shared AES-GCM key using ECDH. Every signaling payload (pass phrase check, SDP descriptions, ICE candidates) is encrypted twice: first with the ECDH-derived key, then with a key derived from the pass phrase (PBKDF2, 100k iterations). The server only relays this ciphertext between the two sockets.
 5. **Chat.** Once the WebRTC connection is up, text messages go directly between the peers. Invites live only in server memory. The server forgets an invite once both sides have finished the handshake over the data channel, or earlier when it expires, when it's closed or when either side disconnects.
 
-> NAT traversal uses Google's public STUN servers by default, and they see users' IP addresses. Setting `VITE_ICE_SERVERS` to a self-hosted STUN server avoids this. No TURN server is set up, so some restrictive networks may fail to connect.
+> Test for #53, never merge: NAT traversal uses Google's public STUN servers by default, and they see users' IP addresses. Setting `VITE_ICE_SERVERS` to a self-hosted STUN server avoids this. No TURN server is set up, so some restrictive networks may fail to connect.
 
 ## Repository layout
 
