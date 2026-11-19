@@ -3,7 +3,9 @@ node_modules
 .vscode/*
 !.vscode/extensions.json
 .DS_Store
-.claude/
+.claude/*
+# Project skills are shared; worktrees and local settings aren't
+!.claude/skills/
 
 # Local environment overrides
 .env.local
