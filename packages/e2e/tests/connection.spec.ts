@@ -1,5 +1,6 @@
 import { createSocket } from "node:dgram";
 import { networkInterfaces } from "node:os";
+import type { Page } from "@playwright/test";
 import { expect, pageRecord, test } from "./fixtures.ts";
 import {
   WEBRTC,
@@ -31,6 +32,36 @@ async function openSilentStunServer() {
     close: () => new Promise<void>((resolve) => socket.close(() => resolve())),
   };
 }
+
+/**
+ * Holds back each candidate the signaling server relays to the page, like a
+ * busy server or network. Firefox fails ICE when no remote candidate arrives
+ * within 5 seconds of its checks starting
+ */
+async function delayRelayedCandidates(page: Page, delayMs: number) {
+  await page.routeWebSocket(/socket\.io/, (socket) => {
+    const server = socket.connectToServer();
+    server.onMessage((message) => {
+      if (typeof message === "string" && message.includes('"CANDIDATE"')) {
+        setTimeout(() => socket.send(message), delayMs);
+      } else {
+        socket.send(message);
+      }
+    });
+  });
+}
+
+test(
+  "connects when the signaling server relays candidates slowly",
+  WEBRTC,
+  async ({ openPeer }) => {
+    const alice = await openPeer();
+    const bob = await openPeer();
+    await delayRelayedCandidates(alice, 6_000);
+    await delayRelayedCandidates(bob, 6_000);
+    await startChat(alice, bob);
+  },
+);
 
 test(
   "someone on a slower device than the joiner can invite",

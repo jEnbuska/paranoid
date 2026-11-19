@@ -10,6 +10,7 @@ import {
   useMoveToChatAfterHandshake,
 } from "~/features/invite/hooks.ts";
 import { assertIsNotNil } from "shared-lib/utils/nil";
+import { getGatheredLocalDescription } from "~/features/peer-connection/utils";
 
 export default function EstablishingAnswerPeerConnection() {
   useHandleInviteConnectionIceCandidatesExchange();
@@ -23,7 +24,7 @@ export default function EstablishingAnswerPeerConnection() {
       await connection.setRemoteDescription(description);
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
-      await emit("DESCRIPTION", answer);
+      await emit("DESCRIPTION", await getGatheredLocalDescription(connection));
     },
   });
   useMoveToChatAfterHandshake();
