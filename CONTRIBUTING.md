@@ -7,21 +7,21 @@ Paranoid has two long-lived branches:
 
 ## The rules
 
-|                                | Into `dev`                                                                         | Into `main`                                                     |
-| ------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Allowed source                 | A PR that links an open issue, or a `hotfix/*` branch in this repository           | `dev` of this repository                                        |
-| Direct pushes                  | Refused, for everyone                                                              | Refused, unless they fast-forward to the commit of a passing PR |
-| Force-pushes and deletion      | Refused, for everyone                                                              | Refused, for everyone                                           |
-| Must be up to date with target | Yes                                                                                | Yes                                                             |
-| Checks that must pass          | `Lint, format, typecheck, test & build`, `End-to-end tests (chromium)`, `PR rules` | The same, plus `End-to-end tests (firefox)` and `(webkit)`      |
-| How it lands                   | Rebase and merge                                                                   | Fast-forward                                                    |
-| Who merges                     | The maintainer                                                                     | The maintainer                                                  |
+|                                | Into `dev`                                                                                                     | Into `main`                                                     |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Allowed source                 | A PR that links an open issue, or a `hotfix/*` branch in this repository                                       | `dev` of this repository                                        |
+| Direct pushes                  | Refused, for everyone                                                                                          | Refused, unless they fast-forward to the commit of a passing PR |
+| Force-pushes and deletion      | Refused, for everyone                                                                                          | Refused, for everyone                                           |
+| Must be up to date with target | Yes                                                                                                            | Yes                                                             |
+| Checks that must pass          | `Lint, format, typecheck, test & build`, `End-to-end tests (chromium)`, `(firefox)` and `(webkit)`, `PR rules` | The same                                                        |
+| How it lands                   | Rebase and merge                                                                                               | Fast-forward                                                    |
+| Who merges                     | The maintainer                                                                                                 | The maintainer                                                  |
 
 CI skips the work a PR's changes can't affect, and a skipped check counts as passing. This is intended:
 
-- A docs-only PR (`**/*.md`, `LICENSE`) runs only the format check, for Markdown, and `End-to-end tests (chromium)` passes with its steps skipped.
+- A docs-only PR (`**/*.md`, `LICENSE`) runs only the format check, for Markdown, and the `End-to-end tests` checks pass with their steps skipped.
 - A PR that changes no package and nothing that installs them, for example only a root config file, runs the checks, and the end-to-end steps skip the same way.
-- A PR with no changed files skips both CI jobs. It fails `PR rules` unless it's a draft, and `End-to-end tests (chromium)` is never reported, so an empty PR can't get through by skipping CI. GitHub won't merge a draft.
+- A PR with no changed files skips both CI jobs. It fails `PR rules` unless it's a draft, and the `End-to-end tests` checks are never reported, so an empty PR can't get through by skipping CI. GitHub won't merge a draft.
 
 ## When a PR can merge
 
@@ -58,7 +58,7 @@ GitHub's rebase drops empty commits, but `git rebase` keeps them. So "Update bra
 
 When an issue is too big for one PR, split it. Pieces that can't really be built on their own, because they depend on each other or only make sense together, become [sub-issues](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-sub-issues) of the original issue (`gh issue create --parent <N>`, or `gh issue edit <N> --add-sub-issue <CHILD>` for an existing issue). Work that can be built on its own becomes a separate issue. The same goes for whatever a PR leaves undone: move it to a sub-issue or a separate issue before the PR merges.
 
-Run the checks listed in the [README](README.md#scripts) before pushing. CI only runs Chromium on PRs into `dev`, so run `pnpm test:e2e` locally to cover Firefox and WebKit as well. If a browser fails, move the PR to draft and add a comment saying which browser and test failed.
+Run the checks listed in the [README](README.md#scripts) before pushing. CI runs the end-to-end tests in Chromium, Firefox and WebKit on every PR. If a browser fails on a ready PR, move the PR to draft and add a comment saying which browser and test failed.
 
 ## Rebasing PRs after a merge
 
@@ -106,7 +106,7 @@ A hotfix is a `hotfix/*` branch into `dev` that doesn't need an issue. It's rele
 
 ## Releases
 
-1. Open a PR from `dev` into `main`. This is the only PR that runs Firefox and WebKit in CI.
+1. Open a PR from `dev` into `main`.
 2. When every check has passed, fast-forward `main`:
 
    ```bash
