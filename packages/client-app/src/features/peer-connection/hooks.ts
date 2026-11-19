@@ -24,7 +24,9 @@ const isLost = (connection: RTCPeerConnection, channel: RTCDataChannel) =>
  *
  * A connection that fails or a channel that closes is gone for good, as there
  * is no server to reconnect through. This then closes both and sends a
- * `PeerConnectionError` to the error page
+ * `PeerConnectionError` to the error page. Both count: a peer that disappears
+ * without closing, for example when its tab crashes or its close is lost,
+ * never closes the channel in Chromium, and the connection fails instead
  */
 export function useIsPeerConnected(
   connection: RTCPeerConnection,
