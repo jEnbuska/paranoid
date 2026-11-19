@@ -167,7 +167,7 @@ pnpm --filter e2e exec playwright show-report
 
 The tests start their own servers on ports `8193` (signaling) and `5193` (client), so they run next to `pnpm dev`. Set `E2E_SIGNALING_PORT` and `E2E_CLIENT_PORT` to use others. To test an app that already runs, set `E2E_BASE_URL` to its address, and the tests start no servers. The client is built into `packages/e2e/dist`, not into its own `dist`.
 
-The `MAX_INVITES` tests ([`invite-limit.spec.ts`](packages/e2e/tests/invite-limit.spec.ts)) can't use the shared signaling server, which must not exit under the other tests. Each starts a server process of its own with the `startSignalingServer` fixture, on a port the OS picks, routes its pages' socket.io requests there and checks the exit code. Those pages only use HTTP long-polling, because Playwright can't send a WebSocket to another port.
+The `MAX_INVITES` tests ([`invite-limit.spec.ts`](packages/e2e/tests/invite-limit.spec.ts)) can't use the shared signaling server, which must not exit under the other tests. Each starts a server process of its own with the `startSignalingServer` fixture, on a port the OS picks, routes its pages' socket.io requests there and checks the exit code. Those pages only use HTTP long-polling, because Playwright can send an HTTP request to another port but not a WebSocket.
 
 The tests send nothing outside the machine:
 
