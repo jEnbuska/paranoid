@@ -193,10 +193,10 @@ pnpm test:e2e --project=chromium --repeat-each=20
 ```
 
 ```bash
-pnpm test:e2e --project=chromium --repeat-each=20 --workers=20
+pnpm test:e2e --project=chromium --repeat-each=20 --workers=100%
 ```
 
-The second command runs more workers than the machine has cores, so the browsers compete for the CPU, as on a busy CI runner. Repeat both for `firefox` and `webkit`. Every run should pass with no failures. Treat a failure that happens only sometimes as a bug in the app or the test, and fix its cause. Don't add a retry, a longer timeout or a fixed wait. When another end-to-end run shares the machine, give each run its own `E2E_SIGNALING_PORT` and `E2E_CLIENT_PORT`, and count the overlap as load.
+The second command runs one worker per CPU core, twice Playwright's default, so the browsers compete for the CPU, as on a busy CI runner. Repeat both for `firefox` and `webkit`. Every run should pass with no failures. Don't go much higher: each Firefox and WebKit worker starts several processes, and at twice as many workers as cores a 10-core Mac stopped launching them, so nearly every test timed out, whatever it did. Known failures under load are tracked in issues labeled `bug`. Treat a failure that happens only sometimes as a bug in the app or the test, and fix its cause. Don't add a retry, a longer timeout or a fixed wait. When another end-to-end run shares the machine, give each run its own `E2E_SIGNALING_PORT` and `E2E_CLIENT_PORT`, and count the overlap as load.
 
 ## Continuous integration
 
