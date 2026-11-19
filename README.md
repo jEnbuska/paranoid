@@ -79,18 +79,21 @@ pnpm dev
 
 The signaling server listens on `localhost:8181` (set `PORT` to change it) and restarts when files change; the web app is a Vite dev server with HMR. Open http://localhost:5173. To try a full chat on one machine, open the app in two browser windows (for example a normal window and a private one): create an invite in one and join it from the other.
 
-By default the server only accepts browser connections from `http://localhost:5173` (Vite dev) and `http://localhost:4173` (Vite preview). If you serve the client from another origin, add it to `CORS_ORIGINS` (see below). Ctrl+C or `SIGTERM` disconnects every socket and closes the server.
+By default the server only accepts browser connections from `http://localhost:5173` (Vite dev) and `http://localhost:4173` (Vite preview). If you serve the client from another origin, add it to `CORS_ORIGINS` (see below). Ctrl+C or `SIGTERM` disconnects every socket and closes the server, which then exits with 130 or 143.
 
 ### Configuration
 
 The signaling server reads these environment variables. The `start` and `dev` scripts also load [`packages/signaling-server/.env`](packages/signaling-server/.env) with Node's built-in `--env-file-if-exists`; variables already set in the environment take precedence.
 
-| Variable       | Default                                       | Purpose                                             |
-| -------------- | --------------------------------------------- | --------------------------------------------------- |
-| `PORT`         | `8181`                                        | Port the server listens on.                         |
-| `CORS_ORIGINS` | `http://localhost:5173,http://localhost:4173` | Comma-separated browser origins allowed to connect. |
+| Variable       | Default                                       | Purpose                                                                            |
+| -------------- | --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `PORT`         | `8181`                                        | Port the server listens on.                                                        |
+| `CORS_ORIGINS` | `http://localhost:5173,http://localhost:4173` | Comma-separated browser origins allowed to connect.                                |
+| `MAX_INVITES`  | No limit                                      | How many invites the server creates before it exits: a whole number of at least 1. |
 
 The server logs startup, connections, disconnections and handler errors. It never logs event payloads.
+
+With `MAX_INVITES` set, the server refuses to create an invite once it has created that many, and the person trying sees the error page. Opening an invite that already exists still works. Once the last invite is finished, however it ends, the server closes and exits with code 0, so a deployment can shut itself down. Chats already running keep going, because they don't use the server. Code 0 means only that; a crash, a startup error such as an invalid `MAX_INVITES`, or a signal exits with another code. The server only counts invites: nothing about who created which one is kept or logged.
 
 `GET /healthz` returns `200` with the body `ok`, for deploy and uptime checks. The response is constant, so it says nothing about the server's state, and health requests aren't logged. Other paths outside socket.io return `404`.
 
@@ -163,6 +166,8 @@ pnpm --filter e2e exec playwright show-report
 ```
 
 The tests start their own servers on ports `8193` (signaling) and `5193` (client), so they run next to `pnpm dev`. Set `E2E_SIGNALING_PORT` and `E2E_CLIENT_PORT` to use others. To test an app that already runs, set `E2E_BASE_URL` to its address, and the tests start no servers. The client is built into `packages/e2e/dist`, not into its own `dist`.
+
+The `MAX_INVITES` tests ([`invite-limit.spec.ts`](packages/e2e/tests/invite-limit.spec.ts)) can't use the shared signaling server, which must not exit under the other tests. Each starts a server process of its own with the `startSignalingServer` fixture, on a port the OS picks, routes its pages' socket.io requests there and checks the exit code. Those pages only use HTTP long-polling, because Playwright can't send a WebSocket to another port.
 
 The tests send nothing outside the machine:
 

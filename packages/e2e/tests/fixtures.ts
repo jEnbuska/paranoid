@@ -5,6 +5,10 @@ import {
   type BrowserContextOptions,
   type Page,
 } from "@playwright/test";
+import {
+  startSignalingServer,
+  type SignalingServer,
+} from "./signaling-server.ts";
 
 export type PeerOptions = {
   /** ICE servers for the peer connections. Never a server outside this machine */
@@ -102,6 +106,8 @@ const isLocalUrl = (url: string) =>
 type Fixtures = {
   /** A person with their own browser context, on a blank page */
   openPeer(options?: PeerOptions): Promise<Page>;
+  /** A signaling server process of the test's own, stopped after the test */
+  startSignalingServer(env: Record<string, string>): Promise<SignalingServer>;
 };
 
 export const test = base.extend<Fixtures>({
@@ -129,6 +135,18 @@ export const test = base.extend<Fixtures>({
     });
     await Promise.all(contexts.map((context) => context.close()));
     expect(externalRequests, "requests outside this machine").toEqual([]);
+  },
+  startSignalingServer: async ({ baseURL }, use) => {
+    const servers: SignalingServer[] = [];
+    await use(async (env) => {
+      const server = await startSignalingServer({
+        clientOrigin: new URL(baseURL!).origin,
+        env,
+      });
+      servers.push(server);
+      return server;
+    });
+    await Promise.all(servers.map((server) => server.stop()));
   },
 });
 
