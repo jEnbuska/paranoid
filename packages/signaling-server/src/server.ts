@@ -1,11 +1,11 @@
 import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { constants } from "node:os";
 import { Server } from "socket.io";
 import { handleHttpRequest } from "./http-handler.ts";
-import {
-  removeInvite,
-  getInviteBySocket,
-  getInviteCounterPartSocket,
-} from "./invites.ts";
+import { limitInvites } from "./invites.ts";
+import { parseMaxInvites } from "./max-invites.ts";
+import { handleDisconnect } from "./handlers/disconnect.ts";
 import { handleDone } from "./handlers/done.ts";
 import { handleCreate } from "./handlers/create.ts";
 import { handleEnter } from "./handlers/enter.ts";
@@ -30,6 +30,7 @@ const corsOrigins = (
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+const maxInvites = parseMaxInvites(process.env.MAX_INVITES);
 
 const httpServer = createServer(handleHttpRequest);
 const io = new Server<ClientToServerEvents<false>, ServerToClientEvents<false>>(
@@ -39,18 +40,51 @@ const io = new Server<ClientToServerEvents<false>, ServerToClientEvents<false>>(
 );
 
 httpServer.listen(port, () => {
+  // The port it got, when PORT is 0
+  const { port: actualPort } = httpServer.address() as AddressInfo;
   console.log(
-    `Signaling server listening on port ${port}, allowing ${corsOrigins.join(", ")}`,
+    `Signaling server listening on port ${actualPort}, allowing ${corsOrigins.join(", ")}`,
+  );
+  console.log(
+    maxInvites
+      ? `Exiting after ${maxInvites} invites`
+      : "No invite limit, not exiting on its own",
   );
 });
 
+let closing = false;
+/**
+ * Disconnects every socket, closes the HTTP server and exits. Exit code 0 means
+ * only that the invite limit was reached and every invite finished, so a
+ * deployment can tell that from anything else and shut down
+ */
+function close(exitCode: number) {
+  if (closing) return;
+  closing = true;
+  io.close((error) => {
+    if (error) console.error(error);
+    process.exit(error ? 1 : exitCode);
+  });
+}
+
 function shutDown(signal: NodeJS.Signals) {
   console.log(`${signal} received, closing the signaling server`);
-  // Disconnects every socket and closes the HTTP server
-  io.close(() => process.exit(0));
+  // The code a shell reports for a process the signal ended, never 0
+  close(128 + constants.signals[signal]);
 }
 process.once("SIGINT", shutDown);
 process.once("SIGTERM", shutDown);
+
+if (maxInvites) {
+  limitInvites({
+    max: maxInvites,
+    onLastInviteFinished() {
+      console.log("Invite limit reached, exiting");
+      // Lets the handler that removed the last invite send its events first
+      setImmediate(() => close(0));
+    },
+  });
+}
 
 io.on("connection", (socket) => {
   const socketId = socket.id;
@@ -72,12 +106,7 @@ io.on("connection", (socket) => {
   socket
     .on("disconnect", (reason) => {
       console.log("disconnected", socketId, reason);
-      const invite = getInviteBySocket(socketId);
-      if (!invite) return;
-      const counterPartSocket = getInviteCounterPartSocket(socketId, invite);
-      removeInvite(invite.id);
-      if (!counterPartSocket) return;
-      return socket.to(counterPartSocket).emit("CLOSE");
+      handleDisconnect(socket);
     })
     .on("CREATE", bindSocket(handleCreate))
     .on("ENTER", bindSocket(handleEnter))

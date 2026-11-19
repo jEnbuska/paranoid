@@ -2,6 +2,7 @@ import {
   createInvite,
   getInviteBySocket,
   getInviteCalleeRole,
+  hasInvitesLeft,
 } from "../invites.ts";
 
 import type { HandleNonEncrypted } from "../types.ts";
@@ -18,6 +19,9 @@ export const handleCreate: HandleNonEncrypted<"CREATE"> = (
       success: false,
       type: calleeRole ? "NON_CLOSED_INVITE_EXISTS" : "NON_CLOSED_OFFER_EXISTS",
     });
+  }
+  if (!hasInvitesLeft()) {
+    return ack({ success: false, type: "INVITE_LIMIT_REACHED" });
   }
   const { id: inviteId, expiresAt } = createInvite({
     socketId: socket.id,
