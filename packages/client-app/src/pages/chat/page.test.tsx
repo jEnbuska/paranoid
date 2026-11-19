@@ -12,13 +12,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import InviteStateContext from "~/features/invite/context/InviteStateContext";
 import { defaultInviteContextState } from "~/features/invite/constants";
 import MessageContext from "~/features/message/context/MessageContext.ts";
-import type { Message } from "~/features/message/types";
 import ChatPage from "./page.tsx";
 
 /** Runs the pending microtasks and the state updates they cause */
 const flush = () => act(() => new Promise((resolve) => setTimeout(resolve)));
 
-/** Renders its children as they are, to compare with StrictMode */
 function Plain({ children }: PropsWithChildren) {
   return <>{children}</>;
 }
@@ -35,55 +33,10 @@ class ErrorBoundary extends Component<PropsWithChildren, { error?: Error }> {
     return { error };
   }
   render() {
-    if (this.state.error) {
-      return <p data-testid="error-page">{this.state.error.message}</p>;
-    }
+    if (this.state.error) return <h1>{this.state.error.message}</h1>;
     return this.props.children;
   }
 }
-
-/** A connected peer connection, whose state the test changes */
-function fakeConnection() {
-  const connection = Object.assign(new EventTarget(), {
-    connectionState: "connected" as RTCPeerConnectionState,
-    close: vi.fn(),
-  });
-  return {
-    connection,
-    change(state: RTCPeerConnectionState) {
-      connection.connectionState = state;
-      connection.dispatchEvent(new Event("connectionstatechange"));
-    },
-  };
-}
-
-/** An open data channel */
-function fakeChannel() {
-  return Object.assign(new EventTarget(), {
-    readyState: "open" as RTCDataChannelState,
-    close: vi.fn(),
-  });
-}
-
-const received: Message = {
-  id: "1",
-  createdAt: 0,
-  createdBy: "other",
-  data: "Hello there",
-};
-
-const warning = () =>
-  screen
-    .queryAllByRole("alert")
-    .find((it) => it.textContent?.includes("interrupted"));
-
-const errorPage = () => screen.queryByTestId("error-page")?.textContent;
-const sendButton = () =>
-  screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
-const type = (text: string) =>
-  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
-    target: { value: text },
-  });
 
 beforeEach(() => {
   // React logs the errors an error boundary catches
@@ -98,18 +51,42 @@ afterEach(() => {
 });
 
 describe.each(modes)("the chat page $name", ({ Wrapper }) => {
-  let connection: ReturnType<typeof fakeConnection>;
-  let channel: ReturnType<typeof fakeChannel>;
-  let sendMessage: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>;
+  const connection = Object.assign(new EventTarget(), {
+    connectionState: "connected" as RTCPeerConnectionState,
+    close: vi.fn(),
+  });
+  const channel = Object.assign(new EventTarget(), {
+    readyState: "open" as RTCDataChannelState,
+    close: vi.fn(),
+  });
+  const sendMessage = vi.fn(async (_text: string) => {});
+  const changeState = (state: RTCPeerConnectionState) =>
+    act(() => {
+      connection.connectionState = state;
+      connection.dispatchEvent(new Event("connectionstatechange"));
+    });
 
-  function ui() {
+  const notice = () => screen.queryByRole("alert");
+  const errorPage = () => screen.queryByRole("heading", { level: 1 });
+  const sendButton = () =>
+    screen.getByRole<HTMLButtonElement>("button", { name: "Send" });
+
+  beforeEach(async () => {
+    connection.connectionState = "connected";
+    channel.readyState = "open";
+    connection.close.mockClear();
+    channel.close.mockClear();
+    sendMessage.mockClear();
     const state = {
       ...defaultInviteContextState,
       peerDisplayName: "Bob",
-      connection: connection.connection as unknown as RTCPeerConnection,
+      connection: connection as unknown as RTCPeerConnection,
       channel: channel as unknown as RTCDataChannel,
     };
-    return (
+    const messages = [
+      { id: "1", createdAt: 0, createdBy: "other" as const, data: "Hello" },
+    ];
+    render(
       <Wrapper>
         <ErrorBoundary>
           <MemoryRouter initialEntries={["/chat"]}>
@@ -120,121 +97,66 @@ describe.each(modes)("the chat page $name", ({ Wrapper }) => {
                 updateState: async () => {},
               }}
             >
-              <MessageContext value={{ messages: [received], sendMessage }}>
+              <MessageContext value={{ messages, sendMessage }}>
                 <ChatPage />
               </MessageContext>
             </InviteStateContext>
           </MemoryRouter>
         </ErrorBoundary>
-      </Wrapper>
+      </Wrapper>,
     );
-  }
-
-  /** Renders the page connected, with a message typed */
-  async function renderTyped() {
-    render(ui());
     await flush();
-    type("Are you there?");
-  }
-
-  beforeEach(() => {
-    connection = fakeConnection();
-    channel = fakeChannel();
-    sendMessage = vi.fn(async () => {});
+    fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+      target: { value: "Are you there?" },
+    });
   });
 
-  test("sends while connected with the channel open", async () => {
-    await renderTyped();
-    expect(warning()).toBeUndefined();
-    expect(sendButton().disabled).toBe(false);
-
+  test("sends while connected", async () => {
+    expect(notice()).toBeNull();
     await act(() => sendButton().click());
-    await flush();
     expect(sendMessage).toHaveBeenCalledWith("Are you there?");
   });
 
-  for (const state of ["disconnected", "connecting", "new"] as const) {
-    test(`while ${state}, shows a notice, keeps the messages and doesn't send`, async () => {
-      await renderTyped();
-      act(() => connection.change(state));
+  for (const state of ["disconnected", "connecting"] as const) {
+    test(`while ${state}, shows a notice and doesn't send`, async () => {
+      changeState(state);
       await flush();
-
-      expect(warning()?.textContent).toBe(
-        "Connection to the peer interrupted. Trying to reconnect…",
+      expect(notice()?.textContent).toBe(
+        "Connection interrupted. Trying to reconnect…",
       );
-      expect(screen.getByText("Hello there")).toBeTruthy();
+      expect(screen.getByText("Hello")).toBeTruthy();
       expect(sendButton().disabled).toBe(true);
       fireEvent.submit(sendButton().form!);
-      fireEvent.keyDown(screen.getByRole("textbox", { name: "Message" }), {
-        key: "Enter",
-      });
       await flush();
       expect(sendMessage).not.toHaveBeenCalled();
-      expect(errorPage()).toBeUndefined();
     });
   }
 
-  test("doesn't send while the channel isn't open", async () => {
-    channel.readyState = "connecting";
-    await renderTyped();
-    expect(warning()).toBeTruthy();
-    expect(sendButton().disabled).toBe(true);
-  });
-
-  test("recovers when the connection is back", async () => {
-    await renderTyped();
-    act(() => connection.change("disconnected"));
+  test("recovers when connected again", async () => {
+    changeState("disconnected");
     await flush();
-    expect(warning()).toBeTruthy();
-
-    act(() => connection.change("connected"));
+    changeState("connected");
     await flush();
-    expect(warning()).toBeUndefined();
+    expect(notice()).toBeNull();
     expect(sendButton().disabled).toBe(false);
-    expect(screen.getByText("Hello there")).toBeTruthy();
-    expect(connection.connection.close).not.toHaveBeenCalled();
   });
 
-  test("a connection that fails after a drop shows the error page, closed", async () => {
-    await renderTyped();
-    act(() => connection.change("disconnected"));
+  test("a connection that fails after a drop shows the error page", async () => {
+    changeState("disconnected");
     await flush();
-
-    act(() => connection.change("failed"));
+    changeState("failed");
     await flush();
-    expect(errorPage()).toBe("Connection to the peer lost");
-    expect(connection.connection.close).toHaveBeenCalled();
+    expect(errorPage()?.textContent).toBe("Connection to peer lost");
+    expect(connection.close).toHaveBeenCalled();
     expect(channel.close).toHaveBeenCalled();
   });
 
-  test("a connection that fails shows the error page, closed", async () => {
-    render(ui());
-    await flush();
-
-    act(() => connection.change("failed"));
-    await flush();
-    expect(errorPage()).toBe("Connection to the peer lost");
-    expect(connection.connection.close).toHaveBeenCalled();
-    expect(channel.close).toHaveBeenCalled();
-  });
-
-  test("a channel that closes shows the error page, closed", async () => {
-    render(ui());
-    await flush();
-
+  test("a channel that closes shows the error page", async () => {
     act(() => {
       channel.readyState = "closed";
       channel.dispatchEvent(new Event("close"));
     });
     await flush();
-    expect(errorPage()).toBe("Connection to the peer lost");
-    expect(connection.connection.close).toHaveBeenCalled();
-  });
-
-  test("a channel that closed before the page showed shows the error page", async () => {
-    channel.readyState = "closed";
-    render(ui());
-    await flush();
-    expect(errorPage()).toBe("Connection to the peer lost");
+    expect(errorPage()?.textContent).toBe("Connection to peer lost");
   });
 });

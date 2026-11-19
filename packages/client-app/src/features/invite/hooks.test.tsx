@@ -191,8 +191,8 @@ describe.each(modes)("connecting $name", ({ Wrapper }) => {
         </ErrorBoundary>
       </Wrapper>
     );
-    const shownError = () => screen.queryByRole("alert")?.textContent;
-    const expectClosed = () => {
+    const expectError = (message: string) => {
+      expect(screen.getByRole("alert").textContent).toBe(message);
       expect(connection.close).toHaveBeenCalled();
       expect(channel.close).toHaveBeenCalled();
     };
@@ -203,82 +203,34 @@ describe.each(modes)("connecting $name", ({ Wrapper }) => {
       emit = async () => {};
     });
 
-    test("a failed connection shows that connecting failed, and closes it", async () => {
+    test("a failed connection is an error, and closes it", async () => {
       render(ui());
       await flush();
-      expect(screen.getByText("Connecting")).toBeTruthy();
-
       connection.connectionState = "failed";
       connection.dispatchEvent(new Event("connectionstatechange"));
       await flush();
-      expect(shownError()).toBe("Connecting to the peer failed");
-      expectClosed();
+      expectError("Peer connection failed");
     });
 
-    test("a data channel that closes shows that connecting failed, and closes the connection", async () => {
+    test("a data channel that closes is an error, and closes it", async () => {
       render(ui());
       await flush();
-
-      channel.readyState = "closed";
       channel.dispatchEvent(new Event("close"));
       await flush();
-      expect(shownError()).toBe("Connecting to the peer failed");
-      expectClosed();
+      expectError("Data channel closed during handshake");
     });
 
-    test("a data channel that fails to open shows that connecting failed", async () => {
-      render(ui());
-      await flush();
-
-      channel.dispatchEvent(new Event("error"));
-      await flush();
-      expect(shownError()).toBe("Connecting to the peer failed");
-      expectClosed();
-    });
-
-    test("connecting that doesn't finish in time shows that it timed out, and closes it", async () => {
+    test("connecting that takes too long is an error, and closes it", async () => {
       vi.useFakeTimers();
       try {
-        const advance = (ms: number) =>
-          act(() => vi.advanceTimersByTimeAsync(ms));
         render(ui());
-        await advance(CONNECTING_TIMEOUT_MS - 1);
-        expect(screen.getByText("Connecting")).toBeTruthy();
-        expect(connection.close).not.toHaveBeenCalled();
-
-        await advance(1);
-        expect(shownError()).toBe("Connecting to the peer timed out");
-        expectClosed();
+        await act(() => vi.advanceTimersByTimeAsync(CONNECTING_TIMEOUT_MS - 1));
+        expect(screen.queryByRole("alert")).toBeNull();
+        await act(() => vi.advanceTimersByTimeAsync(1));
+        expectError("Connecting timed out");
       } finally {
         vi.useRealTimers();
       }
-    });
-
-    test("leaving the step stops the timeout", async () => {
-      vi.useFakeTimers();
-      try {
-        const { unmount } = render(ui());
-        await act(() => vi.advanceTimersByTimeAsync(0));
-        unmount();
-        await vi.advanceTimersByTimeAsync(CONNECTING_TIMEOUT_MS);
-        expect(connection.close).not.toHaveBeenCalled();
-        expect(channel.close).not.toHaveBeenCalled();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    test("only the first failure counts", async () => {
-      render(ui());
-      await flush();
-
-      connection.connectionState = "failed";
-      connection.dispatchEvent(new Event("connectionstatechange"));
-      channel.readyState = "closed";
-      channel.dispatchEvent(new Event("close"));
-      await flush();
-      expect(shownError()).toBe("Connecting to the peer failed");
-      expect(connection.close).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -1,6 +1,5 @@
 .chatPage {
   display: grid;
-  /* The header, the messages, then the composer and any notice above it */
   grid-template-rows: max-content 1fr;
   grid-auto-rows: max-content;
   block-size: 100dvh;

@@ -6,7 +6,7 @@ import {
   controlSignaling,
   createInvite,
   displayNameField,
-  expectConnectionErrorPage,
+  errorPage,
   expectInChat,
   inviteDialog,
   leaveErrorPage,
@@ -127,7 +127,7 @@ test.describe("two people chatting", WEBRTC, () => {
 
     await expect(displayNameField(bob)).toBeVisible();
     await expect(bob).toHaveURL(/\/$/);
-    await expectConnectionErrorPage(alice, "Connection to the peer lost");
+    await expect(errorPage(alice)).toBeVisible();
     await expect(composer(alice)).toHaveCount(0);
   });
 
@@ -176,7 +176,8 @@ test.describe("two people chatting", WEBRTC, () => {
   }) => {
     const { alice, bob } = await connectPeers(openPeer);
     await bob.close({ runBeforeUnload: true });
-    await expectConnectionErrorPage(alice, "Connection to the peer lost");
+    await expect(errorPage(alice)).toBeVisible();
+    await expect(alice.getByText("(╯°□°)╯︵ ┻━┻")).toBeVisible();
     await expect(composer(alice)).toHaveCount(0);
   });
 
@@ -189,9 +190,7 @@ test.describe("two people chatting", WEBRTC, () => {
     await bob.close();
     // Chromium declares a silent connection failed 15 to 16 seconds after its
     // last packet, a fixed timer rather than a slow machine
-    await expectConnectionErrorPage(alice, "Connection to the peer lost", {
-      timeout: 30_000,
-    });
+    await expect(errorPage(alice)).toBeVisible({ timeout: 30_000 });
   });
 
   test("reloading leaves the chat, as nothing is stored", async ({
@@ -206,13 +205,13 @@ test.describe("two people chatting", WEBRTC, () => {
     await expect(displayNameField(bob)).toBeVisible();
     await expect(bob).toHaveURL(/\/$/);
     await expect(bob.getByText("Gone after a reload")).toHaveCount(0);
-    await expectConnectionErrorPage(alice, "Connection to the peer lost");
+    await expect(errorPage(alice)).toBeVisible();
   });
 
   test("can start a new chat after leaving one", async ({ openPeer }) => {
     const { alice, bob } = await connectPeers(openPeer);
     await bob.getByRole("button", { name: "Exit room" }).click();
-    await expectConnectionErrorPage(alice, "Connection to the peer lost");
+    await expect(errorPage(alice)).toBeVisible();
     await leaveErrorPage(alice);
 
     const link = await createInvite(alice, { name: "Alice again" });

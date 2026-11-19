@@ -1,6 +1,5 @@
 import { useRouteError } from "react-router";
 import { LoaderError } from "~/features/loader/LoaderError";
-import { PeerConnectionError } from "~/features/peer-connection/PeerConnectionError";
 import CommonPageLayout from "~/components/CommonPageLayout";
 import Main from "~/components/Main";
 import Alert from "~/components/Alert/Alert";
@@ -13,12 +12,11 @@ export default function AppError() {
     <CommonPageLayout className={styles.errorLayout}>
       <Main>
         <Alert severity={"error"}>
+          An unexpected error occurred
           {invoke(() => {
-            if (error instanceof PeerConnectionError) return error.message;
             if (error instanceof LoaderError) {
-              return `An unexpected error occurred while loading ${error.name}`;
+              return ` while loading ${error.name}`;
             }
-            return "An unexpected error occurred";
           })}
         </Alert>
         <p aria-hidden="true">(╯°□°)╯︵ ┻━┻</p>
