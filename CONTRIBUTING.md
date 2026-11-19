@@ -27,14 +27,22 @@ CI skips the work a PR's changes can't affect, for example the end-to-end tests 
 
 Run the checks listed in the [README](README.md#scripts) before pushing. CI only runs Chromium on PRs into `dev`, so run `pnpm test:e2e` locally to cover Firefox and WebKit as well. If a browser fails, move the PR to draft and add a comment saying which browser and test failed.
 
-## Automatic rebases
+## Rebasing PRs after a merge
 
-A PR has to be up to date with its base to merge, so each merge leaves every other open PR behind. [`auto-rebase.yml`](.github/workflows/auto-rebase.yml) catches them up: whenever `dev` or `main` gets a new commit, it rebases each open PR into that branch that has fallen behind, the same as "Update with rebase" on the PR. The rebased branch is a new head, so CI runs on it again.
+A PR has to be up to date with its base to merge, so each merge leaves every other open PR behind. After merging, catch them up from the repository root:
+
+```bash
+pnpm rebase-prs
+```
+
+[`scripts/rebase-prs.mts`](scripts/rebase-prs.mts) goes through the open PRs into `dev` and rebases each one that has fallen behind, the same as "Update with rebase" on the PR. `pnpm rebase-prs main` does the same for PRs into `main`, and `pnpm rebase-prs --dry-run` only prints what it would do.
 
 - **Drafts are skipped.** Their author is still pushing to them, and a draft can't merge anyway. Rebase it yourself before marking it ready.
-- **PRs from forks are skipped**, because the workflow can't push to them.
+- **PRs from forks and the release PR from `dev` are skipped.** Rebasing the release PR would rewrite `dev`.
 - **A PR that conflicts is left unchanged** and gets one comment saying it needs a manual rebase. The comment is edited once the conflict is gone, and a later conflict gets a new one.
 - **A PR that's up to date is left alone**, whatever state its checks are in.
+
+It acts as whoever `gh` is signed in as, so the rebased commits and the comments come from that account. A push made with a user's login starts CI, so each rebased PR gets its checks again. A GitHub Actions workflow couldn't do the same without a GitHub App or a token in a secret, because pushes made with a workflow's own `GITHUB_TOKEN` don't start workflows.
 
 The rebase rewrites the PR branch on GitHub, so your next `git push --force-with-lease` is rejected: your local branch no longer matches. Don't force it. Fetch, put your local commits on top of the rebased branch, and push again:
 
@@ -51,23 +59,6 @@ git push --force-with-lease
 ```
 
 If you have no local commits that aren't pushed, `git reset --hard origin/<your-branch>` does the same.
-
-To run it without a push, for example after changing the app, use "Run workflow" on the workflow's page under Actions and pick the base branch.
-
-### The app it runs as
-
-The rebase has to start CI, and a push made with the workflow's own `GITHUB_TOKEN` doesn't start workflows, so the workflow acts as a GitHub App instead. The maintainer sets it up once:
-
-1. [Create a GitHub App](https://github.com/settings/apps/new) on the maintainer's account. Its homepage is this repository, "Webhook: Active" is off, and it can only be installed on this account.
-2. Give it these repository permissions, and nothing else:
-   - **Contents: Read and write**, to push the rebased PR branch.
-   - **Pull requests: Read and write**, to rebase the PR and comment on PRs that conflict.
-   - **Workflows: Read and write**, because GitHub refuses an app's push that changes a file under `.github/workflows`, and a rebase does that whenever the PR or the new base changes a workflow.
-   - **Metadata: Read-only**, which every app has.
-3. Generate a private key, and install the app on this repository only ("Only select repositories").
-4. In the repository's Actions settings, add the app's Client ID as the variable `AUTO_REBASE_APP_CLIENT_ID` and the private key as the secret `AUTO_REBASE_APP_PRIVATE_KEY`, then delete the downloaded key.
-
-Each run gets a token that covers only this repository and those permissions, and revokes it when it ends. PR branches aren't protected, so the app needs no bypass in the rulesets. The workflow isn't a PR check, so it isn't a required check either.
 
 ## Your email address
 
