@@ -12,12 +12,7 @@ import MessageContext from "~/features/message/context/MessageContext.ts";
 type ChatFormData = RandomNameData<{
   text: string;
 }>;
-type OwnProps = {
-  /** False while the connection is interrupted, so nothing looks sent that
-   * might never arrive. What's typed stays */
-  canSend: boolean;
-};
-export default function ChatForm({ canSend }: OwnProps) {
+export default function ChatForm({ canSend }: { canSend: boolean }) {
   const names = useRandomNames("text");
   const { sendMessage } = use(MessageContext);
   const form = useForm<ChatFormData>({

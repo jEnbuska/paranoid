@@ -1,4 +1,4 @@
-import { useReducer, useMemo, use, useRef } from "react";
+import { useReducer, useMemo, use } from "react";
 import { useNavigate } from "react-router";
 import {
   useOnEventDecrypted,
@@ -7,11 +7,7 @@ import {
 import { useAbortController } from "~/hooks/use-abort-controller";
 import { assertIsNotNil } from "shared-lib/utils/nil";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
-import {
-  addPeerConnectionEventListeners,
-  closePeerConnection,
-} from "~/features/peer-connection/utils";
-import { PeerConnectionError } from "~/features/peer-connection/PeerConnectionError";
+import { addPeerConnectionEventListeners } from "~/features/peer-connection/utils";
 import { useMemoOnce } from "~/hooks/use-memo-once";
 import constList from "shared-lib/utils/const-list";
 import { InviteConnectionProgressState } from "~/features/invite/types";
@@ -171,25 +167,15 @@ export function useMoveToChatAfterHandshake() {
   }, []);
 }
 
-/**
- * Resolves once the handshake over the data channel has finished. Rejects when
- * it can't finish: with a `PeerConnectionError` when the connection or the
- * channel fails first, or when it takes longer than `CONNECTING_TIMEOUT_MS`.
- * A rejection closes the connection and the channel first, so the peer stops
- * waiting too
- */
+/** Rejects if the handshake fails or times out, after closing the connection */
 function useHandleHandshake() {
   const { channel, connection, displayName } = useInviteState();
   const { handshake } = useInviteCallbacks();
   const encrypt = useEncrypt();
   const resolvable = useResolvable();
-  const settled = useRef(false);
-  /** Settles once: whatever comes after the first outcome changes nothing */
-  const settle = useStable((error?: unknown) => {
-    if (settled.current) return;
-    settled.current = true;
-    if (error === undefined) return resolvable.resolve();
-    closePeerConnection(connection, channel);
+  const fail = useStable((error: unknown) => {
+    channel?.close();
+    connection?.close();
     resolvable.reject(error);
   });
   useAbortableEffect((signal) => {
@@ -197,13 +183,12 @@ function useHandleHandshake() {
     addPeerConnectionEventListeners(connection, signal, {
       connectionstatechange() {
         if (connection.connectionState !== "failed") return;
-        settle(new PeerConnectionError("failed"));
+        fail(new Error("Peer connection failed"));
       },
     });
-    // Both people are on the invite once this step shows, so connecting has
-    // started
+    // This step shows once both people are on the invite
     const timeout = setTimeout(
-      () => settle(new PeerConnectionError("timed-out")),
+      () => fail(new Error("Connecting timed out")),
       CONNECTING_TIMEOUT_MS,
     );
     signal.addEventListener("abort", () => clearTimeout(timeout));
@@ -216,7 +201,7 @@ function useHandleHandshake() {
       const options = { once: true, signal };
       channel.addEventListener(
         "close",
-        () => settle(new PeerConnectionError("failed")),
+        () => fail(new Error("Data channel closed during handshake")),
         options,
       );
       try {
@@ -225,7 +210,7 @@ function useHandleHandshake() {
             channel.addEventListener("open", () => resolve(), options);
             channel.addEventListener(
               "error",
-              () => reject(new PeerConnectionError("failed")),
+              () => reject(new Error("Data channel failed")),
               options,
             );
           });
@@ -240,9 +225,9 @@ function useHandleHandshake() {
         await handshake(
           await getChannelInbox(channel).take("DISPLAY_NAME", signal),
         );
-        settle();
+        resolvable.resolve();
       } catch (e) {
-        if (!signal.aborted) settle(e);
+        if (!signal.aborted) fail(e);
       }
     },
     [channel],
