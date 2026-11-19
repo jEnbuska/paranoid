@@ -56,6 +56,8 @@ GitHub's rebase drops empty commits, but `git rebase` keeps them. So "Update bra
 2. Open the PR against `dev`, with `Closes #N`, `Fixes #N` or `Resolves #N` in its description. The issue has to be open. It closes when the PR merges.
 3. Keep the branch up to date by rebasing, with `git rebase origin/dev` or the "Update with rebase" option on the PR (see [When a PR can merge](#when-a-pr-can-merge), including why not to use that option on a PR whose only commit is empty).
 
+When an issue is too big for one PR, split it. Pieces that can't really be built on their own, because they depend on each other or only make sense together, become [sub-issues](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-sub-issues) of the original issue (`gh issue create --parent <N>`, or `gh issue edit <N> --add-sub-issue <CHILD>` for an existing issue). Work that can be built on its own becomes a separate issue. The same goes for whatever a PR leaves undone: move it to a sub-issue or a separate issue before the PR merges.
+
 Run the checks listed in the [README](README.md#scripts) before pushing. CI only runs Chromium on PRs into `dev`, so run `pnpm test:e2e` locally to cover Firefox and WebKit as well. If a browser fails, move the PR to draft and add a comment saying which browser and test failed.
 
 ## Rebasing PRs after a merge
