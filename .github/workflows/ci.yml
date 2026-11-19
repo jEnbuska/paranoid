@@ -134,12 +134,12 @@ jobs:
     if: >-
       !cancelled()
       && (github.event_name != 'pull_request' || github.event.pull_request.changed_files > 0)
-    # PRs into main are releases from dev, the only time every browser runs.
-    # Everything else runs Chromium, and sessions run the rest locally.
+    # Every PR and push runs every browser, so a browser-specific failure
+    # shows up on the PR itself.
     strategy:
       fail-fast: false
       matrix:
-        browser: ${{ github.base_ref == 'main' && fromJSON('["chromium","firefox","webkit"]') || fromJSON('["chromium"]') }}
+        browser: [chromium, firefox, webkit]
 
     steps:
       - name: Skip, as no file the end-to-end tests check has changed
