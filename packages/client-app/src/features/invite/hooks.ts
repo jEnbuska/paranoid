@@ -7,7 +7,10 @@ import {
 import { useAbortController } from "~/hooks/use-abort-controller";
 import { assertIsNotNil } from "shared-lib/utils/nil";
 import { useAbortableEffect } from "~/hooks/use-abortable-effect.ts";
-import { addPeerConnectionEventListeners } from "~/features/peer-connection/utils";
+import {
+  addPeerConnectionEventListeners,
+  getGatheredLocalDescription,
+} from "~/features/peer-connection/utils";
 import { useMemoOnce } from "~/hooks/use-memo-once";
 import constList from "shared-lib/utils/const-list";
 import { InviteConnectionProgressState } from "~/features/invite/types";
@@ -142,7 +145,7 @@ export function useSendOffer() {
     if (connection.localDescription) return;
     const offer = await connection.createOffer();
     await connection.setLocalDescription(offer);
-    await emit("DESCRIPTION", offer);
+    await emit("DESCRIPTION", await getGatheredLocalDescription(connection));
   }, []);
 }
 
