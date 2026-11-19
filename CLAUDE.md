@@ -10,15 +10,15 @@ pnpm workspace (`pnpm-workspace.yaml`) with four packages: `packages/client-app`
 
 - The package manager is pnpm (version pinned in the root `package.json` `packageManager`). Never use npm or yarn, and don't create `package-lock.json` or `yarn.lock`.
 - Always run pnpm from the repository root, never inside a package directory.
-- `pnpm install` installs all packages at once. The root `pnpm-lock.yaml` is the only lockfile; it records every package's own dependencies.
-- `pnpm install --frozen-lockfile` installs exactly what the lockfile says and fails if the lockfile and `package.json` files disagree. Use it when `node_modules` looks stale or broken.
+- Always install with `pnpm install --frozen-lockfile`. It installs all packages at once, exactly as the lockfile says, and fails if the lockfile and `package.json` files disagree. Plain `pnpm install` would quietly rewrite the lockfile instead. The root `pnpm-lock.yaml` is the only lockfile; it records every package's own dependencies.
 - One package only: `pnpm install --frozen-lockfile --filter <package>` (root tooling is included).
+- The lockfile changes only through commands that change dependencies: `pnpm add`, `pnpm remove` and `pnpm update`, or plain `pnpm install` right after editing a `package.json` by hand.
 - Add or remove a package's dependency from the root: `pnpm add <dep> --filter <package>`, `pnpm remove <dep> --filter <package>`. Commit the updated `package.json` and `pnpm-lock.yaml` together.
 - Shared tooling (TypeScript 7, oxlint, oxfmt, knip) is a root dev dependency: `pnpm add -D -w <tool>` (`-w` is the workspace root, not a package). Don't add these to a package.
 - Workspace packages depend on each other with `"workspace:*"` (for example `"shared-lib": "workspace:*"`).
 - pnpm is strict: a package can only import what its own `package.json` declares. If an import fails to resolve, add the dependency to that package instead of relying on another package's.
 - Dependency install scripts only run when allowed under `allowBuilds` in `pnpm-workspace.yaml`. On `ERR_PNPM_IGNORED_BUILDS`, ask before running `pnpm approve-builds <package>`.
-- Don't install anything else yourself, such as Playwright browsers, system packages or command-line tools. Ask the user to install it, and say what is needed and why. `pnpm install` from the lockfile is the exception.
+- Don't install anything else yourself, such as Playwright browsers, system packages or command-line tools. Ask the user to install it, and say what is needed and why. `pnpm install --frozen-lockfile` is the exception.
 
 ## Commands (from the root)
 

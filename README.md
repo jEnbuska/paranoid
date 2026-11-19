@@ -42,18 +42,12 @@ Shared tooling is installed once at the repository root: TypeScript 7 (the nativ
 pnpm runs everything in this repo. The version is pinned in the root `package.json` (`packageManager`). Install it from the repository root, never inside a package:
 
 ```bash
-pnpm install
-```
-
-This one command installs the dependencies of all the packages and the shared root tooling. pnpm reads the packages listed in [`pnpm-workspace.yaml`](pnpm-workspace.yaml), resolves them together and writes a single lockfile, the root [`pnpm-lock.yaml`](pnpm-lock.yaml). It records each package's own dependencies too, so the packages have no lockfiles of their own.
-
-Each package gets its own `node_modules` containing only the dependencies it declares, as links into a shared store at `node_modules/.pnpm`. A package can't import something it doesn't list in its `package.json`, even if another package uses it. `shared-lib` is declared as `"workspace:*"`, so `packages/*/node_modules/shared-lib` links straight to `packages/shared-lib`.
-
-For an install that matches the lockfile exactly, use `--frozen-lockfile`. It fails instead of updating `pnpm-lock.yaml` when the lockfile and the `package.json` files disagree. Use it in CI, after switching branches, or when `node_modules` seems broken (delete `node_modules` first for a fully clean install):
-
-```bash
 pnpm install --frozen-lockfile
 ```
+
+This one command installs the dependencies of all the packages and the shared root tooling. pnpm reads the packages listed in [`pnpm-workspace.yaml`](pnpm-workspace.yaml) and installs exactly what the single lockfile, the root [`pnpm-lock.yaml`](pnpm-lock.yaml), says. The lockfile records each package's own dependencies too, so the packages have no lockfiles of their own. `--frozen-lockfile` makes the install fail when the lockfile and the `package.json` files disagree, instead of quietly rewriting `pnpm-lock.yaml` as plain `pnpm install` would. If `node_modules` seems broken, delete it and run the same command for a fully clean install.
+
+Each package gets its own `node_modules` containing only the dependencies it declares, as links into a shared store at `node_modules/.pnpm`. A package can't import something it doesn't list in its `package.json`, even if another package uses it. `shared-lib` is declared as `"workspace:*"`, so `packages/*/node_modules/shared-lib` links straight to `packages/shared-lib`.
 
 To install only what one package needs, for example in a server deployment, add `--filter`. The root tooling is installed too:
 
@@ -61,7 +55,7 @@ To install only what one package needs, for example in a server deployment, add 
 pnpm install --frozen-lockfile --filter signaling-server
 ```
 
-To add or remove a dependency, run the command from the root and name the package with `--filter`. It updates that package's `package.json` and the root lockfile:
+The lockfile changes only through commands that change dependencies: `pnpm add`, `pnpm remove` and `pnpm update`, or plain `pnpm install` right after editing a `package.json` by hand. Commit the `package.json` and `pnpm-lock.yaml` together. To add or remove a dependency, run the command from the root and name the package with `--filter`. It updates that package's `package.json` and the root lockfile:
 
 ```bash
 pnpm add some-lib --filter signaling-server
