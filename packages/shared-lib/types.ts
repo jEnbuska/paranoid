@@ -11,7 +11,11 @@ export interface ClientToServerEvents<Decrypted extends boolean = true> {
         | { success: true; inviteId: string; expiresAt: number }
         | {
             success: false;
-            type: "NON_CLOSED_INVITE_EXISTS" | "NON_CLOSED_OFFER_EXISTS";
+            type:
+              | "NON_CLOSED_INVITE_EXISTS"
+              | "NON_CLOSED_OFFER_EXISTS"
+              /** The server has created every invite it was started for */
+              | "INVITE_LIMIT_REACHED";
           },
     ) => void,
   ): void;

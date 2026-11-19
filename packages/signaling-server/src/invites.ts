@@ -4,6 +4,26 @@ import { propEquals, propNotEquals } from "shared-lib/utils/prop";
 
 let invites: Array<InviteData> = [];
 
+/** Set by `limitInvites`. Only a count: nothing about who created which invite */
+let limit:
+  | { max: number; created: number; onLastInviteFinished(): void }
+  | undefined;
+
+/**
+ * Allows only `max` invites to be created, and calls `onLastInviteFinished`
+ * once the last of them has been removed. Without options there's no limit
+ */
+export function limitInvites(options?: {
+  max: number;
+  onLastInviteFinished(): void;
+}): void {
+  limit = options && { ...options, created: 0 };
+}
+
+export function hasInvitesLeft(): boolean {
+  return !limit || limit.created < limit.max;
+}
+
 /**
  * How far a side has got with the handshake through the server:
  * - `waiting`: hasn't sent its description
@@ -42,6 +62,7 @@ export function createInvite(data: {
   if (getInviteBySocket(socketId)) {
     throw new Error("Invite already exists");
   }
+  if (!hasInvitesLeft()) throw new Error("Invite limit reached");
   let { ttl, publicKey } = data;
   ttl = clamp({
     value: ttl,
@@ -73,6 +94,7 @@ export function createInvite(data: {
   };
 
   invites = [...invites, invite];
+  if (limit) limit.created++;
   return invite;
 }
 
@@ -92,12 +114,18 @@ export function getInviteById(
   return invites.find(propEquals("id", inviteId));
 }
 
+/** Every way an invite ends comes through here: its peers connected, it
+ * expired, it was closed or one of its sockets disconnected */
 export function removeInvite(inviteId: string): void {
   const invite = invites.find(propEquals("id", inviteId));
   if (!invite) return;
   const { _timeoutId, id } = invite;
   if (_timeoutId) clearTimeout(_timeoutId);
   invites = invites.filter(propNotEquals("id", id));
+  // No invite can be created any more, so this is reached only once
+  if (limit && !hasInvitesLeft() && !invites.length) {
+    limit.onLastInviteFinished();
+  }
 }
 
 export function updateInvite(
