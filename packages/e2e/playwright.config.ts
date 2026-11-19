@@ -84,11 +84,10 @@ export default defineConfig({
       },
     },
     {
-      // WebKit only offers mDNS host candidates and they don't resolve here, so
-      // two peers never connect. The rest of the UI still runs in its engine.
+      // WebKit only offers mDNS host candidates and has no setting to turn them
+      // off. The `openPeer` fixture points them at 127.0.0.1 instead
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
-      grepInvert: /@webrtc/,
     },
   ],
 });

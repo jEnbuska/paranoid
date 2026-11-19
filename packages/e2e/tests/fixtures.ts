@@ -77,10 +77,33 @@ function preparePage(options: {
   // Not every WebKit build has WebRTC
   const NativePeerConnection = window.RTCPeerConnection;
   if (!NativePeerConnection) return;
+  // WebKit hides its addresses behind mDNS names (`<uuid>.local`) and has no
+  // setting to turn that off. Under Playwright no browser resolves those
+  // names, so the peer drops the candidates and ICE never starts. Both pages
+  // run on this machine, so the name stands for an address that loopback
+  // reaches too
+  const mdnsHost = / [0-9a-f-]+\.local /gi;
+  const loopback = (text: string) => text.replace(mdnsHost, " 127.0.0.1 ");
   class TestPeerConnection extends NativePeerConnection {
     constructor(configuration?: RTCConfiguration) {
       super({ ...configuration, iceServers: options.iceServers });
       record.connections.push(this);
+    }
+    override setRemoteDescription(description: RTCSessionDescriptionInit) {
+      return super.setRemoteDescription({
+        type: description.type,
+        sdp: description.sdp && loopback(description.sdp),
+      });
+    }
+    override addIceCandidate(candidate?: RTCIceCandidateInit | null) {
+      if (!candidate?.candidate) return super.addIceCandidate(candidate);
+      const { sdpMid, sdpMLineIndex, usernameFragment } = candidate;
+      return super.addIceCandidate({
+        candidate: loopback(candidate.candidate),
+        sdpMid,
+        sdpMLineIndex,
+        usernameFragment,
+      });
     }
   }
   window.RTCPeerConnection = TestPeerConnection;

@@ -171,15 +171,15 @@ The `MAX_INVITES` tests ([`invite-limit.spec.ts`](packages/e2e/tests/invite-limi
 
 The tests send nothing outside the machine:
 
-- Every peer connection gets an empty ICE server list in place of the app's Google STUN servers, so peers connect with host candidates. One test gives them a STUN server of its own that never answers, on the machine's own address. Browsers also expose plain host candidates, because resolving mDNS names depends on multicast.
+- Every peer connection gets an empty ICE server list in place of the app's Google STUN servers, so peers connect with host candidates. One test gives them a STUN server of its own that never answers, on the machine's own address. Browsers also expose plain host candidates, because resolving mDNS names depends on multicast. WebKit has no setting for that, so the test setup rewrites the `.local` names in the candidates a page receives to `127.0.0.1`, which reaches the other page on the same machine.
 - A test fails if its page requests anything outside `localhost`.
 - Reports and traces hold only test data, and git ignores them.
 
-| Browser  | Coverage                                                                                                                                                                                                                                                                     |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Chromium | Everything, with the real clipboard.                                                                                                                                                                                                                                         |
-| Firefox  | Everything except reading the real clipboard, as Playwright can't grant the permission.                                                                                                                                                                                      |
-| WebKit   | Everything except the real clipboard, which could replace the clipboard of the machine, and tests tagged `@webrtc`: Playwright's WebKit only offers mDNS host candidates, and they don't resolve, so two peers never connect. The forms, dialogs and invite flows still run. |
+| Browser  | Coverage                                                                                |
+| -------- | --------------------------------------------------------------------------------------- |
+| Chromium | Everything, with the real clipboard.                                                    |
+| Firefox  | Everything except reading the real clipboard, as Playwright can't grant the permission. |
+| WebKit   | Everything except the real clipboard, which could replace the clipboard of the machine. |
 
 Tests that document a known bug are marked `test.fixme`, with a comment saying what goes wrong.
 
