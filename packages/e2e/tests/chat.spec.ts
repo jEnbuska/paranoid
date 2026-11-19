@@ -244,8 +244,13 @@ test.describe("two people chatting", WEBRTC, () => {
         },
       );
       expect(iceServers).toEqual([]);
-      expect(candidateTypes.length).toBeGreaterThan(0);
-      expect(new Set(candidateTypes)).toEqual(new Set(["host"]));
+      expect(candidateTypes).toContain("host");
+      // Only STUN and TURN servers give srflx and relay candidates. A prflx
+      // candidate comes from the peer's checks: in WebKit, whose candidates
+      // the test setup points at 127.0.0.1, a check that arrives over loopback
+      // reveals that address to the peer
+      expect(candidateTypes).not.toContain("srflx");
+      expect(candidateTypes).not.toContain("relay");
     }
   });
 });
