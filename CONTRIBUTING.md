@@ -66,7 +66,7 @@ The maintainer reviews PRs on GitHub. Answer every comment on your PR, whether i
 
 - When the answer is about code, link the commit (`https://github.com/<owner>/<repo>/commit/<sha>`) or a permalink to the line (`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<n>`), not a branch, which moves.
 - Answer questions right away.
-- For a requested change, push it, and once the reviewer is happy with it, reply with what changed and the commit link.
+- For a requested change, reply once a solution is found. If it changed code, push it and reply with what changed and the commit link. If it didn't, reply with the resolution.
 
 Claude Code sessions follow the same rule, with the `gh` commands in [CLAUDE.md](CLAUDE.md).
 
