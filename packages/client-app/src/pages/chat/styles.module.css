@@ -1,12 +1,9 @@
 .chatPage {
   display: grid;
-  grid-template-rows: max-content 1fr max-content;
+  /* The header, the messages, then the composer and any notice above it */
+  grid-template-rows: max-content 1fr;
+  grid-auto-rows: max-content;
   block-size: 100dvh;
-}
-.connectionLost {
-  display: grid;
-  grid-row: span 2;
-  place-content: center;
 }
 .messages {
   display: grid;
