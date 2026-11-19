@@ -1,3 +1,4 @@
+import type { Mock } from "vitest";
 import {
   getInviteBySocket,
   hasInvitesLeft,
@@ -48,11 +49,11 @@ function enter(inviteId: string, id: string) {
   return socket;
 }
 
-let onLastInviteFinished: ReturnType<typeof vi.fn>;
+let onLastInviteFinished: Mock<() => void>;
 
 beforeEach(() => {
   vi.useFakeTimers();
-  onLastInviteFinished = vi.fn();
+  onLastInviteFinished = vi.fn<() => void>();
 });
 
 afterEach(() => {
