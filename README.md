@@ -185,7 +185,7 @@ Tests that document a known bug are marked `test.fixme`, with a comment saying w
 
 ### Checking for flakiness
 
-Playwright never retries a test, so a test that passes only sometimes fails the run. To find one, run every test 20 times in each browser, once on an idle machine and once under load:
+Playwright never retries a test, so a test that passes only sometimes fails the run. Pull requests into `dev` don't need this check, as CI runs the end-to-end tests in every browser. To find a flaky test, run every test 20 times in each browser, once on an idle machine and once under load:
 
 ```bash
 pnpm test:e2e --project=chromium --repeat-each=20
