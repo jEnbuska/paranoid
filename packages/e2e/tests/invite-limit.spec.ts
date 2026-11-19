@@ -21,8 +21,8 @@ test("a second invite is refused while the only one is still open", async ({
   const server = await startSignalingServer(LIMIT);
   const alice = await openPeer();
   const carol = await openPeer();
-  await server.use(alice);
-  await server.use(carol);
+  await server.routePage(alice);
+  await server.routePage(carol);
 
   await createInvite(alice);
   await openInviteDialog(carol, "Carol");
@@ -42,8 +42,8 @@ test(
     const server = await startSignalingServer(LIMIT);
     const alice = await openPeer();
     const bob = await openPeer();
-    await server.use(alice);
-    await server.use(bob);
+    await server.routePage(alice);
+    await server.routePage(bob);
 
     await startChat(alice, bob);
 
