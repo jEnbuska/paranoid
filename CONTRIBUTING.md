@@ -60,6 +60,16 @@ When an issue is too big for one PR, split it. Pieces that can't really be built
 
 Run the checks listed in the [README](README.md#scripts) before pushing. CI runs the end-to-end tests in Chromium, Firefox and WebKit on every PR. If a browser fails on a ready PR, move the PR to draft and add a comment saying which browser and test failed.
 
+## Answering review comments
+
+The maintainer reviews PRs on GitHub. Answer every comment on your PR, whether it's a comment on a line, a review or a plain PR comment, on GitHub in that comment's thread, so the PR records what was asked and what came of it. Reviews and plain PR comments have no threads, so answer them with a PR comment that quotes them.
+
+- When the answer is about code, link the commit (`https://github.com/<owner>/<repo>/commit/<sha>`) or a permalink to the line (`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<n>`), not a branch, which moves.
+- Answer questions right away.
+- For a requested change, push it, and once the reviewer is happy with it, reply with what changed and the commit link.
+
+Claude Code sessions follow the same rule, with the `gh` commands in [CLAUDE.md](CLAUDE.md).
+
 ## Rebasing PRs after a merge
 
 A PR has to be up to date with its base to merge, so each merge leaves every other open PR behind. After merging, the maintainer catches them up with the `rebase-prs` Claude Code skill ([`.claude/skills/rebase-prs`](.claude/skills/rebase-prs/SKILL.md)), which sessions run after each merge. Without Claude Code, run its script from the repository root:
