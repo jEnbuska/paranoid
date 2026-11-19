@@ -70,3 +70,5 @@ If it does get pressed, the maintainer turns off the `main` ruleset, force-pushe
 `PR rules` uses `pull_request_target`, so its code comes from the default branch and a PR can't change the check that judges it. It reads the PR's details and never runs the PR's code.
 
 GitHub can't require "every check", so each required job is listed by name in the rulesets. A new CI job has to be added there too.
+
+<!-- Test PR for #52: a docs-only branch behind dev. Never merge. -->
