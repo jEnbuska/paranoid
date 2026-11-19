@@ -1,6 +1,7 @@
 import { useSocket } from "~/features/socket/hooks";
 import { useInviteState, useInviteCallbacks } from "~/features/invite/hooks";
 import useStable from "~/hooks/use-stable.ts";
+import useReject from "~/hooks/use-reject.ts";
 import { encryptWithPassword } from "~/features/crypt/utils/password";
 import pick from "shared-lib/utils/pick";
 import { useQuery } from "@tanstack/react-query";
@@ -12,13 +13,20 @@ export function useCreateOffer() {
   const socket = useSocket();
   const { publicKey } = useInviteState();
   const { offerCreated } = useInviteCallbacks();
+  // Trying again can't help once the server has no invites left, so that goes
+  // to the error page instead of the form's alert
+  const reject = useReject();
   return useStable(async (args: { ttl: number; password: string }) => {
     const { ttl, password } = args;
     const response = await socket.emitWithAck("CREATE", {
       ttl: ttl * 1000,
       publicKey: await encryptWithPassword(publicKey, { password }),
     });
-    if (!response.success) throw new Error("Failed to create invite");
+    if (!response.success) {
+      const error = new Error("Failed to create invite");
+      if (response.type === "INVITE_LIMIT_REACHED") reject(error);
+      throw error;
+    }
     return offerCreated({
       password,
       ...pick(["expiresAt", "inviteId"], response),
