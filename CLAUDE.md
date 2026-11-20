@@ -14,7 +14,7 @@ The repository is public. No secret or token is ever committed, in any file, bra
 
 ## Monorepo
 
-pnpm workspace (`pnpm-workspace.yaml`) with four packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`) and `packages/e2e` (Playwright tests).
+pnpm workspace (`pnpm-workspace.yaml`) with five packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and its CLI, run by Node.js directly from TypeScript, with each provider's price file in `deploy/<provider>/prices.json`) and `packages/e2e` (Playwright tests).
 
 ## Installing dependencies
 
@@ -78,8 +78,8 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 
 ## Tooling
 
-- Node.js 24 (`.nvmrc`, `engines` in `package.json`). The signaling server runs with `node src/server.ts` / `node --watch`, using Node's built-in type stripping. There is no tsx, ts-node or build step; don't add one. Type errors only show up in `pnpm typecheck`.
-- Code Node runs (the server and `shared-lib`) must be plain type-strippable TypeScript, which `tsc` enforces with `erasableSyntaxOnly` and `verbatimModuleSyntax`:
+- Node.js 24 (`.nvmrc`, `engines` in `package.json`). The signaling server runs with `node src/server.ts` / `node --watch`, and the deploy workflows run `node packages/deploy/src/cli.ts`, using Node's built-in type stripping. There is no tsx, ts-node or build step; don't add one. Type errors only show up in `pnpm typecheck`.
+- Code Node runs (the server, `shared-lib` and `packages/deploy`) must be plain type-strippable TypeScript, which `tsc` enforces with `erasableSyntaxOnly` and `verbatimModuleSyntax`:
   - Relative imports need the `.ts` extension: `import { x } from "./invites.ts"`.
   - Type-only imports use `import type`.
   - No enums, namespaces or constructor parameter properties.
