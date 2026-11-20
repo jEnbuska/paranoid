@@ -78,7 +78,8 @@ jobs:
           . deploy/aws/names.sh
           node packages/deploy/src/cli.ts --prices deploy/aws/prices.json \
             --region "$REGION" --server "$INSTANCE_TYPE" \
-            --lifetime-minutes "$((LIFETIME_MINUTES + BACKSTOP_GRACE_MINUTES))" \
+            --lifetime-minutes "$LIFETIME_MINUTES" \
+            --extra-running-minutes "$BACKSTOP_GRACE_MINUTES" \
             --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
 
       - name: Sign in to AWS
