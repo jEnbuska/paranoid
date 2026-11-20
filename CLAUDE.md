@@ -14,7 +14,7 @@ The repository is public. No secret or token is ever committed, in any file, bra
 
 ## Monorepo
 
-pnpm workspace (`pnpm-workspace.yaml`) with five packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and its CLI, run by Node.js directly from TypeScript, with each provider's price file in `deploy/<provider>/prices.json`) and `packages/e2e` (Playwright tests).
+pnpm workspace (`pnpm-workspace.yaml`) with six packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and its CLI, run by Node.js directly from TypeScript, with each provider's price file in `deploy/<provider>/prices.json`), `packages/e2e` (Playwright tests) and `deploy/gcp` (the Google Cloud deployment's ledger for its spending limit, run by its workflows with Node).
 
 ## Installing dependencies
 
