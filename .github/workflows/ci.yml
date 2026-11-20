@@ -133,6 +133,14 @@ jobs:
         if: needs.changes.outputs.checks != 'false' || needs.changes.outputs.format != 'false'
         run: pnpm install --frozen-lockfile
 
+      # The runner image comes with shellcheck. globstar makes `**` match
+      # every depth, so scripts in deeper folders are checked too.
+      - name: Check the shell scripts
+        if: needs.changes.outputs.checks != 'false'
+        run: |
+          shopt -s globstar
+          shellcheck deploy/**/*.sh
+
       # A PR that only changes Markdown runs the format check and nothing else.
       - name: Lint
         if: needs.changes.outputs.checks != 'false'
