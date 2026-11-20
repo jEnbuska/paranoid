@@ -70,12 +70,16 @@ jobs:
           node-version-file: .nvmrc
 
       # Before signing in to AWS, so a deploy above the limit never starts an
-      # instance or terminates a running one.
+      # instance or terminates a running one. The instance can run, and send,
+      # until the backstop terminates it, a few minutes after its lifetime.
+      # Terminating stops all billing, so there's no cleanup delay.
       - name: Check the worst-case cost
         run: |
           . deploy/aws/names.sh
-          export ROOT_VOLUME_GB BACKSTOP_GRACE_MINUTES
-          node deploy/aws/check-cost.mts
+          node packages/deploy/src/cli.ts --prices deploy/aws/prices.json \
+            --region "$REGION" --server "$INSTANCE_TYPE" \
+            --lifetime-minutes "$((LIFETIME_MINUTES + BACKSTOP_GRACE_MINUTES))" \
+            --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
 
       - name: Sign in to AWS
         id: aws
