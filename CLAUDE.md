@@ -103,12 +103,12 @@ Anyone with a fork can start a Paranoid server from GitHub Actions. Each provide
 
 - `deploy/server` (cloud-init, `setup.sh`, systemd units, Caddyfile) is provider-neutral: no cloud provider's API, metadata or CLI. `deploy/ci` holds provider-neutral scripts the workflows run. A new provider gets its own scripts and workflows and reuses `deploy/server` and `deploy/ci`.
 - A provider that needs `PARANOID_HOST` (a server behind NAT that only sees a private address) checks it before filling it into `cloud-init.yaml`, and every provider adds it to its `envsubst` list, empty if unused.
-- `packages/deploy` holds the worst-case cost check. A provider's deploy workflow runs it with its own price file, `deploy/<provider>/prices.json`, before it creates anything.
+- `packages/deploy` holds the worst-case cost check. A deploy workflow that uses it runs it with its provider's price file, `deploy/<provider>/prices.json`, before it creates anything.
 - A provider's credentials reach only the steps that need them, through `env:`. Never put them in a file, an input, a variable, user data, a label or a summary, and never echo them. The server never gets them.
 - Deploy workflows run only on `workflow_dispatch` and `schedule`, never `pull_request` or `pull_request_target`, and use their provider's environment, which only `main` may use.
 - User data and labels hold only values the scripts have checked, so an input can't inject commands.
 - Pin every download (provider CLIs, Node.js, Caddy, gitleaks) to a version and check its checksum. Update the version and checksum together.
-- `shellcheck` checks `deploy/**/*.sh` in CI. Keep every shell script under `deploy/`.
+- `shellcheck` checks `deploy/**/*.sh` in CI. Keep the deploy scripts there.
 
 ## End-to-end tests
 
