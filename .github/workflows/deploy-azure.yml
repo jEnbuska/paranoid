@@ -71,11 +71,19 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # Before signing in to Azure, so nothing starts if it's too much
+      # Before signing in to Azure, so nothing starts if it's too much.
+      # TODO(#90): call the shared worst-case cost check from #89's
+      # packages/deploy here, with deploy/azure/prices.json, REGION, VM_SIZE,
+      # LIFETIME_MINUTES, MAX_EGRESS_MBIT, the price file's
+      # cleanupDelayMinutes (a stopped VM bills like a running one) and
+      # MAX_DEPLOY_COST_USD. Until it's cherry-picked, this step refuses every
+      # deploy, so none can start without the check.
       - name: Check the worst-case cost
         env:
           MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
-        run: node deploy/azure/check-cost.mts
+        run: |
+          echo "::error::The worst-case cost check isn't wired in yet (TODO in deploy-azure.yml), so this deploy is refused."
+          exit 1
 
       - name: Sign in to Azure
         id: login
