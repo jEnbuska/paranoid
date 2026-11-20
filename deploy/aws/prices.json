@@ -1,0 +1,58 @@
+{
+  "checked": "2026-11-20",
+  "currency": "USD",
+  "about": "Read by packages/deploy/src/cli.ts for the worst-case cost check, and by settings.sh and bootstrap.sh for the allowed regions and instance types.",
+  "sources": {
+    "servers": "Linux on-demand prices per hour, from https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/<region name>/Linux/index.json, the data behind https://aws.amazon.com/ec2/pricing/on-demand/",
+    "public IPv4 address": "$0.005 an hour for an in-use public IPv4 address, from https://aws.amazon.com/vpc/pricing/",
+    "8 GB gp3 disk": "the region's EBS gp3 price per GB a month, from https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/<region>/index.csv, times 8 GB (ROOT_VOLUME_GB in names.sh), divided by 730 hours, rounded up: Stockholm $0.0836, Frankfurt $0.0952, Ireland $0.088",
+    "egressUsdPerGb": "data transfer out to the internet, first 10 TB a month, from https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/current/<region>/index.json. AWS's price is per GB; used as the price per 10^9 bytes, which is the same or more if AWS counts GB as 2^30 bytes. The 100 GB a month that are free aren't subtracted."
+  },
+  "regions": {
+    "eu-north-1": {
+      "name": "Stockholm",
+      "servers": {
+        "t4g.nano": 0.0043,
+        "t4g.micro": 0.0086,
+        "t4g.small": 0.0172,
+        "t3.micro": 0.0108,
+        "t3.small": 0.0216
+      },
+      "hourlyUsd": {
+        "public IPv4 address": 0.005,
+        "8 GB gp3 disk": 0.000917
+      },
+      "egressUsdPerGb": 0.09
+    },
+    "eu-central-1": {
+      "name": "Frankfurt",
+      "servers": {
+        "t4g.nano": 0.0048,
+        "t4g.micro": 0.0096,
+        "t4g.small": 0.0192,
+        "t3.micro": 0.012,
+        "t3.small": 0.024
+      },
+      "hourlyUsd": {
+        "public IPv4 address": 0.005,
+        "8 GB gp3 disk": 0.001044
+      },
+      "egressUsdPerGb": 0.09
+    },
+    "eu-west-1": {
+      "name": "Ireland",
+      "servers": {
+        "t4g.nano": 0.0046,
+        "t4g.micro": 0.0092,
+        "t4g.small": 0.0184,
+        "t3.micro": 0.0114,
+        "t3.small": 0.0228
+      },
+      "hourlyUsd": {
+        "public IPv4 address": 0.005,
+        "8 GB gp3 disk": 0.000965
+      },
+      "egressUsdPerGb": 0.09
+    }
+  }
+}

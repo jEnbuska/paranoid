@@ -1,0 +1,130 @@
+name: Deploy to AWS
+
+# Starts a Paranoid server on AWS EC2 for a set number of invites. It powers
+# itself off once the last one is finished, or when its lifetime is over, and
+# powering off terminates it. An EventBridge Scheduler schedule terminates it
+# at the end of its lifetime even if it doesn't. See docs/deploy/aws.md.
+#
+# There's no AWS secret anywhere: the job gets short-lived credentials for the
+# paranoid-deploy role from its GitHub OIDC token. The role trusts only jobs of
+# this repository that use the `aws` environment, which only `main` may use.
+# Only a manual run starts this workflow, never a pull request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_invites:
+        description: "Invites before the server shuts down. Empty: the MAX_INVITES variable, or 5."
+        required: false
+        type: string
+      lifetime_minutes:
+        description: "Minutes until it shuts down at the latest, at most 1440 (24 hours). Empty: the LIFETIME_MINUTES variable, or 60."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Shared with stop-aws.yml and cleanup-aws.yml, so only one of them changes
+# instances at a time. A deploy waits for the run before it to finish.
+concurrency:
+  group: aws
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: aws
+      url: ${{ steps.launch.outputs.url }}
+    permissions:
+      contents: read
+      # For the OIDC token that the deploy role trusts
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Before anything changes, so a bad setting leaves a running server
+      # alone.
+      - name: Check the settings
+        env:
+          MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
+          LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
+          MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
+          MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
+          REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
+          INSTANCE_TYPE: ${{ vars.AWS_INSTANCE_TYPE || 't4g.micro' }}
+          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          SCHEDULER_ROLE_ARN: ${{ vars.AWS_SCHEDULER_ROLE_ARN }}
+          SECURITY_GROUP_ID: ${{ vars.AWS_SECURITY_GROUP_ID }}
+        run: bash deploy/aws/settings.sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Before signing in to AWS, so a deploy above the limit never starts an
+      # instance or terminates a running one.
+      - name: Check the worst-case cost
+        run: |
+          . deploy/aws/names.sh
+          export ROOT_VOLUME_GB BACKSTOP_GRACE_MINUTES
+          node deploy/aws/check-cost.mts
+
+      - name: Sign in to AWS
+        id: aws
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: paranoid-deploy-${{ github.run_id }}
+          aws-region: ${{ env.REGION }}
+
+      # So there's only ever one server
+      - name: Terminate the existing servers
+        run: bash deploy/aws/terminate.sh all
+
+      # The server fetches this exact commit of this repository, which is
+      # public, so it needs no credentials.
+      - name: Start the server
+        id: launch
+        env:
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/aws/launch.sh
+
+      # The server installs and builds the app first, which takes a few
+      # minutes.
+      - name: Wait for the app
+        env:
+          HOST: ${{ steps.launch.outputs.host }}
+        run: bash deploy/ci/wait-for-app.sh "$HOST" 600
+
+      - name: Write the summary
+        env:
+          URL: ${{ steps.launch.outputs.url }}
+          EXPIRES: ${{ steps.launch.outputs.expires }}
+        run: |
+          shutdown=$(date -u -d "@$EXPIRES" '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "## Paranoid is running"
+            echo
+            echo "**<$URL>**"
+            echo
+            echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
+            echo "- It's a $INSTANCE_TYPE instance in $REGION. Shutting down terminates it, and so does the Stop AWS workflow, right away."
+            echo "- The most it can cost is \$$WORST_CASE_USD."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Also when the run is cancelled, for example by stop-aws.yml
+      - name: Terminate the server after a failed deploy
+        if: (failure() || cancelled()) && steps.aws.outcome == 'success'
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/aws/terminate.sh run "$RUN_ID"
