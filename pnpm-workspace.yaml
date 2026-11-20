@@ -1,2 +1,5 @@
 packages:
   - packages/*
+  # The Google Cloud deployment's spending limit, a package so it's
+  # typechecked, linted and tested with the rest
+  - deploy/gcp
