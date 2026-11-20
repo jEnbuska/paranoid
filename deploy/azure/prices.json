@@ -1,47 +1,58 @@
 {
   "checked": "2026-11-20",
   "source": "Microsoft's retail prices API, https://prices.azure.com/api/retail/prices: pay-as-you-go, USD, without VAT. Refresh with deploy/azure/fetch-prices.sh.",
-  "cleanupDelayMinutes": 60,
   "regions": {
     "swedencentral": {
-      "vmPerHour": {
+      "name": "Sweden Central, Gävle",
+      "servers": {
         "Standard_B1s": 0.0108,
         "Standard_B2ats_v2": 0.00972,
         "Standard_B2pts_v2": 0.0086
       },
-      "publicIpPerHour": 0.005,
-      "diskPerMonth": 2.4,
-      "egressPerGb": 0.087
+      "hourlyUsd": {
+        "public IPv4 address": 0.005,
+        "Standard SSD disk, 32 GiB": 0.00329
+      },
+      "egressUsdPerGb": 0.087
     },
     "germanywestcentral": {
-      "vmPerHour": {
+      "name": "Germany West Central, Frankfurt",
+      "servers": {
         "Standard_B1s": 0.012,
         "Standard_B2ats_v2": 0.0108,
         "Standard_B2pts_v2": 0.0096
       },
-      "publicIpPerHour": 0.005,
-      "diskPerMonth": 2.4,
-      "egressPerGb": 0.087
+      "hourlyUsd": {
+        "public IPv4 address": 0.005,
+        "Standard SSD disk, 32 GiB": 0.00329
+      },
+      "egressUsdPerGb": 0.087
     },
     "northeurope": {
-      "vmPerHour": {
+      "name": "North Europe, Ireland",
+      "servers": {
         "Standard_B1s": 0.0113,
         "Standard_B2ats_v2": 0.0102,
         "Standard_B2pts_v2": 0.0092
       },
-      "publicIpPerHour": 0.005,
-      "diskPerMonth": 2.4,
-      "egressPerGb": 0.087
+      "hourlyUsd": {
+        "public IPv4 address": 0.005,
+        "Standard SSD disk, 32 GiB": 0.00329
+      },
+      "egressUsdPerGb": 0.087
     },
     "westeurope": {
-      "vmPerHour": {
+      "name": "West Europe, Netherlands",
+      "servers": {
         "Standard_B1s": 0.012,
         "Standard_B2ats_v2": 0.0108,
         "Standard_B2pts_v2": 0.0096
       },
-      "publicIpPerHour": 0.005,
-      "diskPerMonth": 2.4,
-      "egressPerGb": 0.087
+      "hourlyUsd": {
+        "public IPv4 address": 0.005,
+        "Standard SSD disk, 32 GiB": 0.00329
+      },
+      "egressUsdPerGb": 0.087
     }
   }
 }
