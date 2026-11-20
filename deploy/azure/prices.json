@@ -1,6 +1,9 @@
 {
   "checked": "2026-11-20",
-  "source": "Microsoft's retail prices API, https://prices.azure.com/api/retail/prices: pay-as-you-go, USD, without VAT. Refresh with deploy/azure/fetch-prices.sh.",
+  "about": "Pay-as-you-go prices in USD, without VAT, from Microsoft's retail prices API. Refresh with deploy/azure/fetch-prices.sh.",
+  "sources": ["https://prices.azure.com/api/retail/prices"],
+  "currency": "USD",
+  "cleanupDelayMinutes": 60,
   "regions": {
     "swedencentral": {
       "name": "Sweden Central, Gävle",
@@ -9,11 +12,19 @@
         "Standard_B2ats_v2": 0.00972,
         "Standard_B2pts_v2": 0.0086
       },
-      "hourlyUsd": {
-        "public IPv4 address": 0.005,
-        "Standard SSD disk, 32 GiB": 0.00329
-      },
-      "egressUsdPerGb": 0.087
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "Standard SSD disk, 32 GiB",
+          "usdPerMonth": 2.4
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.087
+      }
     },
     "germanywestcentral": {
       "name": "Germany West Central, Frankfurt",
@@ -22,11 +33,19 @@
         "Standard_B2ats_v2": 0.0108,
         "Standard_B2pts_v2": 0.0096
       },
-      "hourlyUsd": {
-        "public IPv4 address": 0.005,
-        "Standard SSD disk, 32 GiB": 0.00329
-      },
-      "egressUsdPerGb": 0.087
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "Standard SSD disk, 32 GiB",
+          "usdPerMonth": 2.4
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.087
+      }
     },
     "northeurope": {
       "name": "North Europe, Ireland",
@@ -35,11 +54,19 @@
         "Standard_B2ats_v2": 0.0102,
         "Standard_B2pts_v2": 0.0092
       },
-      "hourlyUsd": {
-        "public IPv4 address": 0.005,
-        "Standard SSD disk, 32 GiB": 0.00329
-      },
-      "egressUsdPerGb": 0.087
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "Standard SSD disk, 32 GiB",
+          "usdPerMonth": 2.4
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.087
+      }
     },
     "westeurope": {
       "name": "West Europe, Netherlands",
@@ -48,11 +75,19 @@
         "Standard_B2ats_v2": 0.0108,
         "Standard_B2pts_v2": 0.0096
       },
-      "hourlyUsd": {
-        "public IPv4 address": 0.005,
-        "Standard SSD disk, 32 GiB": 0.00329
-      },
-      "egressUsdPerGb": 0.087
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "Standard SSD disk, 32 GiB",
+          "usdPerMonth": 2.4
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.087
+      }
     }
   }
 }

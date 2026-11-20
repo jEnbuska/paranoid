@@ -198,10 +198,10 @@ What a server is made of, per hour:
 
 **Worst case for one deploy.** Before starting anything, **Deploy to Azure** works out the most the deploy could cost: every started hour of the lifetime plus an hour for the cleanup, at the hourly price, plus outbound traffic at `MAX_EGRESS_MBIT` for the whole lifetime, without the free 100 GB. It refuses the deploy if that's above `MAX_DEPLOY_COST_USD`, $1 by default. With the defaults in `swedencentral`:
 
-| Lifetime           | Worst case | Allowed with the default $1 limit                              |
-| ------------------ | ---------- | -------------------------------------------------------------- |
-| 60 minutes         | $0.11      | Yes                                                            |
-| 24 hours, the most | $2.33      | No: set `MAX_DEPLOY_COST_USD` to 3, or lower `MAX_EGRESS_MBIT` |
+| Lifetime           | Worst case | Allowed with the default $1 limit                                                                       |
+| ------------------ | ---------- | ------------------------------------------------------------------------------------------------------- |
+| 60 minutes         | $0.11      | Yes                                                                                                     |
+| 24 hours, the most | $2.33      | No: the longest that fits is 600 minutes. Or set `MAX_DEPLOY_COST_USD` to 3, or lower `MAX_EGRESS_MBIT` |
 
 A typical deploy of an hour, deleted within minutes of shutting down, costs about $0.02.
 
