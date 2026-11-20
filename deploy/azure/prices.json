@@ -1,0 +1,47 @@
+{
+  "checked": "2026-11-20",
+  "source": "Microsoft's retail prices API, https://prices.azure.com/api/retail/prices: pay-as-you-go, USD, without VAT. Refresh with deploy/azure/fetch-prices.sh.",
+  "cleanupDelayMinutes": 60,
+  "regions": {
+    "swedencentral": {
+      "vmPerHour": {
+        "Standard_B1s": 0.0108,
+        "Standard_B2ats_v2": 0.00972,
+        "Standard_B2pts_v2": 0.0086
+      },
+      "publicIpPerHour": 0.005,
+      "diskPerMonth": 2.4,
+      "egressPerGb": 0.087
+    },
+    "germanywestcentral": {
+      "vmPerHour": {
+        "Standard_B1s": 0.012,
+        "Standard_B2ats_v2": 0.0108,
+        "Standard_B2pts_v2": 0.0096
+      },
+      "publicIpPerHour": 0.005,
+      "diskPerMonth": 2.4,
+      "egressPerGb": 0.087
+    },
+    "northeurope": {
+      "vmPerHour": {
+        "Standard_B1s": 0.0113,
+        "Standard_B2ats_v2": 0.0102,
+        "Standard_B2pts_v2": 0.0092
+      },
+      "publicIpPerHour": 0.005,
+      "diskPerMonth": 2.4,
+      "egressPerGb": 0.087
+    },
+    "westeurope": {
+      "vmPerHour": {
+        "Standard_B1s": 0.012,
+        "Standard_B2ats_v2": 0.0108,
+        "Standard_B2pts_v2": 0.0096
+      },
+      "publicIpPerHour": 0.005,
+      "diskPerMonth": 2.4,
+      "egressPerGb": 0.087
+    }
+  }
+}
