@@ -37,11 +37,16 @@ name() {
   esac
 }
 
-# The schema of packages/deploy/src/cli.ts. The disk is priced by the month,
-# prorated over 730 hours, so its hourly price is that, rounded up.
+# The schema of packages/deploy/src/prices.ts. A VM that powered itself off
+# bills like a running one until it's deleted: the backstop deletes it within
+# minutes, and Clean up Azure within the hour unless GitHub runs it late, so
+# the worst case counts an hour.
 result=$(jq -n --arg checked "$(date -u +%F)" '{
   checked: $checked,
-  source: "Microsoft'"'"'s retail prices API, https://prices.azure.com/api/retail/prices: pay-as-you-go, USD, without VAT. Refresh with deploy/azure/fetch-prices.sh.",
+  about: "Pay-as-you-go prices in USD, without VAT, from Microsoft'"'"'s retail prices API. Refresh with deploy/azure/fetch-prices.sh.",
+  sources: ["https://prices.azure.com/api/retail/prices"],
+  currency: "USD",
+  cleanupDelayMinutes: 60,
   regions: {}
 }')
 for region in "${regions[@]}"; do
@@ -62,11 +67,11 @@ for region in "${regions[@]}"; do
     '.regions[$region] = {
       name: $name,
       servers: $vms,
-      hourlyUsd: {
-        "public IPv4 address": $ip,
-        "Standard SSD disk, 32 GiB": (($disk / 730 * 100000 | ceil) / 100000)
-      },
-      egressUsdPerGb: $egress
+      items: [
+        {name: "public IPv4 address", usdPerHour: $ip},
+        {name: "Standard SSD disk, 32 GiB", usdPerMonth: $disk}
+      ],
+      egress: {usdPerGb: $egress}
     }' <<<"$result")
 done
 echo "$result"
