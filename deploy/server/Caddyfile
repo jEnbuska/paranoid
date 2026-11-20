@@ -1,0 +1,30 @@
+# Serves Paranoid over HTTPS, with a certificate from Let's Encrypt for
+# PARANOID_HOST (from /etc/paranoid/caddy.env). Plain HTTP on port 80 only
+# answers Let's Encrypt and redirects to HTTPS.
+#
+# There's no `log` directive, so Caddy keeps no access log and stores no
+# client IP addresses.
+{
+	admin off
+	persist_config off
+	# No HTTP/3: the firewall only lets in TCP.
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$PARANOID_HOST} {
+	encode zstd gzip
+
+	@signaling path /socket.io/* /healthz
+	handle @signaling {
+		reverse_proxy 127.0.0.1:8181
+	}
+
+	# The client is a single-page app: unknown paths get index.html.
+	handle {
+		root * /opt/paranoid/app/packages/client-app/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

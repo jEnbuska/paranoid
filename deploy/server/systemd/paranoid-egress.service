@@ -1,0 +1,14 @@
+[Unit]
+Description=Limit the server's outbound traffic
+After=network-online.target
+Wants=network-online.target
+Before=paranoid-signaling.service paranoid-caddy.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/paranoid/deploy.env
+ExecStart=/bin/bash /opt/paranoid/app/deploy/server/limit-egress.sh
+
+[Install]
+WantedBy=multi-user.target
