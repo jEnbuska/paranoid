@@ -307,7 +307,7 @@ The server keeps no access logs. Its own logs hold only connections and errors, 
 [`deploy-azure.yml`](../../.github/workflows/deploy-azure.yml):
 
 1. Checks the settings ([`settings.sh`](../../deploy/azure/settings.sh)), before it changes anything.
-2. Works out the worst-case cost from [`prices.json`](../../deploy/azure/prices.json) and stops if it's above `MAX_DEPLOY_COST_USD`.
+2. Works out the worst-case cost from [`prices.json`](../../deploy/azure/prices.json), with the shared [`packages/deploy`](../../packages/deploy/src/cli.ts), and stops if it's above `MAX_DEPLOY_COST_USD`.
 3. Signs in to Azure with Microsoft's [`azure/login`](https://github.com/Azure/login) action, through OIDC.
 4. Deletes any existing Paranoid server, running or off, with its disk, NIC and public IP ([`delete-servers.sh`](../../deploy/azure/delete-servers.sh)).
 5. Creates ([`create-server.sh`](../../deploy/azure/create-server.sh)):

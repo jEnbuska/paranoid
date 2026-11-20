@@ -26,10 +26,22 @@ price() {
   jq '.[0].retailPrice' <<<"$items"
 }
 
+# name <region>: its name for the deploy log
+name() {
+  case "$1" in
+    swedencentral) echo "Sweden Central, Gävle" ;;
+    germanywestcentral) echo "Germany West Central, Frankfurt" ;;
+    northeurope) echo "North Europe, Ireland" ;;
+    westeurope) echo "West Europe, Netherlands" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# The schema of packages/deploy/src/cli.ts. The disk is priced by the month,
+# prorated over 730 hours, so its hourly price is that, rounded up.
 result=$(jq -n --arg checked "$(date -u +%F)" '{
   checked: $checked,
   source: "Microsoft'"'"'s retail prices API, https://prices.azure.com/api/retail/prices: pay-as-you-go, USD, without VAT. Refresh with deploy/azure/fetch-prices.sh.",
-  cleanupDelayMinutes: 60,
   regions: {}
 }')
 for region in "${regions[@]}"; do
@@ -45,8 +57,16 @@ for region in "${regions[@]}"; do
   # The first 100 GB a month are free, but other use may have taken them, so
   # the price after them counts.
   egress=$(price "$where and serviceName eq 'Bandwidth' and productName eq 'Rtn Preference: MGN' and meterName eq 'Standard Data Transfer Out' and tierMinimumUnits eq 100")
-  result=$(jq --arg region "$region" --argjson vms "$vms" --argjson ip "$ip" \
-    --argjson disk "$disk" --argjson egress "$egress" \
-    '.regions[$region] = {vmPerHour: $vms, publicIpPerHour: $ip, diskPerMonth: $disk, egressPerGb: $egress}' <<<"$result")
+  result=$(jq --arg region "$region" --arg name "$(name "$region")" \
+    --argjson vms "$vms" --argjson ip "$ip" --argjson disk "$disk" --argjson egress "$egress" \
+    '.regions[$region] = {
+      name: $name,
+      servers: $vms,
+      hourlyUsd: {
+        "public IPv4 address": $ip,
+        "Standard SSD disk, 32 GiB": (($disk / 730 * 100000 | ceil) / 100000)
+      },
+      egressUsdPerGb: $egress
+    }' <<<"$result")
 done
 echo "$result"

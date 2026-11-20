@@ -71,19 +71,20 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # Before signing in to Azure, so nothing starts if it's too much.
-      # TODO(#90): call the shared worst-case cost check from #89's
-      # packages/deploy here, with deploy/azure/prices.json, REGION, VM_SIZE,
-      # LIFETIME_MINUTES, MAX_EGRESS_MBIT, the price file's
-      # cleanupDelayMinutes (a stopped VM bills like a running one) and
-      # MAX_DEPLOY_COST_USD. Until it's cherry-picked, this step refuses every
-      # deploy, so none can start without the check.
+      # Before signing in to Azure, so nothing starts if it's too much. A VM
+      # that powered itself off bills like a running one until it's deleted,
+      # so the worst case adds an hour for the cleanup: the backstop deletes
+      # it within minutes, and Clean up Azure within the hour unless GitHub
+      # runs it late. The CLI needs only Node.js, no install.
       - name: Check the worst-case cost
         env:
           MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
-        run: |
-          echo "::error::The worst-case cost check isn't wired in yet (TODO in deploy-azure.yml), so this deploy is refused."
-          exit 1
+        run: >-
+          node packages/deploy/src/cli.ts
+          --prices deploy/azure/prices.json
+          --region "$REGION" --server "$VM_SIZE"
+          --lifetime-minutes "$LIFETIME_MINUTES" --cleanup-delay-minutes 60
+          --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
 
       - name: Sign in to Azure
         id: login
