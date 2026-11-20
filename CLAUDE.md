@@ -6,10 +6,10 @@ Paranoid is a peer-to-peer, end-to-end encrypted chat. See [README.md](README.md
 
 The repository is public. No secret or token is ever committed, in any file, branch or commit, including tests, fixtures, examples and docs.
 
-- Secrets live only in GitHub environment secrets. The only one is the UpCloud API token, `UPCLOUD_TOKEN`, in the `upcloud` environment, which only `main` may use (see "Deployment" below). Never put a secret in a file, an `.env` file, a workflow input or variable, user data, a label, a job summary or a log.
+- Secrets live only in GitHub environment secrets: a deploy provider's credentials, where it needs any, in that provider's environment, which only `main` may use (see "Deployment" below). Never put a secret in a file, an `.env` file, a workflow input or variable, user data, a label, a job summary or a log.
 - Committed `.env` files hold only non-secret defaults. A secret for local use goes in `.env.local`, which git ignores.
 - Write placeholders such as `<your-token>` in docs and examples, never a real or realistic-looking value.
-- CI's secret scan (gitleaks, with the UpCloud rules in `.gitleaks.toml`) runs on every PR and push, docs-only PRs included. GitHub's own secret scanning doesn't know UpCloud tokens, so this scan is the backstop. Test it only with a fake token in a file git doesn't track, and delete the file afterwards. Never commit or push one.
+- CI's secret scan (gitleaks, with the providers' token rules in `.gitleaks.toml`) runs on every PR and push, docs-only PRs included. GitHub's own secret scanning doesn't know every provider's tokens, such as UpCloud's, so this scan is the backstop. A provider whose token format neither gitleaks' default rules nor GitHub's know gets a rule in `.gitleaks.toml`. Test it only with a fake token in a file git doesn't track, and delete the file afterwards. Never commit or push one.
 - Sessions never ask for, read or handle a real token. The user adds it as an environment secret.
 
 ## Monorepo
@@ -96,6 +96,19 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 - Configuration comes from environment variables (`PORT`, `HOST`, `CORS_ORIGINS`, `MAX_INVITES`), loaded from `packages/signaling-server/.env` and then `.env.local` with Node's `--env-file-if-exists`. Document new variables in `.env` and the README configuration table.
 - Never log event payloads, even encrypted ones. Log startup, shutdown, connections, disconnections and errors only.
 - socket.io's `cors` option is the only CORS handling. The client sends no cookies, so don't enable `credentials`.
+
+## Deployment
+
+Anyone with a fork can start a Paranoid server from GitHub Actions. Each provider has its own guide in `docs/deploy/<provider>.md`, listed in the README's "Deploy your own", its own workflows named after it (for example `deploy-<provider>.yml`), its own GitHub environment, and its own scripts in `deploy/<provider>`.
+
+- `deploy/server` (cloud-init, `setup.sh`, systemd units, Caddyfile) is provider-neutral: no cloud provider's API, metadata or CLI. `deploy/ci` holds provider-neutral scripts the workflows run. A new provider gets its own scripts and workflows and reuses `deploy/server` and `deploy/ci`.
+- A provider that needs `PARANOID_HOST` (a server behind NAT that only sees a private address) checks it before filling it into `cloud-init.yaml`, and every provider adds it to its `envsubst` list, empty if unused.
+- `packages/deploy` holds the worst-case cost check. A provider's deploy workflow runs it with its own price file, `deploy/<provider>/prices.json`, before it creates anything.
+- A provider's credentials reach only the steps that need them, through `env:`. Never put them in a file, an input, a variable, user data, a label or a summary, and never echo them. The server never gets them.
+- Deploy workflows run only on `workflow_dispatch` and `schedule`, never `pull_request` or `pull_request_target`, and use their provider's environment, which only `main` may use.
+- User data and labels hold only values the scripts have checked, so an input can't inject commands.
+- Pin every download (provider CLIs, Node.js, Caddy, gitleaks) to a version and check its checksum. Update the version and checksum together.
+- `shellcheck` checks `deploy/**/*.sh` in CI. Keep every shell script under `deploy/`.
 
 ## End-to-end tests
 

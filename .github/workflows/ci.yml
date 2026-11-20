@@ -99,7 +99,7 @@ jobs:
           echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
 
       # Every commit the PR or push adds, docs included, with gitleaks'
-      # default rules and the UpCloud token rules in .gitleaks.toml. A PR
+      # default rules and the providers' token rules in .gitleaks.toml. A PR
       # checks out its merge commit: HEAD^1 is the base and HEAD^2 the PR's
       # head. A push scans from the commit before it, or everything for a new
       # branch. `--redact` keeps a found secret out of the public log.
