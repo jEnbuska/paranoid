@@ -1,0 +1,94 @@
+name: Clean up Azure
+
+# Every 5 minutes, GitHub's shortest schedule, deletes the Paranoid VMs on
+# Azure that are stopped or past their expiry time, with their disks, NICs
+# and public IPs, and any of those left without a VM. A VM that powered
+# itself off is still billed like a running one until it's deleted. GitHub
+# often runs schedules late, or skips them, so the backstop (a Logic App in
+# Azure, see deploy/azure/backstop.json) does the same within minutes
+# whatever GitHub does.
+#
+# It signs in through GitHub OIDC, with no secret, using the `azure`
+# environment, which only `main` may use. Scheduled runs use the default
+# branch, `dev`, so they can't use the environment themselves: the `start`
+# job starts this workflow on `main` instead, and that run cleans up.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  start:
+    name: Start the cleanup on main
+    # Without the variables bootstrap.sh printed, nothing can be deployed.
+    if: github.event_name == 'schedule' && vars.AZURE_CLIENT_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      # Without an azure environment or a cleanup-azure.yml on main, nothing
+      # can have been deployed. deploy-azure.yml and cleanup-azure.yml reach
+      # main together.
+      - name: Start the cleanup on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          missing() {
+            local error
+            if error=$(gh api "$1" --silent 2>&1); then
+              return 1
+            fi
+            if [[ $error == *"HTTP 404"* ]]; then
+              return 0
+            fi
+            echo "::error::$error"
+            exit 1
+          }
+          if missing "repos/$REPO/environments/azure"; then
+            echo "There's no azure environment, so there's nothing to clean up."
+          elif missing "repos/$REPO/contents/.github/workflows/cleanup-azure.yml?ref=main"; then
+            echo "cleanup-azure.yml isn't on main yet, and neither is deploy-azure.yml, so there's nothing to clean up."
+          else
+            gh workflow run cleanup-azure.yml --repo "$REPO" --ref main
+            echo "Started the cleanup on main."
+          fi
+
+  cleanup:
+    name: Delete finished servers
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: azure
+    permissions:
+      contents: read
+      id-token: write
+    # Shared with deploy-azure.yml and stop-azure.yml, so only one of them
+    # changes servers at a time.
+    concurrency:
+      group: azure
+      cancel-in-progress: false
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'paranoid' }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Sign in to Azure
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Delete the servers that are off or expired
+        run: bash deploy/azure/delete-servers.sh finished
