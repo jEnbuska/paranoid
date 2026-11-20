@@ -2,7 +2,7 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "metadata": {
-    "description": "One Paranoid server: a NIC with the public IP create-server.sh made, a VM running the shared cloud-init, and the tags on its OS disk. Deleting the VM deletes its disk, NIC and public IP too. No SSH (no password, a key nobody has, port 22 closed by the subnet's NSG), no VM extensions and no boot diagnostics."
+    "description": "One Paranoid server: a NIC with the public IP create-server.sh made, a VM running the shared cloud-init, and the tags on its OS disk. Deleting the VM deletes its disk, NIC and public IP too. No SSH (no password, a key nobody has, port 22 closed by the subnet's NSG), no VM extensions and no boot diagnostics. Accelerated networking stays off: it adds a second network interface inside the VM, which the outbound limit on eth0 wouldn't cover."
   },
   "parameters": {
     "name": { "type": "string" },
@@ -39,6 +39,7 @@
       "location": "[resourceGroup().location]",
       "tags": "[parameters('tags')]",
       "properties": {
+        "enableAcceleratedNetworking": false,
         "ipConfigurations": [
           {
             "name": "ipconfig",
