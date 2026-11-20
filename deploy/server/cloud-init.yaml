@@ -3,6 +3,10 @@
 # The deploy workflow fills in the ${...} values with envsubst, after checking
 # each of them, and passes the result as the server's user data.
 #
+# PARANOID_HOST is empty unless the server only sees a private address, behind
+# NAT; then it's the public hostname. The provider's script checks that it's
+# a hostname before filling it in.
+#
 # Anything on the server can read its user data, so it must never hold a
 # secret. It holds none: the code comes from a public repository, and the
 # server never calls the cloud provider's API.
@@ -36,6 +40,7 @@ write_files:
     content: |
       MAX_INVITES=${MAX_INVITES}
       MAX_EGRESS_MBIT=${MAX_EGRESS_MBIT}
+      PARANOID_HOST=${PARANOID_HOST}
 
 # Fetches exactly the deployed commit. git checks every object against its
 # hash, so the code is that commit's, whatever the network does.

@@ -10,7 +10,8 @@
 # - PARANOID_HOST, optional: the server's hostname. Unset means
 #   <ip-with-dashes>.sslip.io, from the IPv4 address of the default route,
 #   which works where the public address is on the server itself, as on
-#   UpCloud and Hetzner. Set it where the server is behind NAT.
+#   UpCloud and Hetzner. Set it where the server is behind NAT and only sees
+#   a private address, as on Azure, AWS and GCP. Empty means unset.
 set -euo pipefail
 
 app=/opt/paranoid/app
@@ -39,11 +40,31 @@ case "$(dpkg --print-architecture)" in
     ;;
 esac
 
-# shellcheck source=/dev/null
-. /etc/paranoid/deploy.env
-: "${MAX_INVITES:?}" "${MAX_EGRESS_MBIT:?}"
+# Read as data, not run as a script, so no value in it can run a command.
+# Only the names below count.
+MAX_INVITES='' MAX_EGRESS_MBIT='' PARANOID_HOST=''
+while IFS='=' read -r key value; do
+  case "$key" in
+    MAX_INVITES) MAX_INVITES=$value ;;
+    MAX_EGRESS_MBIT) MAX_EGRESS_MBIT=$value ;;
+    PARANOID_HOST) PARANOID_HOST=$value ;;
+  esac
+done </etc/paranoid/deploy.env
+[[ $MAX_INVITES =~ ^[1-9][0-9]*$ ]] || {
+  echo "MAX_INVITES isn't a whole number of at least 1: '$MAX_INVITES'" >&2
+  exit 1
+}
+[[ $MAX_EGRESS_MBIT =~ ^[1-9][0-9]*$ ]] || {
+  echo "MAX_EGRESS_MBIT isn't a whole number of at least 1: '$MAX_EGRESS_MBIT'" >&2
+  exit 1
+}
 
-if [ -z "${PARANOID_HOST:-}" ]; then
+# A hostname: it goes into the Caddyfile and CORS_ORIGINS.
+if [ -n "$PARANOID_HOST" ] && ! [[ $PARANOID_HOST =~ ^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$ ]]; then
+  echo "PARANOID_HOST isn't a hostname: '$PARANOID_HOST'" >&2
+  exit 1
+fi
+if [ -z "$PARANOID_HOST" ]; then
   # A route lookup only: nothing is sent to that address.
   ip=$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p')
   case "$ip" in
