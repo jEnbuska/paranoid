@@ -1,0 +1,52 @@
+#cloud-config
+# User data for a Paranoid server, on any cloud that runs cloud-init on Debian.
+# The deploy workflow fills in the ${...} values with envsubst, after checking
+# each of them, and passes the result as the server's user data.
+#
+# Anything on the server can read its user data, so it must never hold a
+# secret. It holds none: the code comes from a public repository, and the
+# server never calls the cloud provider's API.
+#
+# Only what has to happen even if the code can't be fetched is here: no SSH and
+# the lifetime limit. deploy/server/setup.sh, from the deployed commit, does
+# the rest.
+
+# No SSH at all, and no password login. The firewall closes port 22 too.
+ssh_pwauth: false
+disable_root: true
+
+# bootcmd runs first, early in boot.
+bootcmd:
+  - [sh, -c, "systemctl mask --now ssh.service ssh.socket || true"]
+  # Powers off after the lifetime, counted from boot, whatever else happens.
+  - - systemd-run
+    - --unit=paranoid-lifetime
+    - --description=Power off once the server's lifetime is over
+    - --on-boot=${LIFETIME_MINUTES}min
+    - --timer-property=AccuracySec=1s
+    - systemctl
+    - poweroff
+
+package_update: true
+packages: [ca-certificates, curl, git]
+
+write_files:
+  - path: /etc/paranoid/deploy.env
+    permissions: "0644"
+    content: |
+      MAX_INVITES=${MAX_INVITES}
+      MAX_EGRESS_MBIT=${MAX_EGRESS_MBIT}
+
+# Fetches exactly the deployed commit. git checks every object against its
+# hash, so the code is that commit's, whatever the network does.
+runcmd:
+  - - sh
+    - -ec
+    - |
+      passwd --lock root
+      git init -q /opt/paranoid/app
+      cd /opt/paranoid/app
+      git fetch -q --depth 1 "https://github.com/${REPOSITORY}.git" "${COMMIT}"
+      git checkout -q --detach FETCH_HEAD
+      test "$(git rev-parse HEAD)" = "${COMMIT}"
+      exec bash deploy/server/setup.sh
