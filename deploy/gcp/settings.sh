@@ -65,8 +65,14 @@ whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
   echo "DEPLOYMENT=$RUN_ID-$RUN_ATTEMPT"
   # The month its cost counts in, in UTC
   echo "MONTH=$(date -u +%Y-%m)"
-  # The boot disk's size in GiB, Debian's image size and the smallest
-  # allowed. The ledger counts it too.
-  echo "DISK_GIB=10"
 } >>"$GITHUB_ENV"
+
+# The boot disk's size in GiB, from the prices, so the VM gets exactly the
+# disk the spending limit counts. It also checks the region has prices.
+disk_gib=$(jq -er --arg region "$GCP_REGION" \
+  '.regions[$region].items[] | select(.name == "disk") | .gib' \
+  "$(dirname "$0")/prices.json" 2>/dev/null) ||
+  fail "deploy/gcp/prices.json has no prices for $GCP_REGION, so its cost can't be limited."
+[[ $disk_gib =~ ^[1-9][0-9]{0,3}$ ]] || fail "The disk size in deploy/gcp/prices.json isn't a whole number of GiB."
+echo "DISK_GIB=$disk_gib" >>"$GITHUB_ENV"
 echo "Invites: $MAX_INVITES, lifetime: $LIFETIME_MINUTES min, outbound limit: $MAX_EGRESS_MBIT Mbit/s, monthly limit: \$$MONTHLY_BUDGET_USD, zone: $GCP_ZONE"

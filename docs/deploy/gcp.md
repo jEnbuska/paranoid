@@ -122,7 +122,7 @@ Optionally, give it a region and a monthly limit for the alert, for example `us-
 deploy/gcp/bootstrap.sh <project-id> <owner>/<repo> us-central1 10
 ```
 
-The regions it knows the prices of are `europe-north1` (Finland, the default), `europe-west1` (Belgium), and the free tier's `us-central1` (Iowa), `us-east1` (South Carolina) and `us-west1` (Oregon). For another region, add its prices to [`deploy/gcp/prices.ts`](../../deploy/gcp/prices.ts) first.
+The regions it knows the prices of are `europe-north1` (Finland, the default), `europe-west1` (Belgium), and the free tier's `us-central1` (Iowa), `us-east1` (South Carolina) and `us-west1` (Oregon). For another region, add its prices to [`deploy/gcp/prices.json`](../../deploy/gcp/prices.json) first.
 
 At the end it prints the commands for the next step. The budget alert may fail with a permission error if you aren't the billing account's administrator. Then create it in the console instead: **Billing** → **Budgets & alerts** → **Create budget**, scoped to `<project-id>`, with a monthly amount.
 
@@ -225,7 +225,7 @@ Google can also turn billing off for a project automatically when a budget is ex
 
 Google Cloud has no hard cap on spending. So the deploy workflow keeps its own limit, `MONTHLY_BUDGET_USD`, $5 by default:
 
-1. **Before it creates a VM**, it works out the worst case for the deployment: the VM, its address and its disk for the whole lifetime, plus outbound traffic at `MAX_EGRESS_MBIT` for all of it. Google Cloud deletes the VM at the end of its lifetime, and the VM can't send faster than the limit, so it can't cost more than that.
+1. **Before it creates a VM**, it works out the worst case for the deployment: the VM, its address and its disk for the whole lifetime, outbound traffic at `MAX_EGRESS_MBIT` for all of it, and the disk for two more hours, in case the VM powers off at the end and waits for the cleanup. Google Cloud deletes the VM at the end of its lifetime, and the VM can't send faster than the limit, so it can't cost more than that.
 2. It reads the month's ledger in the bucket: every deployment this month, with its worst case or, once its VM is gone, what it cost.
 3. If the worst case doesn't fit what's left, **it doesn't deploy**, and says what lifetime would fit.
 4. Otherwise it records the worst case in the ledger and deploys.
@@ -238,7 +238,7 @@ At the limit, no new deployments start until next month, unless you raise `MONTH
 **What the limit rests on:**
 
 - VMs in the project are started only through **Deploy to Google Cloud**. Anything else you run in the project isn't counted.
-- The prices in [`deploy/gcp/prices.ts`](../../deploy/gcp/prices.ts) are current. They have the date they were checked. If Google raises its prices, update them.
+- The prices in [`deploy/gcp/prices.json`](../../deploy/gcp/prices.json) are current. They have the date they were checked. If Google raises its prices, update them.
 - The project is used only for Paranoid.
 
 ## Checking nothing is left
@@ -266,7 +266,7 @@ The run's log says which step failed and why. There's no SSH, so you can't log i
 | A permission error such as 403 on `iam.serviceAccounts.getAccessToken`                                                      | The service account can't be used by the run. Run the setup script again, wait a minute, and retry: new permissions can take a few minutes to apply.                                                                                                       |
 | A permission error such as 403 on `compute.instances.create` or another `compute` permission                                | The zone or region variable doesn't match the setup. Run the setup script again and set the variables it prints. If it persists, the role may lack a permission: open an issue with the error.                                                             |
 | "This deployment could cost up to ..., but only ... is left"                                                                | The month's [spending limit](#the-spending-limit) is used up. Use a shorter lifetime, as the message says, wait until next month, or raise `MONTHLY_BUDGET_USD`.                                                                                           |
-| "deploy/gcp/prices.ts has no prices for ..."                                                                                | Your region isn't in the price file. Use one of the regions it has, or add yours from Google's pricing pages.                                                                                                                                              |
+| "deploy/gcp/prices.json has no prices for ..."                                                                              | Your region isn't in the price file. Use one of the regions it has, or add yours from Google's pricing pages.                                                                                                                                              |
 | "Compute Engine API has not been used in project ... or it is disabled"                                                     | Run the setup script, which turns it on, and wait a few minutes.                                                                                                                                                                                           |
 | "billing account ... is disabled", or "The billing account is closed"                                                       | Link the project to a working billing account, as in [step 3](#3-create-a-project). A free trial that's over needs **Activate** in the console.                                                                                                            |
 | `ZONE_RESOURCE_POOL_EXHAUSTED`, or the zone has no capacity                                                                 | Google has no `e2-micro` free in that zone right now. Try again later, or run the setup script with another region.                                                                                                                                        |

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Reserves or settles a deployment's cost in the month's ledger, the object
-# ledger/<MONTH>.json in the bucket (see budget.ts). It downloads one
-# generation of the ledger, applies the change with ledger.ts and uploads it
+# ledger/<MONTH>.json in the bucket (see ledger.ts). It downloads one
+# generation of the ledger, applies the change with cli.ts and uploads it
 # only if the ledger is still that generation, so two runs can't both spend
 # the same budget. The workflows' concurrency group already keeps them apart;
 # this holds even if it doesn't.
 #
 # Usage: ledger.sh reserve|settle
-#   Environment: GCP_BUCKET and MONTH, plus what ledger.ts needs.
+#   Environment: GCP_BUCKET and MONTH, plus what cli.ts needs.
 set -euo pipefail
 
 command=$1
@@ -29,7 +29,7 @@ for attempt in 1 2 3 4 5; do
   fi
 
   [ -e "$dir/ledger.json" ] && cp "$dir/ledger.json" "$dir/before.json"
-  node "$(dirname "$0")/ledger.ts" "$command" "$dir/ledger.json"
+  node "$(dirname "$0")/cli.ts" "$command" "$dir/ledger.json"
   if [ ! -e "$dir/ledger.json" ] || cmp -s "$dir/ledger.json" "$dir/before.json"; then
     exit 0
   fi

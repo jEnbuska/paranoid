@@ -6,7 +6,7 @@
 #
 # Usage: deploy/gcp/bootstrap.sh <project-id> <owner/repo> [region] [monthly-limit-usd]
 #   region: default europe-north1 (Finland). It must have prices in
-#     deploy/gcp/prices.ts.
+#     deploy/gcp/prices.json.
 #   monthly-limit-usd: default 5, for the Cloud Billing budget's alerts. The
 #     deploy workflow's own limit is the MONTHLY_BUDGET_USD variable.
 #
@@ -35,8 +35,8 @@ limit=${4:-5}
 [[ $repo =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]] || usage
 [[ $region =~ ^[a-z]+-[a-z]+[0-9]{1,2}$ ]] || usage
 [[ $limit =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] || usage
-if ! grep -q "\"$region\":" "$(dirname "$0")/prices.ts"; then
-  echo "deploy/gcp/prices.ts has no prices for $region, so deploys there would be refused. Add them first." >&2
+if ! grep -q "\"$region\":" "$(dirname "$0")/prices.json"; then
+  echo "deploy/gcp/prices.json has no prices for $region, so deploys there would be refused. Add them first." >&2
   exit 1
 fi
 
