@@ -27,7 +27,7 @@ DEBIAN_AMI_PARAMETERS=/aws/service/debian/release/13/latest
 
 
 # The instance's disk, in GB: the size of Debian's image. prices.json's
-# "8 GB gp3 disk" price is for this size, so change both together.
+# "8 GB gp3 disk" item is for this size, so change both together.
 ROOT_VOLUME_GB=8
 
 # Minutes after the end of an instance's lifetime that the backstop schedule
