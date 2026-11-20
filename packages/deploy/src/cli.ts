@@ -4,37 +4,25 @@
 //
 //   node packages/deploy/src/cli.ts --prices deploy/<provider>/prices.json \
 //     --region <region> --server <server type> --lifetime-minutes <n> \
-//     [--cleanup-delay-minutes <n>] --egress-mbit <n> --limit-usd <amount>
+//     [--extra-running-minutes <n>] [--cleanup-delay-minutes <n>] \
+//     --egress-mbit <n> --limit-usd <amount>
+//
+// - --extra-running-minutes: how long the server can keep running after its
+//   lifetime, for example until a backstop removes it. Default 0.
+// - --cleanup-delay-minutes: how long it stays billed after it stops, until
+//   cleanup deletes it. Default: the price file's cleanupDelayMinutes, or 0.
 //
 // It prints the worst case, adds WORST_CASE_USD to GITHUB_ENV when that's
-// set, and exits with code 1 if the worst case is above the limit.
-//
-// The price file is the provider's, with the date its prices were checked:
-//
-//   {
-//     "checked": "2026-11-20",
-//     "regions": {
-//       "<region>": {
-//         "name": "Stockholm",
-//         "servers": { "<server type>": <USD an hour> },
-//         "hourlyUsd": { "<what>": <USD an hour> },   (optional)
-//         "fixedUsd": { "<what>": <USD a deployment> }, (optional)
-//         "egressUsdPerGb": <USD per GB, 10^9 bytes>
-//       }
-//     }
-//   }
+// set, and exits with code 1 if the worst case is above the limit, saying
+// the longest lifetime that would fit. The price file's format is in
+// prices.ts.
 import { appendFileSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import worstCaseCost from "./worst-case-cost.ts";
-
-type RegionPrices = {
-  name: string;
-  servers: Record<string, number>;
-  hourlyUsd?: Record<string, number>;
-  fixedUsd?: Record<string, number>;
-  egressUsdPerGb: number;
-};
-type PriceFile = { checked: string; regions: Record<string, RegionPrices> };
+import deploymentPrices from "./prices.ts";
+import worstCaseCost, {
+  longestFittingLifetimeMinutes,
+  roundUpUsd,
+} from "./worst-case-cost.ts";
 
 function fail(message: string): never {
   console.log(`::error::${message}`);
@@ -47,7 +35,8 @@ const { values } = parseArgs({
     region: { type: "string" },
     server: { type: "string" },
     "lifetime-minutes": { type: "string" },
-    "cleanup-delay-minutes": { type: "string", default: "0" },
+    "extra-running-minutes": { type: "string", default: "0" },
+    "cleanup-delay-minutes": { type: "string" },
     "egress-mbit": { type: "string" },
     "limit-usd": { type: "string" },
   },
@@ -71,41 +60,62 @@ function amount(name: keyof typeof values): number {
 }
 
 const pricesPath = option("prices");
-const regionCode = option("region");
+const region = option("region");
 const server = option("server");
 const lifetimeMinutes = amount("lifetime-minutes");
-const cleanupDelayMinutes = amount("cleanup-delay-minutes");
+const extraRunningMinutes = amount("extra-running-minutes");
 const egressCapMbit = amount("egress-mbit");
 const limitUsd = amount("limit-usd");
 
-const file = JSON.parse(readFileSync(pricesPath, "utf8")) as PriceFile;
-const region = file.regions?.[regionCode];
-const serverUsd = region?.servers?.[server];
-if (region === undefined || serverUsd === undefined) {
-  fail(`${pricesPath} has no price for ${server} in ${regionCode}`);
+let prices;
+try {
+  prices = deploymentPrices(
+    JSON.parse(readFileSync(pricesPath, "utf8")),
+    region,
+    server,
+  );
+} catch (error) {
+  fail(`${pricesPath}: ${(error as Error).message}`);
 }
-const hourly = { [server]: serverUsd, ...region.hourlyUsd };
+const cleanupDelayHours =
+  values["cleanup-delay-minutes"] === undefined
+    ? prices.cleanupDelayHours
+    : amount("cleanup-delay-minutes") / 60;
 
-const cost = worstCaseCost({
-  lifetimeHours: lifetimeMinutes / 60,
-  cleanupDelayHours: cleanupDelayMinutes / 60,
-  hourlyUsd: Object.values(hourly).reduce((a, b) => a + b, 0),
+const input = {
+  extraRunningHours: extraRunningMinutes / 60,
+  cleanupDelayHours,
+  hourlyUsd: prices.hourlyUsd,
+  stoppedHourlyUsd: prices.stoppedHourlyUsd,
+  wholeHours: prices.wholeHours,
   egressCapMbit,
-  egressUsdPerGb: region.egressUsdPerGb,
-  fixedUsd: region.fixedUsd,
+  egressUsdPerGb: prices.egressUsdPerGb,
+  fixedUsd: prices.fixedUsd,
+};
+const cost = worstCaseCost({
+  ...input,
+  lifetimeHours: lifetimeMinutes / 60,
   limitUsd,
 });
 
-const usd = (value: number) => `$${value.toFixed(4)}`;
+const usd = (value: number) => `$${roundUpUsd(value).toFixed(4)}`;
+const hours = (value: number) => `${Number(value.toFixed(2))} h`;
+const running = cost.billedRunningHours;
+const stopped = cost.billedStoppedHours;
+const runningMinutes = lifetimeMinutes + extraRunningMinutes;
 const lines = [
-  `Worst case for this deployment, with ${regionCode} (${region.name}) prices checked on ${file.checked}:`,
-  ...Object.entries(hourly).map(
-    ([what, price]) =>
-      `- ${what} for ${cost.billedHours} h: ${usd(price * cost.billedHours)}`,
-  ),
-  `- outbound traffic, ${cost.egressGb.toFixed(2)} GB at most (${egressCapMbit} Mbit/s for ${lifetimeMinutes} min): ${usd(cost.egressCostUsd)}`,
-  ...Object.entries(region.fixedUsd ?? {}).map(
-    ([what, price]) => `- ${what}: ${usd(price)}`,
+  `Worst case for this deployment, with ${region} (${prices.regionName}) prices checked on ${prices.checked}:`,
+  ...prices.lines.flatMap(({ name, runningUsdPerHour, stoppedUsdPerHour }) => [
+    `- ${name}, running, for ${hours(running)}: ${usd(runningUsdPerHour * running)}`,
+    ...(stopped > 0 && stoppedUsdPerHour > 0
+      ? [
+          `- ${name}, stopped, for ${hours(stopped)}: ${usd(stoppedUsdPerHour * stopped)}`,
+        ]
+      : []),
+  ]),
+  `- outbound traffic, ${cost.egressGb.toFixed(2)} GB at most (${egressCapMbit} Mbit/s for ${runningMinutes} min): ${usd(cost.egressCostUsd)}`,
+  ...Object.entries(prices.fixedUsd).map(
+    ([name, price]) => `- ${name}: ${usd(price)}`,
   ),
   `- total: ${usd(cost.totalUsd)}, limit: $${limitUsd.toFixed(2)}`,
 ];
@@ -113,12 +123,16 @@ console.log(lines.join("\n"));
 
 const githubEnv = process.env.GITHUB_ENV;
 if (githubEnv) {
-  appendFileSync(githubEnv, `WORST_CASE_USD=${cost.totalUsd.toFixed(2)}\n`);
+  appendFileSync(githubEnv, `WORST_CASE_USD=${cost.totalUsd.toFixed(4)}\n`);
 }
 
 if (!cost.withinLimit) {
+  const fitting = longestFittingLifetimeMinutes(input, limitUsd);
   fail(
     `The worst case, ${usd(cost.totalUsd)}, is more than the limit, $${limitUsd.toFixed(2)}. ` +
+      (fitting > 0
+        ? `The longest lifetime that fits is ${fitting} minutes. `
+        : "Not even a 1-minute lifetime fits. ") +
       "Choose a shorter lifetime or a lower outbound limit, or raise the limit. No server was started.",
   );
 }
