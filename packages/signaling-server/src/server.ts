@@ -23,6 +23,8 @@ const port = Number(process.env.PORT || 8181);
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
   throw new Error(`Invalid PORT: ${process.env.PORT}`);
 }
+/** Address to listen on: unset means every interface */
+const host = process.env.HOST || undefined;
 /** Browser origins allowed to connect: the Vite dev and preview servers by default */
 const corsOrigins = (
   process.env.CORS_ORIGINS || "http://localhost:5173,http://localhost:4173"
@@ -39,11 +41,11 @@ const io = new Server<ClientToServerEvents<false>, ServerToClientEvents<false>>(
   { cors: { origin: corsOrigins, methods: ["GET", "POST"] } },
 );
 
-httpServer.listen(port, () => {
+httpServer.listen(port, host, () => {
   // The port it got, when PORT is 0
-  const { port: actualPort } = httpServer.address() as AddressInfo;
+  const { address, port: actualPort } = httpServer.address() as AddressInfo;
   console.log(
-    `Signaling server listening on port ${actualPort}, allowing ${corsOrigins.join(", ")}`,
+    `Signaling server listening on port ${actualPort} (${host ? address : "every interface"}), allowing ${corsOrigins.join(", ")}`,
   );
   console.log(
     maxInvites

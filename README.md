@@ -83,11 +83,12 @@ By default the server only accepts browser connections from `http://localhost:51
 
 ### Configuration
 
-The signaling server reads these environment variables. The `start` and `dev` scripts also load [`packages/signaling-server/.env`](packages/signaling-server/.env) with Node's built-in `--env-file-if-exists`; variables already set in the environment take precedence.
+The signaling server reads these environment variables. The `start` and `dev` scripts also load [`packages/signaling-server/.env`](packages/signaling-server/.env) and then `.env.local`, whose values win, with Node's built-in `--env-file-if-exists`; variables already set in the environment take precedence over both. `.env` is committed and holds only non-secret defaults. `.env.local` is for your own overrides, and git ignores it.
 
 | Variable       | Default                                       | Purpose                                                                            |
 | -------------- | --------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `PORT`         | `8181`                                        | Port the server listens on.                                                        |
+| `HOST`         | Every interface                               | Address the server listens on, for example `127.0.0.1` behind a reverse proxy.     |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:4173` | Comma-separated browser origins allowed to connect.                                |
 | `MAX_INVITES`  | No limit                                      | How many invites the server creates before it exits: a whole number of at least 1. |
 

@@ -2,6 +2,16 @@
 
 Paranoid is a peer-to-peer, end-to-end encrypted chat. See [README.md](README.md) for how it works.
 
+## Secrets
+
+The repository is public. No secret or token is ever committed, in any file, branch or commit, including tests, fixtures, examples and docs.
+
+- Secrets live only in GitHub environment secrets. The only one is the UpCloud API token, `UPCLOUD_TOKEN`, in the `upcloud` environment, which only `main` may use (see "Deployment" below). Never put a secret in a file, an `.env` file, a workflow input or variable, user data, a label, a job summary or a log.
+- Committed `.env` files hold only non-secret defaults. A secret for local use goes in `.env.local`, which git ignores.
+- Write placeholders such as `<your-token>` in docs and examples, never a real or realistic-looking value.
+- CI's secret scan (gitleaks, with the UpCloud rules in `.gitleaks.toml`) runs on every PR and push, docs-only PRs included. GitHub's own secret scanning doesn't know UpCloud tokens, so this scan is the backstop. Test it only with a fake token in a file git doesn't track, and delete the file afterwards. Never commit or push one.
+- Sessions never ask for, read or handle a real token. The user adds it as an environment secret.
+
 ## Monorepo
 
 pnpm workspace (`pnpm-workspace.yaml`) with four packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`) and `packages/e2e` (Playwright tests).
@@ -35,6 +45,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 
 - CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm knip`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job, one per browser (Chromium, Firefox and WebKit). Pushes to `main` and `dev` run everything. On a PR, a `changes` job decides from the changed files what runs, and a PR with no changed files skips both jobs. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
   - Docs (`**/*.md`, `LICENSE`) run no checks and no end-to-end tests, except the format check for Markdown, because oxfmt formats it.
+  - Every PR with changed files, docs included, and every push runs the secret scan (gitleaks) over the commits it adds, in the checks job, so no new required check is needed.
   - The end-to-end tests run for changes under `packages/` (except docs) and to the root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` and `.nvmrc`. Every other change runs only the checks.
   - A change to `ci.yml` runs everything.
   - The end-to-end job runs in Playwright's container image (`mcr.microsoft.com/playwright`), which has the browsers and their system packages, so nothing in CI runs `apt`, which hangs when Ubuntu's mirror is unreachable. The image is pinned by digest, with its tag in a comment. It must be the same version as `@playwright/test` in `pnpm-lock.yaml`, and the job's "Check the image's browsers" step fails if it isn't, so updating Playwright means updating the image in the same PR.
@@ -82,7 +93,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 
 - Keep it thin: Node.js built-ins plus socket.io. No web framework, middleware or dotenv; its only job is holding invites in memory and relaying encrypted payloads.
 - The server forgets an invite once the peers have connected. It never keeps peers paired, stores reconnect state or relays anything after the chat starts, so there is no ICE restart through the server. A connection that fails for good ends the chat, and recovery is a new invite. This is for privacy: a running chat shouldn't tell the server who is talking to whom.
-- Configuration comes from environment variables (`PORT`, `CORS_ORIGINS`), loaded from `packages/signaling-server/.env` with Node's `--env-file-if-exists`. Document new variables in that file and the README configuration table.
+- Configuration comes from environment variables (`PORT`, `HOST`, `CORS_ORIGINS`, `MAX_INVITES`), loaded from `packages/signaling-server/.env` and then `.env.local` with Node's `--env-file-if-exists`. Document new variables in `.env` and the README configuration table.
 - Never log event payloads, even encrypted ones. Log startup, shutdown, connections, disconnections and errors only.
 - socket.io's `cors` option is the only CORS handling. The client sends no cookies, so don't enable `credentials`.
 

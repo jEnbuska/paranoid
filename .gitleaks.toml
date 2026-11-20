@@ -1,0 +1,36 @@
+# gitleaks rules for the secret scan in .github/workflows/ci.yml.
+#
+# Checked on 2026-11-20: neither gitleaks' default rules nor GitHub's secret
+# scanning (its list of supported patterns) has a rule for UpCloud API tokens,
+# so the rules below add them. UpCloud tokens start with `ucat_` (UpCloud's
+# Go SDK checks for that prefix), followed by random letters and digits.
+#
+# Never test these rules with a committed token, not even a fake one: write it
+# to a file git ignores or doesn't track, run `gitleaks dir` on that file and
+# delete it.
+
+title = "Paranoid"
+
+[extend]
+useDefault = true
+
+# Any UpCloud API token, wherever it is. The prefix is distinctive enough on
+# its own. Placeholders such as `ucat_...` or `<your-token>` don't match.
+[[rules]]
+id = "upcloud-api-token"
+description = "UpCloud API token"
+regex = '''\b(ucat_[A-Za-z0-9]{16,})'''
+keywords = ["ucat_"]
+
+# A value given to an UpCloud token, password or secret setting, such as
+# UPCLOUD_TOKEN=... or UPCLOUD_PASSWORD: ..., in case a token ever comes
+# without the prefix, or someone writes down the account's password. A value
+# that starts with `$` (a GitHub expression or a shell variable), `<` (a
+# placeholder) or `-` (a command-line flag) doesn't match, and the entropy
+# keeps out ordinary words.
+[[rules]]
+id = "upcloud-credential"
+description = "Value of an UpCloud token, password or secret setting"
+regex = '''(?i)upcloud[\w.-]{0,20}?(?:token|password|passwd|pass|secret)[\w.-]{0,10}['"]?\s{0,3}(?:=|:|=>|\s)\s{0,3}['"\x60]?([A-Za-z0-9_+/.~!@#%^&*][^\s'"\x60]{11,})'''
+entropy = 3.2
+keywords = ["upcloud"]
