@@ -183,6 +183,10 @@ importers:
         version: 2.9.1
 
   deploy/gcp:
+    dependencies:
+      deploy:
+        specifier: workspace:*
+        version: link:../../packages/deploy
     devDependencies:
       '@types/node':
         specifier: ^22.20.5

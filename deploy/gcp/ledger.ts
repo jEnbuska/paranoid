@@ -1,123 +1,232 @@
-// Updates a local copy of a month's ledger (see budget.ts). ledger.sh
-// downloads it from the bucket, runs this and uploads the result, so this
-// file never talks to Google Cloud.
+// The monthly spending limit for Google Cloud deployments. Google Cloud has
+// no hard cap, and its budgets only send alerts from billing data that lags
+// by hours, so the limit is kept here: every deployment's worst-case cost is
+// known before it starts, and one that doesn't fit what's left of the
+// month's limit isn't started.
 //
-// node deploy/gcp/ledger.ts reserve <file>
-//   Fails, without changing the file, if the deployment doesn't fit.
-//   Environment: MONTH, DEPLOYMENT, REGION, LIFETIME_MINUTES,
-//   MAX_EGRESS_MBIT, DISK_GIB, MONTHLY_BUDGET_USD
-// node deploy/gcp/ledger.ts settle <file>
-//   Environment: MONTH, DEPLOYMENT, CREATED, STOPPED (empty if it didn't
-//   power off), DELETED
+// The worst case is packages/deploy's worstCaseCost, from prices.json: the
+// VM, its IPv4 address and its disk for the whole lifetime, egress at the
+// VM's outbound limit for all of it, and the disk until cleanup. Google
+// Cloud deletes the VM at the end of its lifetime itself
+// (--max-run-duration), so it can't run longer.
 //
-// A file that doesn't exist is an empty ledger.
+// The ledger records each deployment's reserved worst case. When its VM is
+// deleted, the cost is settled from the VM's actual running and stopped
+// time, still with egress at the limit, because the VM has no credentials to
+// report its traffic. Until then, the full worst case counts. So a missing
+// report only makes the total too high, never too low.
 
-import {
-  appendFileSync,
-  existsSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
-import {
-  decide,
-  emptyLedger,
-  rates,
-  reserve,
-  settle,
-  spent,
-  type Ledger,
-} from "./budget.ts";
-import { prices } from "./prices.ts";
+import type { DeploymentPrices } from "deploy/src/prices.ts";
+import worstCaseCost, {
+  longestFittingLifetimeMinutes,
+  roundUpUsd,
+  type WorstCaseInput,
+} from "deploy/src/worst-case-cost.ts";
 
-function env(name: string): string {
-  const value = process.env[name];
-  if (value === undefined) {
-    throw new Error(`${name} isn't set`);
-  }
-  return value;
+/**
+ * What a deployment's cost is worked out from. It's kept with the
+ * deployment, so it's settled with the prices it was reserved with.
+ */
+export interface Pricing {
+  pricesChecked: string;
+  hourlyUsd: number;
+  stoppedHourlyUsd: number;
+  egressUsdPerGb: number;
+  egressCapMbit: number;
+  wholeHours: boolean;
+  cleanupDelayHours: number;
+  fixedUsd: Record<string, number>;
 }
 
-function number(name: string): number {
-  const value = Number(env(name));
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${name} isn't a number: '${env(name)}'`);
-  }
-  return value;
+/** One deployment in the ledger */
+interface Deployment {
+  lifetimeMinutes: number;
+  pricing: Pricing;
+  /** The worst case, reserved before the VM was created */
+  reservedUsd: number;
+  /** The cost once the VM is gone, from its actual time */
+  settledUsd?: number;
+  runningHours?: number;
+  stoppedHours?: number;
 }
 
-function usd(value: number): string {
-  return `$${value.toFixed(4)}`;
+/**
+ * One month's deployments, keyed by deployment (the workflow run's ID and
+ * attempt). Totals only: nothing about who used a server or when chats
+ * happened.
+ */
+export interface Ledger {
+  month: string;
+  deployments: Record<string, Deployment>;
 }
 
-function output(name: string, value: string) {
-  const file = process.env.GITHUB_OUTPUT;
-  if (file) {
-    appendFileSync(file, `${name}=${value}\n`);
-  }
+export function pricing(
+  prices: DeploymentPrices,
+  egressCapMbit: number,
+): Pricing {
+  return {
+    pricesChecked: prices.checked,
+    hourlyUsd: prices.hourlyUsd,
+    stoppedHourlyUsd: prices.stoppedHourlyUsd,
+    egressUsdPerGb: prices.egressUsdPerGb,
+    egressCapMbit,
+    wholeHours: prices.wholeHours,
+    cleanupDelayHours: prices.cleanupDelayHours,
+    fixedUsd: prices.fixedUsd,
+  };
 }
 
-const [command, file] = process.argv.slice(2);
-if (!file || (command !== "reserve" && command !== "settle")) {
-  console.error("Usage: node deploy/gcp/ledger.ts reserve|settle <file>");
-  process.exit(2);
+/** worstCaseCost's input for a lifetime, without the limit */
+function costInput(
+  deploymentPricing: Pricing,
+): Omit<WorstCaseInput, "lifetimeHours" | "limitUsd"> {
+  const { pricesChecked: _checked, ...input } = deploymentPricing;
+  return input;
 }
 
-const month = env("MONTH");
-const ledger: Ledger = existsSync(file)
-  ? (JSON.parse(readFileSync(file, "utf8")) as Ledger)
-  : emptyLedger(month);
-if (ledger.month !== month) {
-  throw new Error(`${file} is the ledger for ${ledger.month}, not ${month}`);
+export function worstCase(deploymentPricing: Pricing, lifetimeMinutes: number) {
+  return worstCaseCost({
+    ...costInput(deploymentPricing),
+    lifetimeHours: lifetimeMinutes / 60,
+    limitUsd: 0,
+  }).totalUsd;
 }
-const id = env("DEPLOYMENT");
 
-if (command === "reserve") {
-  const budgetUsd = number("MONTHLY_BUDGET_USD");
-  const lifetimeMinutes = number("LIFETIME_MINUTES");
-  const deploymentRates = rates(
-    prices,
-    env("REGION"),
-    number("MAX_EGRESS_MBIT"),
-    number("DISK_GIB"),
+export function emptyLedger(month: string): Ledger {
+  return { month, deployments: {} };
+}
+
+/** What a deployment counts against the limit */
+function counted(deployment: Deployment): number {
+  return deployment.settledUsd ?? deployment.reservedUsd;
+}
+
+export function spent(ledger: Ledger): number {
+  return roundUpUsd(
+    Object.values(ledger.deployments).reduce(
+      (sum, deployment) => sum + counted(deployment),
+      0,
+    ),
   );
-  const decision = decide(ledger, budgetUsd, deploymentRates, lifetimeMinutes);
-  console.log(
-    `Worst case for ${lifetimeMinutes} minutes: ${usd(decision.costUsd)} (${usd(deploymentRates.runningPerHour)} an hour, prices from ${prices.checked}). Counted in ${month} so far: ${usd(decision.spentUsd)} of ${usd(budgetUsd)}.`,
+}
+
+export type Decision =
+  | { fits: true; costUsd: number; spentUsd: number; remainingUsd: number }
+  | {
+      fits: false;
+      costUsd: number;
+      spentUsd: number;
+      remainingUsd: number;
+      /** The longest lifetime that would fit, 0 if none does */
+      fittingMinutes: number;
+    };
+
+/** Whether a deployment's worst case fits in what's left of the limit */
+export function decide(
+  ledger: Ledger,
+  budgetUsd: number,
+  deploymentPricing: Pricing,
+  lifetimeMinutes: number,
+): Decision {
+  const spentUsd = spent(ledger);
+  // Rounded down, so the float noise of a subtraction never adds to it
+  const remainingUsd = Math.max(
+    0,
+    Math.floor((budgetUsd - spentUsd) * 10_000 + 1e-6) / 10_000,
   );
-  if (!decision.fits) {
-    const fitting =
-      decision.fittingMinutes > 0
-        ? `A lifetime of up to ${decision.fittingMinutes} minutes would fit.`
-        : "No deployment fits until next month, unless MONTHLY_BUDGET_USD is raised.";
-    console.log(
-      `::error::This deployment could cost up to ${usd(decision.costUsd)}, but only ${usd(decision.remainingUsd)} of this month's ${usd(budgetUsd)} limit is left, so it wasn't started. ${fitting}`,
-    );
-    process.exit(1);
+  const { totalUsd: costUsd, withinLimit } = worstCaseCost({
+    ...costInput(deploymentPricing),
+    lifetimeHours: lifetimeMinutes / 60,
+    limitUsd: remainingUsd,
+  });
+  if (withinLimit) {
+    return { fits: true, costUsd, spentUsd, remainingUsd };
   }
-  writeFileSync(
-    file,
-    `${JSON.stringify(reserve(ledger, id, deploymentRates, lifetimeMinutes), null, 2)}\n`,
-  );
-  output("worst_case_usd", decision.costUsd.toFixed(4));
-  output(
-    "remaining_usd",
-    (decision.remainingUsd - decision.costUsd).toFixed(4),
-  );
-} else {
-  if (!ledger.deployments[id]) {
-    console.log(
-      `::warning::Deployment ${id} isn't in the ${month} ledger, so there's nothing to settle.`,
-    );
-  } else {
-    const settled = settle(ledger, id, {
-      created: env("CREATED"),
-      stopped: process.env.STOPPED || undefined,
-      deleted: env("DELETED"),
-    });
-    writeFileSync(file, `${JSON.stringify(settled, null, 2)}\n`);
-    const deployment = settled.deployments[id];
-    console.log(
-      `Deployment ${id} cost at most ${usd(deployment.settledUsd ?? 0)}, of ${usd(deployment.reservedUsd)} reserved. Counted in ${month} now: ${usd(spent(settled))}.`,
-    );
+  return {
+    fits: false,
+    costUsd,
+    spentUsd,
+    remainingUsd,
+    fittingMinutes: longestFittingLifetimeMinutes(
+      costInput(deploymentPricing),
+      remainingUsd,
+    ),
+  };
+}
+
+/** Records a deployment's worst case, before its VM is created */
+export function reserve(
+  ledger: Ledger,
+  id: string,
+  deploymentPricing: Pricing,
+  lifetimeMinutes: number,
+): Ledger {
+  if (ledger.deployments[id]) {
+    throw new Error(`Deployment ${id} is already in the ledger.`);
   }
+  return {
+    ...ledger,
+    deployments: {
+      ...ledger.deployments,
+      [id]: {
+        lifetimeMinutes,
+        pricing: deploymentPricing,
+        reservedUsd: worstCase(deploymentPricing, lifetimeMinutes),
+      },
+    },
+  };
+}
+
+/** A VM's times, from Google Cloud, as ISO 8601 timestamps */
+export interface VmTimes {
+  created: string;
+  /** When it powered off, if it did */
+  stopped?: string;
+  deleted: string;
+}
+
+function hoursBetween(from: string, to: string): number {
+  const ms = Date.parse(to) - Date.parse(from);
+  if (Number.isNaN(ms)) {
+    throw new Error(`Not a timestamp: '${from}' or '${to}'`);
+  }
+  return Math.max(0, ms / 3_600_000);
+}
+
+/**
+ * Replaces a deployment's reservation with its cost, once its VM is deleted:
+ * worstCaseCost with the time it actually ran and was off. A deployment
+ * that isn't in the ledger is left out.
+ */
+export function settle(ledger: Ledger, id: string, times: VmTimes): Ledger {
+  const deployment = ledger.deployments[id];
+  if (!deployment) {
+    return ledger;
+  }
+  const runningHours = hoursBetween(
+    times.created,
+    times.stopped || times.deleted,
+  );
+  const stoppedHours = times.stopped
+    ? hoursBetween(times.stopped, times.deleted)
+    : 0;
+  const settledUsd = worstCaseCost({
+    ...costInput(deployment.pricing),
+    lifetimeHours: runningHours,
+    cleanupDelayHours: stoppedHours,
+    limitUsd: 0,
+  }).totalUsd;
+  return {
+    ...ledger,
+    deployments: {
+      ...ledger.deployments,
+      // A second settlement, after a retried deletion, can only add to it.
+      [id]: {
+        ...deployment,
+        settledUsd: Math.max(settledUsd, deployment.settledUsd ?? 0),
+        runningHours: Math.max(runningHours, deployment.runningHours ?? 0),
+        stoppedHours: Math.max(stoppedHours, deployment.stoppedHours ?? 0),
+      },
+    },
+  };
 }
