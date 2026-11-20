@@ -27,10 +27,11 @@ keywords = ["ucat_"]
 # without the prefix, or someone writes down the account's password. A value
 # that starts with `$` (a GitHub expression or a shell variable), `<` (a
 # placeholder) or `-` (a command-line flag) doesn't match, and the entropy
-# keeps out ordinary words.
+# keeps out ordinary words. The name and the value must be on one line: in a
+# diff, the next line starts with `+`, which would otherwise count as a value.
 [[rules]]
 id = "upcloud-credential"
 description = "Value of an UpCloud token, password or secret setting"
-regex = '''(?i)upcloud[\w.-]{0,20}?(?:token|password|passwd|pass|secret)[\w.-]{0,10}['"]?\s{0,3}(?:=|:|=>|\s)\s{0,3}['"\x60]?([A-Za-z0-9_+/.~!@#%^&*][^\s'"\x60]{11,})'''
+regex = '''(?i)upcloud[\w.-]{0,20}?(?:token|password|passwd|pass|secret)[\w.-]{0,10}['"]?[ \t]{0,3}(?:=|:|=>|[ \t])[ \t]{0,3}['"\x60]?([A-Za-z0-9_+/.~!@#%^&*][^\s'"\x60]{11,})'''
 entropy = 3.2
 keywords = ["upcloud"]
