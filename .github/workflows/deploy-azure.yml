@@ -1,4 +1,4 @@
-name: Deploy Azure
+name: Deploy to Azure
 
 # Starts a Paranoid server on Azure for a set number of invites. It powers
 # itself off once the last one is finished, or when its lifetime is over, and
