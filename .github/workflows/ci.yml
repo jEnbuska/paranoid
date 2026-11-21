@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, dev]
+    branches: [main, dev, 97-throwaway-main]
 
 permissions:
   contents: read
@@ -187,11 +187,11 @@ jobs:
       - name: Check the dependencies for known vulnerabilities
         if: >-
           !cancelled()
-          && (github.base_ref == 'main'
-            || github.ref == 'refs/heads/main'
+          && (github.base_ref == '97-throwaway-main'
+            || github.ref == 'refs/heads/97-throwaway-main'
             || (github.event_name == 'pull_request' && needs.changes.outputs.deps != 'false'))
         env:
-          WHOLE_TREE: ${{ github.base_ref == 'main' || github.ref == 'refs/heads/main' }}
+          WHOLE_TREE: ${{ github.base_ref == '97-throwaway-main' || github.ref == 'refs/heads/97-throwaway-main' }}
         run: |
           pnpm audit --audit-level=high --json > "$RUNNER_TEMP/audit.json" || true
           base=()

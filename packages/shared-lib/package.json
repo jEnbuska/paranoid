@@ -15,5 +15,8 @@
   "license": "MIT",
   "devDependencies": {
     "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "lodash": "4.17.20"
   }
 }
