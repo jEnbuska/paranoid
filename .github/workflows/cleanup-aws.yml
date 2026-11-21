@@ -69,10 +69,14 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    # Shared with deploy-aws.yml and stop-aws.yml, so only one of them
-    # changes instances at a time.
+    # Its own group, not deploy-aws.yml's: a deploy waiting for its approval
+    # may hold that one, and the hourly cleanup must not wait behind it. It's
+    # safe beside a deploy, because it only terminates instances that are
+    # stopped or past their expiry, and a new instance is pending or running
+    # with an expiry in the future. Stop AWS terminating the same instance at
+    # the same time is harmless too.
     concurrency:
-      group: aws
+      group: aws-cleanup
       cancel-in-progress: false
 
     steps:
