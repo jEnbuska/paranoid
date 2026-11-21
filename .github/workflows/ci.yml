@@ -171,29 +171,48 @@ jobs:
         if: needs.changes.outputs.checks != 'false'
         run: pnpm build
 
-      # Fails a PR that adds a known vulnerability of high severity or worse,
-      # comparing `pnpm audit` on the PR's merge commit with its base
-      # (HEAD^1), so an advisory for a dependency the PR didn't touch doesn't
-      # fail it: the weekly audit (audit.yml) opens an issue for those.
-      # GitHub's dependency review can't read pnpm 12's lockfile, which is two
-      # YAML documents. Pushes skip this: they can't be blocked, and the
-      # weekly audit covers them. It runs last, and even after an earlier
-      # step fails, so neither hides the other's result.
-      - name: Check the changed dependencies for known vulnerabilities
+      # Checks the dependencies for known vulnerabilities of high severity or
+      # worse with `pnpm audit`. GitHub's dependency review can't read pnpm
+      # 12's lockfile, which is two YAML documents. It runs last, and even
+      # after an earlier step fails, so neither hides the other's result.
+      # - A PR into main, or a push to main, audits the whole tree, whatever
+      #   files changed: this job is required in the main ruleset, so a
+      #   finding blocks the release. Fix it in dev first, in its own PR.
+      # - A PR into dev that changes a package.json or the lockfile fails
+      #   only on what it adds, compared with its base (HEAD^1), so an
+      #   advisory for a dependency it didn't touch doesn't fail it: the
+      #   weekly audit (audit.yml) opens an issue for those.
+      # - Other pushes skip it: they can't be blocked, and the weekly audit
+      #   covers them.
+      - name: Check the dependencies for known vulnerabilities
         if: >-
           !cancelled()
-          && github.event_name == 'pull_request'
-          && needs.changes.outputs.deps != 'false'
+          && (github.base_ref == 'main'
+            || github.ref == 'refs/heads/main'
+            || (github.event_name == 'pull_request' && needs.changes.outputs.deps != 'false'))
+        env:
+          WHOLE_TREE: ${{ github.base_ref == 'main' || github.ref == 'refs/heads/main' }}
         run: |
-          git worktree add --detach "$RUNNER_TEMP/base" HEAD^1
-          pnpm audit --json > "$RUNNER_TEMP/audit.json" || true
-          pnpm --dir "$RUNNER_TEMP/base" audit --json > "$RUNNER_TEMP/base-audit.json" || true
+          pnpm audit --audit-level=high --json > "$RUNNER_TEMP/audit.json" || true
+          base=()
+          if [ "$WHOLE_TREE" != true ]; then
+            git worktree add --detach "$RUNNER_TEMP/base" HEAD^1
+            pnpm --dir "$RUNNER_TEMP/base" audit --audit-level=high --json > "$RUNNER_TEMP/base-audit.json" || true
+            base=("$RUNNER_TEMP/base-audit.json")
+          fi
           status=0
-          node scripts/audit-report.mts "$RUNNER_TEMP/audit.json" "$RUNNER_TEMP/base-audit.json" > "$RUNNER_TEMP/report.md" || status=$?
+          node scripts/audit-report.mts "$RUNNER_TEMP/audit.json" "${base[@]}" > "$RUNNER_TEMP/report.md" || status=$?
           if [ "$status" = 1 ]; then
+            if [ "$WHOLE_TREE" = true ]; then
+              heading='Known vulnerabilities in the dependencies'
+              message='The dependencies have known vulnerabilities of high severity or worse, listed above and in the job summary. Fix them in dev first, in a PR of their own, then update this branch.'
+            else
+              heading='Known vulnerabilities this PR adds'
+              message='This PR adds dependencies with known vulnerabilities of high severity or worse. Update each one to its fixed version, listed above and in the job summary.'
+            fi
             cat "$RUNNER_TEMP/report.md"
-            { echo '## Known vulnerabilities this PR adds'; echo; cat "$RUNNER_TEMP/report.md"; } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::This PR adds dependencies with known vulnerabilities of high severity or worse. Update each one to its fixed version, listed above and in the job summary."
+            { echo "## $heading"; echo; cat "$RUNNER_TEMP/report.md"; } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::$message"
           fi
           exit "$status"
 
