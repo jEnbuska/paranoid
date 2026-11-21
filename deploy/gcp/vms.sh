@@ -4,9 +4,12 @@
 # Only VMs named paranoid-* and labeled app=paranoid are touched, and the
 # deploy identity can't delete any other VM anyway.
 #
-# Usage: vms.sh all|stopped|run <deployment>
+# Usage: vms.sh all|finished|run <deployment>
 #   all: every Paranoid VM, running or not (deploy-gcp.yml, stop-gcp.yml)
-#   stopped: those that powered off, never a running one (cleanup-gcp.yml)
+#   finished: those that powered off, or are past their paranoid-expires
+#     label, the Unix time their lifetime ends, never a VM before it
+#     (cleanup-gcp.yml). Google Cloud deletes a VM at the end of its
+#     lifetime itself; this is in case that ever fails.
 #   run <deployment>: that deployment's VM, after a failed deploy. If it was
 #     never created, its whole reservation is released.
 # Environment: GCP_BUCKET, CLOUDSDK_CORE_PROJECT
@@ -18,7 +21,7 @@ trap 'rm -f "$error"' EXIT
 filter='name ~ ^paranoid- AND labels.app=paranoid'
 case "$1" in
   all) ;;
-  stopped) filter="$filter AND status=TERMINATED" ;;
+  finished) ;;
   run)
     [[ ${2:-} =~ ^[0-9]+-[0-9]+$ ]] || {
       echo "Usage: vms.sh run <deployment>" >&2
@@ -27,15 +30,20 @@ case "$1" in
     filter="$filter AND name=paranoid-$2"
     ;;
   *)
-    echo "Usage: vms.sh all|stopped|run <deployment>" >&2
+    echo "Usage: vms.sh all|finished|run <deployment>" >&2
     exit 2
     ;;
 esac
 
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
+# finished keeps only what's off or expired, checked here rather than in
+# gcloud's filter, which compares labels as text.
 vms=$(gcloud compute instances list --filter="$filter" --format=json |
-  jq -r '.[] | [.name, (.zone | split("/") | last), .status, .creationTimestamp,
+  jq -r --arg mode "$1" --argjson now "$(date +%s)" '.[]
+    | select($mode != "finished" or .status == "TERMINATED"
+      or ((.labels["paranoid-expires"] // "") | test("^[0-9]+$") and tonumber <= $now))
+    | [.name, (.zone | split("/") | last), .status, .creationTimestamp,
     (.lastStopTimestamp // "-"), (.labels["paranoid-deployment"] // "-"),
     (.labels["paranoid-month"] // "-")] | @tsv')
 

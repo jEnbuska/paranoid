@@ -28,14 +28,16 @@ on:
 permissions:
   contents: read
 
-# Only one deploy at a time: the next waits for this one to finish. Stop and
-# cleanup have groups of their own, so neither waits behind a deploy that's
-# waiting for approval. Stop cancels deploys itself, and cleanup only deletes
-# VMs that are powered off, never a new one. Each ledger write checks the
-# ledger's generation, so two runs settling at once can't overwrite each
-# other.
+# Shared with stop-gcp.yml, so only one deploy runs at a time: the next
+# waits for this one. Stop cancels this run, and then the last step deletes
+# its VM. A run waiting for approval is cancelled too if GitHub counts it as
+# in the group; if not, Stop doesn't wait for it, and it only runs if it's
+# approved. cleanup-gcp.yml has a
+# group of its own and only deletes VMs that are off or past their expiry,
+# never this one. Each ledger write checks the ledger's generation, so two
+# runs settling at once can't overwrite each other.
 concurrency:
-  group: paranoid-gcp-deploy
+  group: gcp
   cancel-in-progress: false
 
 jobs:
