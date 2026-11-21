@@ -1,0 +1,94 @@
+{
+  "checked": "2026-11-20",
+  "about": "Read by packages/deploy (its src/prices.ts explains the format) for the worst-case cost check in deploy-upcloud.yml. UpCloud prices in EUR, excluding VAT, and the check takes USD, so each price is UpCloud's EUR price times 1.0990, the European Central Bank's euro reference rate for USD on 2026-11-20, rounded up. A server's hourly price is its monthly price divided by 672, the most hours UpCloud bills in a month, and UpCloud bills every started hour (wholeHours). Starter and Premium plans include their disk and one IPv4 address, and are billed the same while stopped (serverBilledWhileStopped), so they have no items. Plans are global prices, the same in every zone; only the EU zones are listed, so a deploy elsewhere is refused. cleanupDelayMinutes covers a server that stopped, or reached its lifetime, until cleanup-upcloud.yml deletes it: up to an hour between cleanup runs, 15 minutes more for a server that stopped right after it was created, and 45 minutes for GitHub delaying the scheduled run. Update every price, the rate and the date together, and docs/deploy/upcloud.md's cost table too.",
+  "sources": {
+    "servers": "Starter: STARTER-1xCPU-1GB €3 a month, STARTER-1xCPU-2GB €6 a month. Premium: PREMIUM-1xCPU-1GB €5 a month. 'Global price', billed by the starting hour, at most 28 days a month, from https://upcloud.com/pricing/ and https://upcloud.com/docs/products/cloud-servers/configurations/",
+    "egress": "Free: 'All plans include zero-cost egress, Fair Transfer Policy applies', from https://upcloud.com/pricing/ and https://upcloud.com/docs/products/networking/network-transfer/. Past the allowance UpCloud may slow the server down, but doesn't charge.",
+    "rate": "1 EUR = 1.0990 USD on 2026-11-20, from https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+  },
+  "currency": "USD",
+  "wholeHours": true,
+  "cleanupDelayMinutes": 120,
+  "regions": {
+    "fi-hel1": {
+      "name": "Helsinki",
+      "servers": {
+        "STARTER-1xCPU-1GB": 0.004907,
+        "STARTER-1xCPU-2GB": 0.009813,
+        "PREMIUM-1xCPU-1GB": 0.008178
+      },
+      "serverBilledWhileStopped": true,
+      "egress": { "usdPerGb": 0 }
+    },
+    "fi-hel2": {
+      "name": "Helsinki",
+      "servers": {
+        "STARTER-1xCPU-1GB": 0.004907,
+        "STARTER-1xCPU-2GB": 0.009813,
+        "PREMIUM-1xCPU-1GB": 0.008178
+      },
+      "serverBilledWhileStopped": true,
+      "egress": { "usdPerGb": 0 }
+    },
+    "de-fra1": {
+      "name": "Frankfurt",
+      "servers": {
+        "STARTER-1xCPU-1GB": 0.004907,
+        "STARTER-1xCPU-2GB": 0.009813,
+        "PREMIUM-1xCPU-1GB": 0.008178
+      },
+      "serverBilledWhileStopped": true,
+      "egress": { "usdPerGb": 0 }
+    },
+    "nl-ams1": {
+      "name": "Amsterdam",
+      "servers": {
+        "STARTER-1xCPU-1GB": 0.004907,
+        "STARTER-1xCPU-2GB": 0.009813,
+        "PREMIUM-1xCPU-1GB": 0.008178
+      },
+      "serverBilledWhileStopped": true,
+      "egress": { "usdPerGb": 0 }
+    },
+    "dk-cph1": {
+      "name": "Copenhagen",
+      "servers": {
+        "STARTER-1xCPU-1GB": 0.004907,
+        "STARTER-1xCPU-2GB": 0.009813,
+        "PREMIUM-1xCPU-1GB": 0.008178
+      },
+      "serverBilledWhileStopped": true,
+      "egress": { "usdPerGb": 0 }
+    },
+    "se-sto1": {
+      "name": "Stockholm",
+      "servers": {
+        "STARTER-1xCPU-1GB": 0.004907,
+        "STARTER-1xCPU-2GB": 0.009813,
+        "PREMIUM-1xCPU-1GB": 0.008178
+      },
+      "serverBilledWhileStopped": true,
+      "egress": { "usdPerGb": 0 }
+    },
+    "pl-waw1": {
+      "name": "Warsaw",
+      "servers": {
+        "STARTER-1xCPU-1GB": 0.004907,
+        "STARTER-1xCPU-2GB": 0.009813,
+        "PREMIUM-1xCPU-1GB": 0.008178
+      },
+      "serverBilledWhileStopped": true,
+      "egress": { "usdPerGb": 0 }
+    },
+    "es-mad1": {
+      "name": "Madrid",
+      "servers": {
+        "STARTER-1xCPU-1GB": 0.004907,
+        "STARTER-1xCPU-2GB": 0.009813,
+        "PREMIUM-1xCPU-1GB": 0.008178
+      },
+      "serverBilledWhileStopped": true,
+      "egress": { "usdPerGb": 0 }
+    }
+  }
+}

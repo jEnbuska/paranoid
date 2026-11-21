@@ -108,6 +108,10 @@ Anyone with a fork can start a Paranoid server from GitHub Actions. Each provide
 - Deploy workflows run only on `workflow_dispatch` and `schedule`, never `pull_request` or `pull_request_target`, and use their provider's environment, which only `main` may use.
 - User data and labels hold only values the scripts have checked, so an input can't inject commands.
 - Pin every download (provider CLIs, Node.js, Caddy, gitleaks) to a version and check its checksum. Update the version and checksum together.
+- UpCloud ([docs/deploy/upcloud.md](docs/deploy/upcloud.md)): `deploy-upcloud.yml`, `stop-upcloud.yml` and `cleanup-upcloud.yml` manage one server, with scripts in `deploy/upcloud`.
+  - Don't use `UpCloudLtd/upcloud-cli-action`: it writes the token to `GITHUB_ENV`, on disk and for every later step. `.github/actions/setup-upctl` installs `upctl` instead. Use the token, never UpCloud's username and password.
+  - `deploy/upcloud/settings.sh` checks every value before it reaches user data or labels.
+  - Servers are created with an SSH key whose private half is deleted, password delivery `none` and no `--create-password`, so UpCloud sets no root password. Never print `upctl`'s JSON output: a server's details can hold passwords.
 - `shellcheck` checks `deploy/**/*.sh` in CI. Keep the deploy scripts there.
 
 ## End-to-end tests
