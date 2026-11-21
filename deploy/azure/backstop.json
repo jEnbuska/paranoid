@@ -1,0 +1,228 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "The backstop that deletes Paranoid VMs outside GitHub: a Logic App (Consumption plan) with a system-assigned managed identity, which bootstrap.sh gives the Paranoid backstop role on the resource group. Each run lists the VMs tagged app=paranoid, checks each every 2 minutes, and deletes it with its NIC, public IP and disk once Azure has finished creating it and it's stopped, or once it's past its expires-at tag. deploy-azure.yml starts a run for each new VM, and the daily trigger catches anything left. It holds no secret: Azure gives the identity its tokens."
+  },
+  "parameters": {
+    "name": {
+      "type": "string",
+      "defaultValue": "paranoid-backstop"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('name')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "app": "paranoid"
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "state": "Enabled",
+        "parameters": {
+          "resourceGroupId": {
+            "value": "[resourceGroup().id]"
+          }
+        },
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "resourceGroupId": {
+              "type": "String"
+            },
+            "arm": {
+              "type": "String",
+              "defaultValue": "https://management.azure.com"
+            },
+            "computeApi": {
+              "type": "String",
+              "defaultValue": "2024-07-01"
+            },
+            "networkApi": {
+              "type": "String",
+              "defaultValue": "2024-05-01"
+            }
+          },
+          "triggers": {
+            "daily": {
+              "type": "Recurrence",
+              "recurrence": {
+                "frequency": "Day",
+                "interval": 1
+              }
+            }
+          },
+          "actions": {
+            "List_VMs": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "@{parameters('arm')}@{parameters('resourceGroupId')}/providers/Microsoft.Compute/virtualMachines?api-version=@{parameters('computeApi')}",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://management.azure.com/"
+                }
+              }
+            },
+            "Paranoid_VMs": {
+              "type": "Query",
+              "runAfter": {
+                "List_VMs": ["Succeeded"]
+              },
+              "inputs": {
+                "from": "@coalesce(body('List_VMs')?['value'], json('[]'))",
+                "where": "@equals(item()?['tags']?['app'], 'paranoid')"
+              }
+            },
+            "For_each_VM": {
+              "type": "Foreach",
+              "runAfter": {
+                "Paranoid_VMs": ["Succeeded"]
+              },
+              "foreach": "@body('Paranoid_VMs')",
+              "actions": {
+                "Wait_until_finished": {
+                  "type": "Until",
+                  "expression": "@or(equals(outputs('Get_power_state')?['statusCode'], 404), and(contains(string(body('Get_power_state')?['statuses']), 'ProvisioningState/succeeded'), or(contains(string(body('Get_power_state')?['statuses']), 'PowerState/stopped'), contains(string(body('Get_power_state')?['statuses']), 'PowerState/deallocat'))), greaterOrEquals(ticks(utcNow()), ticks(coalesce(items('For_each_VM')?['tags']?['expires-at'], '2000-01-01T00:00:00Z'))))",
+                  "limit": {
+                    "count": 1000,
+                    "timeout": "PT26H"
+                  },
+                  "actions": {
+                    "Wait_2_minutes": {
+                      "type": "Wait",
+                      "inputs": {
+                        "interval": {
+                          "count": 2,
+                          "unit": "Minute"
+                        }
+                      }
+                    },
+                    "Get_power_state": {
+                      "type": "Http",
+                      "runAfter": {
+                        "Wait_2_minutes": ["Succeeded"]
+                      },
+                      "inputs": {
+                        "method": "GET",
+                        "uri": "@{parameters('arm')}@{items('For_each_VM')?['id']}/instanceView?api-version=@{parameters('computeApi')}",
+                        "authentication": {
+                          "type": "ManagedServiceIdentity",
+                          "audience": "https://management.azure.com/"
+                        }
+                      }
+                    },
+                    "Keep_waiting": {
+                      "type": "Compose",
+                      "runAfter": {
+                        "Get_power_state": ["Succeeded", "Failed", "TimedOut"]
+                      },
+                      "inputs": "A failed check (404 once the VM is gone) doesn't end the loop: its expression decides."
+                    }
+                  }
+                },
+                "Delete_VM": {
+                  "type": "Http",
+                  "runAfter": {
+                    "Wait_until_finished": ["Succeeded", "Failed", "TimedOut"]
+                  },
+                  "operationOptions": "DisableAsyncPattern",
+                  "inputs": {
+                    "method": "DELETE",
+                    "uri": "@{parameters('arm')}@{items('For_each_VM')?['id']}?api-version=@{parameters('computeApi')}",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "https://management.azure.com/"
+                    }
+                  }
+                },
+                "Wait_for_the_VM_to_go": {
+                  "type": "Wait",
+                  "runAfter": {
+                    "Delete_VM": ["Succeeded", "Failed"]
+                  },
+                  "inputs": {
+                    "interval": {
+                      "count": 3,
+                      "unit": "Minute"
+                    }
+                  }
+                },
+                "Delete_NIC": {
+                  "type": "Http",
+                  "runAfter": {
+                    "Wait_for_the_VM_to_go": ["Succeeded"]
+                  },
+                  "operationOptions": "DisableAsyncPattern",
+                  "inputs": {
+                    "method": "DELETE",
+                    "uri": "@{parameters('arm')}@{parameters('resourceGroupId')}/providers/Microsoft.Network/networkInterfaces/@{items('For_each_VM')?['name']}-nic?api-version=@{parameters('networkApi')}",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "https://management.azure.com/"
+                    }
+                  }
+                },
+                "Wait_for_the_NIC_to_go": {
+                  "type": "Wait",
+                  "runAfter": {
+                    "Delete_NIC": ["Succeeded", "Failed"]
+                  },
+                  "inputs": {
+                    "interval": {
+                      "count": 1,
+                      "unit": "Minute"
+                    }
+                  }
+                },
+                "Delete_public_IP": {
+                  "type": "Http",
+                  "runAfter": {
+                    "Wait_for_the_NIC_to_go": ["Succeeded"]
+                  },
+                  "operationOptions": "DisableAsyncPattern",
+                  "inputs": {
+                    "method": "DELETE",
+                    "uri": "@{parameters('arm')}@{parameters('resourceGroupId')}/providers/Microsoft.Network/publicIPAddresses/@{items('For_each_VM')?['name']}-ip?api-version=@{parameters('networkApi')}",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "https://management.azure.com/"
+                    }
+                  }
+                },
+                "Delete_disk": {
+                  "type": "Http",
+                  "runAfter": {
+                    "Wait_for_the_VM_to_go": ["Succeeded"]
+                  },
+                  "operationOptions": "DisableAsyncPattern",
+                  "inputs": {
+                    "method": "DELETE",
+                    "uri": "@{parameters('arm')}@{parameters('resourceGroupId')}/providers/Microsoft.Compute/disks/@{items('For_each_VM')?['name']}-disk?api-version=@{parameters('computeApi')}",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "https://management.azure.com/"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {}
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "principalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('name')), '2019-05-01', 'full').identity.principalId]"
+    }
+  }
+}

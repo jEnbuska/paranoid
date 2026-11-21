@@ -1,0 +1,93 @@
+{
+  "checked": "2026-11-20",
+  "about": "Pay-as-you-go prices in USD, without VAT, from Microsoft's retail prices API. Refresh with deploy/azure/fetch-prices.sh.",
+  "sources": ["https://prices.azure.com/api/retail/prices"],
+  "currency": "USD",
+  "cleanupDelayMinutes": 60,
+  "regions": {
+    "swedencentral": {
+      "name": "Sweden Central, Gävle",
+      "servers": {
+        "Standard_B1s": 0.0108,
+        "Standard_B2ats_v2": 0.00972,
+        "Standard_B2pts_v2": 0.0086
+      },
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "Standard SSD disk, 32 GiB",
+          "usdPerMonth": 2.4
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.087
+      }
+    },
+    "germanywestcentral": {
+      "name": "Germany West Central, Frankfurt",
+      "servers": {
+        "Standard_B1s": 0.012,
+        "Standard_B2ats_v2": 0.0108,
+        "Standard_B2pts_v2": 0.0096
+      },
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "Standard SSD disk, 32 GiB",
+          "usdPerMonth": 2.4
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.087
+      }
+    },
+    "northeurope": {
+      "name": "North Europe, Ireland",
+      "servers": {
+        "Standard_B1s": 0.0113,
+        "Standard_B2ats_v2": 0.0102,
+        "Standard_B2pts_v2": 0.0092
+      },
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "Standard SSD disk, 32 GiB",
+          "usdPerMonth": 2.4
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.087
+      }
+    },
+    "westeurope": {
+      "name": "West Europe, Netherlands",
+      "servers": {
+        "Standard_B1s": 0.012,
+        "Standard_B2ats_v2": 0.0108,
+        "Standard_B2pts_v2": 0.0096
+      },
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "Standard SSD disk, 32 GiB",
+          "usdPerMonth": 2.4
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.087
+      }
+    }
+  }
+}
