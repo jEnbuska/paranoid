@@ -5,7 +5,10 @@
 #
 # Usage:
 #   terminate.sh all          every instance that isn't terminated yet
-#   terminate.sh expired      instances past their expiry time, or stopped
+#   terminate.sh expired      instances past their expiry time, or stopped.
+#                             An instance that's pending, running or stopping
+#                             with an expiry in the future is left alone, so
+#                             this never removes a deploy's new instance.
 #   terminate.sh run <id>     the instance of one deploy run
 #
 # A Paranoid instance is one tagged app=paranoid. The deploy role can't

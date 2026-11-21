@@ -15,9 +15,11 @@ on:
 permissions:
   contents: read
 
-# Shared with deploy-aws.yml and cleanup-aws.yml. Stopping cancels a deploy
-# in progress, which then terminates the server it started, and this run
-# terminates whatever is left.
+# Shared with deploy-aws.yml, and cancel-in-progress, so stopping never
+# waits: it cancels a deploy in progress, including one waiting for its
+# approval, and any deploy queued behind it. A cancelled deploy terminates
+# the server it started, if it got that far, and this run terminates
+# whatever is left.
 concurrency:
   group: aws
   cancel-in-progress: true

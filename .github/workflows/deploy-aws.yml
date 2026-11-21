@@ -31,8 +31,10 @@ on:
 permissions:
   contents: read
 
-# Shared with stop-aws.yml and cleanup-aws.yml, so only one of them changes
-# instances at a time. A deploy waits for the run before it to finish.
+# Shared with stop-aws.yml. A deploy waits for the deploy before it to
+# finish, so two never overlap, and Stop AWS cancels it. A deploy waiting for
+# its approval may hold the group, which only makes other deploys wait.
+# cleanup-aws.yml has a group of its own, so it never waits behind a deploy.
 concurrency:
   group: aws
   cancel-in-progress: false
