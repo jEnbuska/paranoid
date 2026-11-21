@@ -46,6 +46,8 @@ git rebase origin/dev
 git push --force-with-lease
 ```
 
+When a rebase stops on a conflict, `git rebase --continue` opens that commit's message in your editor, which deletes a `#N` subject unless you follow [Commit messages](#commit-messages).
+
 Or press "Update branch" on the PR and pick "Update with rebase", not "Update with merge commit": PR branches stay linear, like `dev` and `main`. After GitHub rebases the branch, fetch and reset or rebase your local branch onto it before pushing again.
 
 GitHub's rebase drops empty commits, but `git rebase` keeps them. So "Update branch" on a draft PR that holds only its empty "Start" commit moves the branch to the base's tip, and GitHub then closes the PR because it has no commits. Rebase such a PR with `git rebase` instead, or don't update it until it has a real commit. If it was already closed, push a new commit to its branch and reopen it.
