@@ -109,8 +109,11 @@ jobs:
             echo
             echo "Update each package to its fixed version in a PR of its own that closes this issue, not in an unrelated PR. While this issue is open, each audit with a finding updates it instead of opening another."
           } > "$body"
-          number=$(gh issue list --state open --author app/github-actions --limit 100 --json number,title |
-            jq -r --arg title "$title" 'map(select(.title == $title)) | first | .number // empty')
+          # `--author` would go through the search API, whose index lags, so
+          # a second run right after the first wouldn't find the new issue.
+          # The label filter lists issues directly.
+          number=$(gh issue list --state open --label bug --limit 200 --json number,title,author |
+            jq -r --arg title "$title" 'map(select(.title == $title and .author.login == "app/github-actions")) | first | .number // empty')
           if [ -n "$number" ]; then
             gh issue edit "$number" --body-file "$body"
             echo "Updated issue #$number"
