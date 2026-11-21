@@ -1,0 +1,50 @@
+name: Stop UpCloud
+
+# Deletes every Paranoid server on UpCloud right away, running or not.
+# Chats that have started keep working, because they're peer to peer.
+#
+# UPCLOUD_TOKEN comes from the `upcloud-cleanup` environment, which only `main`
+# may use, and only the step that calls upctl gets it. Only a manual run
+# starts this. Unlike `upcloud`, that environment has no required reviewers,
+# so stopping never waits for an approval.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shared with deploy-upcloud.yml. Stopping cancels a deploy in progress, or one
+# waiting for approval, and a running deploy then deletes the server it
+# created. This run deletes whatever is left.
+concurrency:
+  group: upcloud
+  cancel-in-progress: true
+
+jobs:
+  stop:
+    name: Delete the servers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: upcloud-cleanup
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check for the token
+        env:
+          HAS_TOKEN: ${{ secrets.UPCLOUD_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != true ]; then
+            echo "::error::The upcloud-cleanup environment has no UPCLOUD_TOKEN secret. See docs/deploy/upcloud.md."
+            exit 1
+          fi
+
+      - uses: ./.github/actions/setup-upctl
+
+      - name: Delete every server
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+        run: bash deploy/upcloud/delete-servers.sh all

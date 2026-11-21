@@ -1,0 +1,121 @@
+name: Deploy to UpCloud
+
+# Starts a Paranoid server on UpCloud for a set number of invites. It
+# powers itself off once the last one is finished, or when its lifetime is
+# over, and cleanup-upcloud.yml then deletes it. See docs/deploy/upcloud.md.
+#
+# The UpCloud API token, UPCLOUD_TOKEN, is a secret of the `upcloud`
+# environment, which only `main` may use and which docs/deploy/upcloud.md
+# sets up to need the owner's approval, so every deploy waits for it. Only this
+# workflow uses it: stop-upcloud.yml and cleanup-upcloud.yml use
+# `upcloud-cleanup`, which has no reviewers, so they never wait. Only the
+# steps that call upctl get the token, through `env:`, and nothing writes it to
+# disk or prints it. Only a manual run starts this workflow, never a pull
+# request, so no PR or fork can reach the secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_invites:
+        description: "Invites before the server shuts down. Empty: the MAX_INVITES variable, or 5."
+        required: false
+        type: string
+      lifetime_minutes:
+        description: "Minutes until it shuts down at the latest, at most 1440 (24 hours). Empty: the LIFETIME_MINUTES variable, or 60."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Shared with stop-upcloud.yml, which cancels a deploy that is running or
+# waiting for approval. A deploy waits for the deploy before it to finish.
+# cleanup-upcloud.yml has its own group, so a deploy waiting for approval
+# doesn't hold up the cleanup.
+concurrency:
+  group: upcloud
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to UpCloud
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: upcloud
+      url: ${{ steps.create.outputs.url }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Before anything is deleted, so a bad setting leaves a running server
+      # alone. HAS_TOKEN is only "true" or "false".
+      - name: Check the settings
+        env:
+          HAS_TOKEN: ${{ secrets.UPCLOUD_TOKEN != '' }}
+          MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
+          LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
+          MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
+          ZONE: ${{ vars.UPCLOUD_ZONE || 'fi-hel1' }}
+          PLAN: ${{ vars.UPCLOUD_PLAN || 'STARTER-1xCPU-1GB' }}
+          DEFAULT_PLAN: STARTER-1xCPU-1GB
+          TEMPLATE: ${{ vars.UPCLOUD_TEMPLATE || 'Debian GNU/Linux 13 (Trixie)' }}
+        run: |
+          if [ "$HAS_TOKEN" != true ]; then
+            echo "::error::The upcloud environment has no UPCLOUD_TOKEN secret. See docs/deploy/upcloud.md."
+            exit 1
+          fi
+          bash deploy/upcloud/settings.sh
+
+      - name: Set up upctl
+        id: upctl
+        uses: ./.github/actions/setup-upctl
+
+      # Running or stopped, so there's only ever one server
+      - name: Delete the existing servers
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+        run: bash deploy/upcloud/delete-servers.sh all
+
+      # The server fetches this exact commit of this repository, which is
+      # public, so it needs no credentials. The same step sets its firewall.
+      - name: Create the server
+        id: create
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/upcloud/create-server.sh
+
+      # The server installs and builds the app first, which takes a few
+      # minutes.
+      - name: Wait for the app
+        env:
+          HOST: ${{ steps.create.outputs.host }}
+        run: bash deploy/ci/wait-for-app.sh "$HOST" 600
+
+      - name: Write the summary
+        env:
+          URL: ${{ steps.create.outputs.url }}
+          EXPIRES: ${{ steps.create.outputs.expires }}
+        run: |
+          shutdown=$(date -u -d "@$EXPIRES" '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "## Paranoid is running"
+            echo
+            echo "**<$URL>**"
+            echo
+            echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
+            echo "- It's a $PLAN server in $ZONE. The Clean up UpCloud workflow deletes it within about an hour of shutting down, and Stop UpCloud deletes it right away."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Also when the run is cancelled, for example by stop-upcloud.yml
+      - name: Delete the server after a failed deploy
+        if: (failure() || cancelled()) && steps.upctl.outcome == 'success'
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/upcloud/delete-servers.sh run "$RUN_ID"
