@@ -138,6 +138,7 @@ if [ -n "$swap" ]; then
   rm -f "$swap"
 fi
 
+# 0755: root may change the folder, everyone may list and enter it.
 install -d -m 0755 /etc/paranoid
 cat >/etc/paranoid/signaling.env <<EOF
 PORT=8181
@@ -147,6 +148,8 @@ MAX_INVITES=$MAX_INVITES
 EOF
 printf 'PARANOID_HOST=%s\n' "$PARANOID_HOST" >/etc/paranoid/caddy.env
 
+# 0644: root may read and write the units, everyone else may only read them,
+# as systemd expects. None of them holds a secret.
 install -m 0644 "$app"/deploy/server/systemd/*.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now paranoid-egress.service paranoid-signaling.service paranoid-caddy.service

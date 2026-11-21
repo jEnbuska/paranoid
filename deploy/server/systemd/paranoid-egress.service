@@ -1,14 +1,26 @@
+# Limits the whole server's outbound traffic to MAX_EGRESS_MBIT, with tc
+# (deploy/server/limit-egress.sh), before the other services start, so even a
+# misbehaving server can't run up the provider's egress bill. setup.sh
+# installs it into /etc/systemd/system and enables it.
+
 [Unit]
 Description=Limit the server's outbound traffic
+# Starts once the network is up, because the limit is set on its interface.
 After=network-online.target
 Wants=network-online.target
+# The limit is in place before the services that send anything start.
 Before=paranoid-signaling.service paranoid-caddy.service
 
 [Service]
+# Runs the script once and is done: no process keeps running.
 Type=oneshot
+# Counts as active after the script exits, so the units ordered after it see
+# it as started, and it doesn't run again until the next boot.
 RemainAfterExit=yes
+# MAX_EGRESS_MBIT, written by cloud-init
 EnvironmentFile=/etc/paranoid/deploy.env
 ExecStart=/bin/bash /opt/paranoid/app/deploy/server/limit-egress.sh
 
 [Install]
+# Started at every boot, with the rest of the normal (non-graphical) system.
 WantedBy=multi-user.target

@@ -4,8 +4,13 @@
 #
 # There's no `log` directive, so Caddy keeps no access log and stores no
 # client IP addresses.
+
+# Global options
 {
+	# No admin API on localhost:2019, so nothing on the server can change the
+	# config while it runs.
 	admin off
+	# Doesn't save the running config to disk: this file is the only config.
 	persist_config off
 	# No HTTP/3: the firewall only lets in TCP.
 	servers {
@@ -13,9 +18,13 @@
 	}
 }
 
+# The site, named by the hostname from the environment. Naming a host turns
+# on automatic HTTPS for it.
 {$PARANOID_HOST} {
+	# Compresses responses, with zstd or gzip, whichever the browser accepts.
 	encode zstd gzip
 
+	# The signaling server's paths go to it, on this machine only.
 	@signaling path /socket.io/* /healthz
 	handle @signaling {
 		reverse_proxy 127.0.0.1:8181

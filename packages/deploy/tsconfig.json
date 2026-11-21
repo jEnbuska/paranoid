@@ -1,9 +1,15 @@
+// Type checking only (pnpm typecheck): Node.js runs this package's TypeScript
+// directly with type stripping, so nothing is emitted.
 {
   "compilerOptions": {
     "forceConsistentCasingInFileNames": true,
+    // Imports and exports stay as written, resolved like a bundler would,
+    // with the .ts extensions Node.js needs
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
+    // Only TypeScript that Node.js can strip: `import type` for types, and no
+    // enums, namespaces or parameter properties
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "target": "ESNext",
@@ -11,6 +17,7 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    // Node.js's APIs, and Vitest's describe, it and expect without imports
     "types": ["node", "vitest/globals"],
     "noEmit": true,
     "skipLibCheck": true
