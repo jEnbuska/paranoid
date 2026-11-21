@@ -209,6 +209,8 @@ Each provider has its own step-by-step guide, which assumes only a GitHub accoun
 
 <!-- One line per provider, in alphabetical order: - [Provider](docs/deploy/<provider>.md), where it runs. -->
 
+- [UpCloud](docs/deploy/upcloud.md), a Finnish provider, in the EU.
+
 ## Continuous integration
 
 GitHub Actions workflows live in [`.github/workflows`](.github/workflows):
