@@ -114,6 +114,8 @@ GitHub needs to know which Azure identities to sign in as. These are IDs, not se
 
 Why the environments matter: Azure lets in only runs that use them, and they decide who can start a deploy. `azure` lets only `main` deploy, and every deploy waits until you approve it, so nobody else can start a server on your account, even someone who can start workflows in your fork. Clean up and stop use `azure-cleanup`, also `main` only, with no approval: they can only delete, and the 5-minutely cleanup mustn't wait for you.
 
+Required reviewers only work in public repositories on GitHub's Free, Pro and Team plans. A fork of Paranoid is public, so yours works. In a private copy, GitHub ignores the reviewer, and only the `main` limit protects deploys.
+
 ### With the GitHub CLI
 
 The setup printed the commands, with your IDs filled in. Run them where [`gh`](https://cli.github.com) is installed and signed in as yourself (`gh auth login`), for example on your own computer. The first ones look like this:
@@ -190,7 +192,7 @@ Open the URL, create an invite and open it in a second browser or on another dev
 
 Anyone who has the URL can create invites, which use up `max_invites`. In a public fork, anyone can read the run summary and logs for the day they're kept (see [step 5](#5-keep-the-logs-for-1-day)).
 
-A deploy you haven't approved yet holds up only the next deploy. Clean up Azure and Stop Azure never wait for it.
+A deploy you haven't approved yet holds up only the next deploy. Clean up Azure never waits for it, and Stop Azure cancels it.
 
 ## 8. Stop it, and how it's cleaned up
 
@@ -357,6 +359,6 @@ On the server, cloud-init turns off SSH, locks root's password and sets a timer 
 - starts Caddy, which gets a Let's Encrypt certificate for `<ip-with-dashes>.sslip.io`, serves the app and passes `/socket.io/` and `/healthz` to the signaling server;
 - limits all outbound traffic to `MAX_EGRESS_MBIT` with `tc`.
 
-The backstop, [`backstop.json`](../../deploy/azure/backstop.json), lists the VMs tagged `app=paranoid`, checks each every 2 minutes, and deletes it, its NIC, IP address and disk once Azure has finished creating it and it's stopped or deallocated, or once it's past `expires-at`. [`cleanup-azure.yml`](../../.github/workflows/cleanup-azure.yml) does the same from GitHub every 5 minutes, as `paranoid-cleaner`: it runs on the default branch, which can't use the `azure-cleanup` environment, so it starts itself on `main`, which can. [`stop-azure.yml`](../../.github/workflows/stop-azure.yml) first cancels every deploy that's waiting or running, each of which then deletes its own server, waits for them to finish, and then deletes every Paranoid server, as `paranoid-cleaner`.
+The backstop, [`backstop.json`](../../deploy/azure/backstop.json), lists the VMs tagged `app=paranoid`, checks each every 2 minutes, and deletes it, its NIC, IP address and disk once Azure has finished creating it and it's stopped or deallocated, or once it's past `expires-at`. [`cleanup-azure.yml`](../../.github/workflows/cleanup-azure.yml) does the same from GitHub every 5 minutes, as `paranoid-cleaner`: it runs on the default branch, which can't use the `azure-cleanup` environment, so it starts itself on `main`, which can. [`stop-azure.yml`](../../.github/workflows/stop-azure.yml) deletes every Paranoid server, as `paranoid-cleaner`.
 
-Each of the three workflows has a concurrency group of its own, so two deploys, two cleanups or two stops never overlap, and a deploy waiting for your approval never holds up a cleanup or a stop. A cleanup can run while a deploy is creating its server, so it leaves alone what a deploy is making: a VM counts as stopped only once Azure has finished creating it, and a disk, NIC or IP address without a VM is deleted only once its `expires-at` has passed.
+Deploy to Azure and Stop Azure share a concurrency group, so two deploys never overlap, and Stop Azure cancels a deploy that's running or waiting for your approval. The cancelled deploy's last step deletes its own server, and then Stop Azure deletes whatever is left. Clean up Azure has a group of its own, so a deploy waiting for your approval never holds it up. A cleanup can run while a deploy is creating its server, so it leaves alone what a deploy is making: a VM counts as stopped only once Azure has finished creating it, and a disk, NIC or IP address without a VM is deleted only once its `expires-at` has passed.

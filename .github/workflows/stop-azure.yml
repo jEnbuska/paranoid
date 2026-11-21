@@ -15,13 +15,13 @@ on:
 permissions:
   contents: read
 
-# Its own group, so it never waits behind a deploy, even one waiting for
-# approval. It cancels every unfinished deploy first, which then deletes the
-# server it created, waits for them to finish, and then deletes whatever is
-# left.
+# Shared with deploy-azure.yml. Stopping cancels a deploy that's running or
+# waiting for approval, so it never waits behind one. The cancelled deploy's
+# last step deletes the server it created, and this run, which starts once
+# that's done, deletes whatever is left.
 concurrency:
-  group: paranoid-azure-stop
-  cancel-in-progress: false
+  group: paranoid-azure
+  cancel-in-progress: true
 
 jobs:
   stop:
@@ -30,8 +30,6 @@ jobs:
     timeout-minutes: 15
     environment: azure-cleanup
     permissions:
-      # Only for cancelling the deploy runs
-      actions: write
       contents: read
       id-token: write
     env:
@@ -41,12 +39,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Cancel the deploys
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: bash deploy/azure/cancel-deploys.sh
 
       - name: Sign in to Azure
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0

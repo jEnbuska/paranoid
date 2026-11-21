@@ -27,12 +27,13 @@ on:
 permissions:
   contents: read
 
-# Deploys only, so two deploys never overlap: a deploy waits for the run
-# before it to finish. A run waiting for approval holds the group too, so
-# Clean up Azure and Stop Azure have groups of their own and never wait
-# behind it. Stop Azure cancels any unfinished deploy before it deletes.
+# Shared with stop-azure.yml, so two deploys never overlap: a deploy waits
+# for the run before it to finish. Stop Azure cancels a deploy that's running
+# or waiting for approval, whose last step then deletes what it made. Clean
+# up Azure has a group of its own, so a deploy waiting for approval never
+# holds it up.
 concurrency:
-  group: paranoid-azure-deploy
+  group: paranoid-azure
   cancel-in-progress: false
 
 jobs:
