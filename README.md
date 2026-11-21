@@ -209,6 +209,8 @@ Each provider has its own step-by-step guide, which assumes only a GitHub accoun
 
 <!-- One line per provider, in alphabetical order: - [Provider](docs/deploy/<provider>.md), where it runs. -->
 
+- [Azure](docs/deploy/azure.md), Microsoft's cloud, in the EU (Sweden by default), with no secret: GitHub signs in through OIDC.
+
 ## Continuous integration
 
 GitHub Actions workflows live in [`.github/workflows`](.github/workflows):
