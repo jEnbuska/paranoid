@@ -1,0 +1,119 @@
+name: Clean up Google Cloud
+
+# Every hour, deletes the Paranoid VMs on Google Cloud that powered
+# themselves off after their last invite, with their disks, and settles their
+# cost in the ledger. A powered-off VM's disk is still billed, so this is
+# what stops the cost. It never touches a running VM before its expiry.
+# Google Cloud deletes a VM whose lifetime is over itself; this also deletes
+# one past its expiry label, in case that ever fails.
+#
+# No secret: it signs in with Workload Identity Federation as the delete-only
+# paranoid-cleanup service account, in the `gcp-cleanup` environment, which
+# only `main` may use and which doesn't wait for approval, so the hourly runs
+# don't need anyone. Scheduled runs use the default branch, `dev`, so they
+# can't use the environment themselves: the `start` job starts this workflow
+# on `main` instead, and that run cleans up.
+
+on:
+  schedule:
+    - cron: "47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  start:
+    name: Start the cleanup on main
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      # Without a gcp-cleanup environment or a cleanup-gcp.yml on main,
+      # nothing can have been deployed. deploy-gcp.yml and cleanup-gcp.yml reach main
+      # together.
+      - name: Start the cleanup on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          missing() {
+            local error
+            if error=$(gh api "$1" --silent 2>&1); then
+              return 1
+            fi
+            if [[ $error == *"HTTP 404"* ]]; then
+              return 0
+            fi
+            echo "::error::$error"
+            exit 1
+          }
+          if missing "repos/$REPO/environments/gcp-cleanup"; then
+            echo "There's no gcp-cleanup environment, so there's nothing to clean up."
+          elif missing "repos/$REPO/contents/.github/workflows/cleanup-gcp.yml?ref=main"; then
+            echo "cleanup-gcp.yml isn't on main yet, and neither is deploy-gcp.yml, so there's nothing to clean up."
+          else
+            gh workflow run cleanup-gcp.yml --repo "$REPO" --ref main
+            echo "Started the cleanup on main."
+          fi
+
+  cleanup:
+    name: Delete powered-off VMs
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    environment: gcp-cleanup
+    # Its own group, so it never waits behind a deploy that's waiting for
+    # approval. It only deletes VMs that are powered off (TERMINATED) or past
+    # the expiry label they get when they're created, never a new one, which
+    # is PROVISIONING, STAGING or RUNNING with a future expiry. The ledger
+    # writes check the ledger's generation.
+    concurrency:
+      group: gcp-cleanup
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the settings
+        id: settings
+        env:
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          GCP_ZONE: ${{ vars.GCP_ZONE }}
+          GCP_BUCKET: ${{ vars.GCP_BUCKET }}
+        run: |
+          if [ -z "$GCP_PROJECT" ]; then
+            echo "::notice::There's no GCP_PROJECT variable, so there's nothing to clean up."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bash deploy/gcp/settings.sh manage
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        if: steps.settings.outputs.configured == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Sign in to Google Cloud
+        if: steps.settings.outputs.configured == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ vars.GCP_PROJECT }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Delete the VMs that are off or expired
+        if: steps.settings.outputs.configured == 'true'
+        run: bash deploy/gcp/vms.sh finished

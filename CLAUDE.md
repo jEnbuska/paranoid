@@ -14,7 +14,7 @@ The repository is public. No secret or token is ever committed, in any file, bra
 
 ## Monorepo
 
-pnpm workspace (`pnpm-workspace.yaml`) with five packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and its CLI, run by Node.js directly from TypeScript, with each provider's price file in `deploy/<provider>/prices.json`) and `packages/e2e` (Playwright tests).
+pnpm workspace (`pnpm-workspace.yaml`) with six packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and its CLI, run by Node.js directly from TypeScript, with each provider's price file in `deploy/<provider>/prices.json`), `packages/e2e` (Playwright tests) and `deploy/gcp` (the Google Cloud deployment's ledger for its spending limit, run by its workflows with Node).
 
 ## Installing dependencies
 
@@ -109,6 +109,7 @@ Anyone with a fork can start a Paranoid server from GitHub Actions. Each provide
 - User data and labels hold only values the scripts have checked, so an input can't inject commands.
 - Pin every download (provider CLIs, Node.js, Caddy, gitleaks) to a version and check its checksum. Update the version and checksum together.
 - `shellcheck` checks `deploy/**/*.sh` in CI. Keep the deploy scripts there.
+- Google Cloud (`deploy/gcp`, [docs/deploy/gcp.md](docs/deploy/gcp.md)) has no secret: Workload Identity Federation trusts only `main` runs of the repository, by numeric ID. It uses two environments: `gcp`, for `deploy-gcp.yml`, with the owner as required reviewer, signs in as `paranoid-deploy`; `gcp-cleanup`, for `stop-gcp.yml` and `cleanup-gcp.yml`, has no reviewer so the hourly cleanup runs, and signs in as the delete-only `paranoid-cleanup`. Google's Debian images have no cloud-init, so `deploy/gcp/startup.sh` does what `cloud-init.yaml` does and writes `PARANOID_HOST` from the metadata server: keep the two in step. The VM has no service account. `deploy/gcp/ledger.ts` keeps the monthly spending limit on `packages/deploy`'s worst-case cost.
 
 ## End-to-end tests
 
