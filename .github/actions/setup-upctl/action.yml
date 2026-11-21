@@ -1,0 +1,28 @@
+name: Set up upctl
+description: >-
+  Installs a pinned release of the UpCloud CLI, upctl, checked against the
+  checksum from the release's checksums.txt. It writes no config file and
+  takes no token: each step that calls upctl gets UPCLOUD_TOKEN through its
+  own `env:`.
+
+# Not UpCloudLtd/upcloud-cli-action: its `token` input is exported with
+# core.exportVariable, which writes the token to the GITHUB_ENV file on the
+# runner's disk and gives it to every later step of the job, and it checks
+# the download only when GH_TOKEN is set (checked at v1.0.2, 7e37397).
+
+runs:
+  using: composite
+  steps:
+    - name: Install upctl
+      shell: bash
+      env:
+        UPCTL_VERSION: 3.37.0
+        UPCTL_SHA256: ce2d381bdf49ce74a74582f390490542c49957079d7e606303e1426138b7e3d6
+      run: |
+        archive="$RUNNER_TEMP/upctl.tar.gz"
+        curl -fsSL --retry 3 -o "$archive" "https://github.com/UpCloudLtd/upcloud-cli/releases/download/v${UPCTL_VERSION}/upcloud-cli_${UPCTL_VERSION}_linux_x86_64.tar.gz"
+        echo "$UPCTL_SHA256  $archive" | sha256sum --check --strict -
+        mkdir -p "$RUNNER_TEMP/upctl"
+        tar -xzf "$archive" -C "$RUNNER_TEMP/upctl" upctl
+        echo "$RUNNER_TEMP/upctl" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/upctl/upctl" version
