@@ -147,10 +147,11 @@ Stop and the hourly cleanup use `gcp-cleanup` instead. If they waited for approv
 
 ### Keep your fork public
 
-Some of this only works in a public repository ([GitHub's environments reference](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)):
+GitHub only offers all of this in a public repository ([Managing environments for deployment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)):
 
-- **Required reviewers** work only in public repositories on GitHub's Free, Pro and Team plans. A private copy on Pro or Team keeps the `main` limit and the environment variables, but deploys start without waiting for your approval.
-- **The `main` limit and environment variables** need Pro, Team or Enterprise in a private repository. On a private copy with GitHub Free, the environments can't hold `GCP_SERVICE_ACCOUNT`, so every deploy, Stop and cleanup stops before signing in to Google Cloud. Nothing runs unprotected: it just doesn't run.
+- **A public fork**, on any plan: both protections, the `main` limit and your approval of every deploy.
+- **A private copy on GitHub Pro or Team:** the `main` limit, but no approval. Required reviewers work only in public repositories on those plans, so deploys start without waiting for you.
+- **A private copy on GitHub Free:** no environments at all, so no `gcp` or `gcp-cleanup`, and no `GCP_SERVICE_ACCOUNT` in them. Nothing runs unprotected: no deploy, Stop or cleanup can sign in to Google Cloud.
 
 Whatever the plan, Google Cloud only accepts a sign-in from a run of your fork's `main` branch whose token says it's in the `gcp` or `gcp-cleanup` environment, and only a `gcp` run can act as `paranoid-deploy`. A run without an environment is refused.
 
