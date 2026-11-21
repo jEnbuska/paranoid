@@ -3,8 +3,9 @@ name: Clean up Google Cloud
 # Every hour, deletes the Paranoid VMs on Google Cloud that powered
 # themselves off after their last invite, with their disks, and settles their
 # cost in the ledger. A powered-off VM's disk is still billed, so this is
-# what stops the cost. It never touches a running VM. Google Cloud deletes
-# a VM whose lifetime is over itself.
+# what stops the cost. It never touches a running VM before its expiry.
+# Google Cloud deletes a VM whose lifetime is over itself; this also deletes
+# one past its expiry label, in case that ever fails.
 #
 # No secret: it signs in with Workload Identity Federation as the delete-only
 # paranoid-cleanup service account, in the `gcp-cleanup` environment, which
@@ -70,11 +71,12 @@ jobs:
       id-token: write
     environment: gcp-cleanup
     # Its own group, so it never waits behind a deploy that's waiting for
-    # approval. It only deletes VMs that are powered off (TERMINATED), never
-    # a new one, which is PROVISIONING, STAGING or RUNNING, and the ledger
+    # approval. It only deletes VMs that are powered off (TERMINATED) or past
+    # the expiry label they get when they're created, never a new one, which
+    # is PROVISIONING, STAGING or RUNNING with a future expiry. The ledger
     # writes check the ledger's generation.
     concurrency:
-      group: paranoid-gcp-cleanup
+      group: gcp-cleanup
       cancel-in-progress: false
 
     steps:
@@ -112,6 +114,6 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Delete the VMs that are off
+      - name: Delete the VMs that are off or expired
         if: steps.settings.outputs.configured == 'true'
-        run: bash deploy/gcp/vms.sh stopped
+        run: bash deploy/gcp/vms.sh finished

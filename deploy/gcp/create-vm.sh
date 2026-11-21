@@ -56,7 +56,7 @@ gcloud compute instances create "$name" \
   --network-tier=STANDARD \
   --stack-type=IPV4_ONLY \
   --tags=paranoid \
-  --labels="app=paranoid,paranoid-deployment=$DEPLOYMENT,paranoid-month=$MONTH" \
+  --labels="app=paranoid,paranoid-deployment=$DEPLOYMENT,paranoid-month=$MONTH,paranoid-expires=$expires" \
   --no-service-account \
   --no-scopes \
   --shielded-secure-boot \
