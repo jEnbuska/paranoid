@@ -26,3 +26,9 @@ Anyone with a fork can start a Paranoid server from GitHub Actions. Each provide
 ## Providers
 
 Each provider's own rules go here, one bullet each, linking its guide (`../docs/deploy/<provider>.md`, relative to this file).
+
+- Hetzner Cloud ([guide](../docs/deploy/hetzner.md)): `deploy-hetzner.yml`, `stop-hetzner.yml` and `cleanup-hetzner.yml` manage one server, with scripts in `deploy/hetzner`.
+  - `.github/actions/setup-hcloud` installs a pinned `hcloud`, which reads `HCLOUD_TOKEN` from the environment and writes no config file. Never pass `--debug`, which logs requests.
+  - `deploy/hetzner/settings.sh` checks every value before it reaches user data or labels.
+  - Servers are created with an SSH key whose private half is deleted, so Hetzner sets no root password, and `create-server.sh` fails if the response holds one. Never print `hcloud`'s JSON output.
+  - Hetzner tokens have no prefix, so `.gitleaks.toml` flags any random 64-character string of letters and digits, with an entropy threshold no hex checksum can reach.
