@@ -22,7 +22,7 @@ rg=${AZURE_RESOURCE_GROUP:-paranoid}
 az account show -o none 2>/dev/null || fail "Not signed in to Azure. Run az login first."
 subscription=$(az account show --query id -o tsv)
 rg_id="/subscriptions/$subscription/resourceGroups/$rg"
-roles=("Paranoid deployer ($rg, $subscription)" "Paranoid backstop ($rg, $subscription)")
+roles=("Paranoid deployer ($rg, $subscription)" "Paranoid cleaner ($rg, $subscription)")
 
 echo "This deletes the resource group $rg, with everything in it, in"
 echo "$(az account show --query name -o tsv) ($subscription), and Paranoid's roles and budget."

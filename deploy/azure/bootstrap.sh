@@ -12,14 +12,19 @@
 #
 # It creates, all in one resource group except the two role definitions and
 # the budget, which belong to it:
-# - a user-assigned managed identity, paranoid-deployer, that GitHub Actions
-#   signs in as through OIDC. Its only federated credential trusts the
-#   repository's `azure` environment, which only `main` may use. No client
-#   secret, certificate or key exists, so there's nothing to leak.
-# - the custom role "Paranoid deployer", on the resource group only.
+# - two user-assigned managed identities that GitHub Actions signs in as
+#   through OIDC, each with one federated credential. No client secret,
+#   certificate or key exists, so there's nothing to leak.
+#   - paranoid-deployer, for deploy-azure.yml, trusts the repository's
+#     `azure` environment, which only `main` may use and which waits for the
+#     owner's approval. It has the custom role "Paranoid deployer".
+#   - paranoid-cleaner, for cleanup-azure.yml and stop-azure.yml, trusts the
+#     `azure-cleanup` environment, which only `main` may use, with no
+#     approval, so the scheduled cleanup never waits. It has the custom role
+#     "Paranoid cleaner", which can only find and delete.
 # - a VNet whose subnet's NSG lets in only TCP 80 and 443.
 # - the backstop: a Logic App that deletes VMs once they're stopped or
-#   expired (backstop.json), with the custom role "Paranoid backstop".
+#   expired (backstop.json), also with "Paranoid cleaner".
 # - a monthly budget with email alerts.
 # None of them costs anything while no VM runs. teardown.sh removes them all.
 set -euo pipefail
@@ -58,12 +63,10 @@ az account list-locations --query "[?name=='$region'].name" -o tsv | grep -qx "$
 
 rg_id="/subscriptions/$subscription/resourceGroups/$rg"
 deployer_role="Paranoid deployer ($rg, $subscription)"
-backstop_role="Paranoid backstop ($rg, $subscription)"
+cleaner_role="Paranoid cleaner ($rg, $subscription)"
 nsg=paranoid-nsg
 vnet=paranoid-vnet
 subnet=paranoid-subnet
-identity=paranoid-deployer
-credential=github-azure-environment
 
 # What GitHub Actions may do, and only in the resource group. The PR and
 # docs/deploy/azure.md say why each one is needed. Nothing under
@@ -103,15 +106,22 @@ deployer_actions='[
   "Microsoft.Network/locations/operations/read",
   "Microsoft.Logic/workflows/triggers/run/action"
 ]'
-# What the backstop may do: find VMs and delete them with what they're
-# made of. Nothing else.
-backstop_actions='[
+# What the cleanup, Stop Azure and the backstop may do: find VMs and their
+# parts, and delete them. Nothing that creates or changes anything.
+cleaner_actions='[
+  "Microsoft.Resources/subscriptions/resourceGroups/read",
+  "Microsoft.Resources/subscriptions/resourceGroups/resources/read",
   "Microsoft.Compute/virtualMachines/read",
   "Microsoft.Compute/virtualMachines/instanceView/read",
   "Microsoft.Compute/virtualMachines/delete",
+  "Microsoft.Compute/disks/read",
   "Microsoft.Compute/disks/delete",
+  "Microsoft.Compute/locations/operations/read",
+  "Microsoft.Network/networkInterfaces/read",
   "Microsoft.Network/networkInterfaces/delete",
-  "Microsoft.Network/publicIPAddresses/delete"
+  "Microsoft.Network/publicIPAddresses/read",
+  "Microsoft.Network/publicIPAddresses/delete",
+  "Microsoft.Network/locations/operations/read"
 ]'
 
 step "Resource providers"
@@ -179,25 +189,37 @@ else
 fi
 echo "$subnet is behind $nsg"
 
-step "Identity for GitHub Actions: $identity"
-az identity show -g "$rg" -n "$identity" -o none 2>/dev/null ||
-  az identity create -g "$rg" -n "$identity" -l "$region" --tags app=paranoid -o none
-client_id=$(az identity show -g "$rg" -n "$identity" --query clientId -o tsv)
-principal_id=$(az identity show -g "$rg" -n "$identity" --query principalId -o tsv)
-# The subject is what GitHub puts in a job's token when the job uses the
-# `azure` environment. The repository's name must match GitHub's exactly,
-# capitals included.
-az identity federated-credential create -g "$rg" --identity-name "$identity" -n "$credential" \
-  --issuer https://token.actions.githubusercontent.com \
-  --subject "repo:$repo:environment:azure" \
-  --audiences api://AzureADTokenExchange -o none
-for name in $(az identity federated-credential list -g "$rg" --identity-name "$identity" --query '[].name' -o tsv); do
-  if [ "$name" != "$credential" ]; then
-    echo "Deleting the extra federated credential $name"
-    az identity federated-credential delete -g "$rg" --identity-name "$identity" -n "$name" --yes -o none
-  fi
-done
-echo "Trusts only repo:$repo:environment:azure. No secret exists."
+# github_identity <name> <environment>: a managed identity whose only
+# federated credential trusts that GitHub environment of the repository. The
+# subject is what GitHub puts in a job's token when the job uses the
+# environment, and the repository's name must match GitHub's exactly,
+# capitals included. Sets identity_client_id and identity_principal_id.
+github_identity() {
+  local name=$1 environment=$2 credential="github-$2-environment" existing
+  az identity show -g "$rg" -n "$name" -o none 2>/dev/null ||
+    az identity create -g "$rg" -n "$name" -l "$region" --tags app=paranoid -o none
+  az identity federated-credential create -g "$rg" --identity-name "$name" -n "$credential" \
+    --issuer https://token.actions.githubusercontent.com \
+    --subject "repo:$repo:environment:$environment" \
+    --audiences api://AzureADTokenExchange -o none
+  for existing in $(az identity federated-credential list -g "$rg" --identity-name "$name" --query '[].name' -o tsv); do
+    if [ "$existing" != "$credential" ]; then
+      echo "Deleting the extra federated credential $existing"
+      az identity federated-credential delete -g "$rg" --identity-name "$name" -n "$existing" --yes -o none
+    fi
+  done
+  identity_client_id=$(az identity show -g "$rg" -n "$name" --query clientId -o tsv)
+  identity_principal_id=$(az identity show -g "$rg" -n "$name" --query principalId -o tsv)
+  echo "$name trusts only repo:$repo:environment:$environment. No secret exists."
+}
+
+step "Identities for GitHub Actions"
+github_identity paranoid-deployer azure
+client_id=$identity_client_id
+principal_id=$identity_principal_id
+github_identity paranoid-cleaner azure-cleanup
+cleaner_client_id=$identity_client_id
+cleaner_principal_id=$identity_principal_id
 
 # role <name> <description> <actions>: creates the custom role, or updates it
 role() {
@@ -235,16 +257,17 @@ assign() {
     --role "$2" --scope "$rg_id" -o none
 }
 
-step "Role: $deployer_role"
+step "Roles: $deployer_role and $cleaner_role"
 role "$deployer_role" "Lets GitHub Actions create and delete Paranoid VMs, their disks, NICs and public IPs in $rg, and start the backstop." "$deployer_actions"
 assign "$principal_id" "$deployer_role"
-echo "$identity has it on $rg only"
+role "$cleaner_role" "Lets the Paranoid cleanup, Stop Azure and the backstop find and delete Paranoid VMs, their disks, NICs and public IPs in $rg." "$cleaner_actions"
+assign "$cleaner_principal_id" "$cleaner_role"
+echo "paranoid-deployer has $deployer_role, and paranoid-cleaner $cleaner_role, on $rg only"
 
 step "Backstop: the Logic App paranoid-backstop"
 backstop_principal=$(az deployment group create -g "$rg" -n paranoid-backstop \
   --template-file "$here/backstop.json" --query properties.outputs.principalId.value -o tsv)
-role "$backstop_role" "Lets the Paranoid backstop delete Paranoid VMs, their disks, NICs and public IPs in $rg." "$backstop_actions"
-assign "$backstop_principal" "$backstop_role"
+assign "$backstop_principal" "$cleaner_role"
 echo "It deletes a VM within minutes of it stopping or expiring, whatever GitHub does."
 
 step "Budget"
@@ -280,13 +303,24 @@ in to GitHub (gh auth login), run these to set the repository variables.
 None of them is a secret:
 
 gh variable set AZURE_CLIENT_ID --repo $repo --body $client_id
+gh variable set AZURE_CLEANUP_CLIENT_ID --repo $repo --body $cleaner_client_id
 gh variable set AZURE_TENANT_ID --repo $repo --body $tenant
 gh variable set AZURE_SUBSCRIPTION_ID --repo $repo --body $subscription
 gh variable set AZURE_RESOURCE_GROUP --repo $repo --body $rg
 gh variable set AZURE_REGION --repo $repo --body $region
 
-And these to create the azure environment, which only main may use:
+These create the azure environment, for deploys: only main may use it, and
+each deploy waits for your approval (gh api user is you):
 
-gh api --method PUT repos/$repo/environments/azure --input - <<<'{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+gh api --method PUT repos/$repo/environments/azure -F prevent_self_review=false -F 'reviewers[][type]=User' -F "reviewers[][id]=\$(gh api user --jq .id)" -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
 gh api --method POST repos/$repo/environments/azure/deployment-branch-policies -f name=main -f type=branch
+
+And these the azure-cleanup environment, for Clean up Azure and Stop Azure:
+only main may use it, with no approval, so the cleanup never waits:
+
+gh api --method PUT repos/$repo/environments/azure-cleanup -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api --method POST repos/$repo/environments/azure-cleanup/deployment-branch-policies -f name=main -f type=branch
+
+Then set the repository's log retention to 1 day, as docs/deploy/azure.md
+says: Settings, Actions, General, Artifact and log retention.
 EOF
