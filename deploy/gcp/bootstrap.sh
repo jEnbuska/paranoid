@@ -17,8 +17,9 @@
 #
 # It creates no key or secret of any kind. GitHub Actions signs in with
 # Workload Identity Federation: GitHub's short-lived OIDC token for a run of
-# the repository's main branch in its gcp environment is exchanged for a
-# short-lived Google Cloud token of the deploy service account.
+# the repository's main branch is exchanged for a short-lived Google Cloud
+# token: of the deploy service account in the gcp environment, or of the
+# delete-only cleanup service account in the gcp-cleanup environment.
 set -euo pipefail
 
 usage() {
@@ -125,12 +126,22 @@ echo '{"rule": [{"action": {"type": "Delete"}, "condition": {"age": 400}}]}' >"$
 gcloud storage buckets update "gs://$bucket" --uniform-bucket-level-access \
   --public-access-prevention --clear-soft-delete --lifecycle-file="$lifecycle" >/dev/null
 
-step "Deploy service account and its roles"
-sa="paranoid-deploy@$project.iam.gserviceaccount.com"
-exists gcloud iam service-accounts describe "$sa" ||
+step "Service accounts and their roles"
+# Two accounts, one for each GitHub environment. paranoid-deploy, for
+# deploy-gcp.yml in the gcp environment, whose runs wait for the owner's
+# approval, creates VMs. paranoid-cleanup, for stop-gcp.yml and
+# cleanup-gcp.yml in the gcp-cleanup environment, which runs without
+# approval so the hourly cleanup works, can only delete them.
+deploy_sa="paranoid-deploy@$project.iam.gserviceaccount.com"
+cleanup_sa="paranoid-cleanup@$project.iam.gserviceaccount.com"
+exists gcloud iam service-accounts describe "$deploy_sa" ||
   gcloud iam service-accounts create paranoid-deploy \
     --display-name="Paranoid deploys from GitHub Actions" \
-    --description="Used only by $repo's deploy workflows, through Workload Identity Federation"
+    --description="Used only by $repo's deploy workflow, through Workload Identity Federation"
+exists gcloud iam service-accounts describe "$cleanup_sa" ||
+  gcloud iam service-accounts create paranoid-cleanup \
+    --display-name="Paranoid stops and cleanups from GitHub Actions" \
+    --description="Used only by $repo's stop and cleanup workflows, through Workload Identity Federation. Can only delete."
 
 # role <id> <title> <permissions>: creates or updates a custom role with
 # exactly these permissions. A role deleted by teardown.sh is undeleted:
@@ -153,6 +164,9 @@ role() {
 # limits it to paranoid-* VMs and disks in the zone.
 role paranoidVms "Paranoid: manage paranoid-* VMs" \
   compute.instances.create,compute.instances.delete,compute.instances.get,compute.instances.getSerialPortOutput,compute.instances.setLabels,compute.instances.setMetadata,compute.instances.setTags,compute.disks.create,compute.disks.delete
+# Only look at and delete them, for stopping and cleaning up
+role paranoidVmsDelete "Paranoid: delete paranoid-* VMs" \
+  compute.instances.delete,compute.instances.get,compute.disks.delete
 # Listing works on the project, so it can't be limited by name. It shows
 # names and settings, nothing else.
 role paranoidList "Paranoid: list VMs and disks" \
@@ -170,20 +184,26 @@ cat >"$condition" <<EOF
   "expression": "(resource.type == 'compute.googleapis.com/Instance' && resource.name.startsWith('projects/$project/zones/$zone/instances/paranoid-')) || (resource.type == 'compute.googleapis.com/Disk' && resource.name.startsWith('projects/$project/zones/$zone/disks/paranoid-'))"
 }
 EOF
-# A binding with an older condition, for example from another zone, is
-# replaced.
-gcloud projects remove-iam-policy-binding "$project" --member="serviceAccount:$sa" \
-  --role="projects/$project/roles/paranoidVms" --all >/dev/null 2>&1 || true
-retry gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$sa" \
-  --role="projects/$project/roles/paranoidVms" --condition-from-file="$condition"
-retry gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$sa" \
-  --role="projects/$project/roles/paranoidList" --condition=None
+# grant <service account> <VM role>: the VM role for paranoid-* only, a
+# binding with an older condition (for example from another zone)
+# replaced, plus listing and the ledger
+grant() {
+  gcloud projects remove-iam-policy-binding "$project" --member="serviceAccount:$1" \
+    --role="projects/$project/roles/$2" --all >/dev/null 2>&1 || true
+  retry gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$1" \
+    --role="projects/$project/roles/$2" --condition-from-file="$condition"
+  retry gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$1" \
+    --role="projects/$project/roles/paranoidList" --condition=None
+  # Read and write the ledger, in this bucket only
+  retry gcloud storage buckets add-iam-policy-binding "gs://$bucket" \
+    --member="serviceAccount:$1" --role=roles/storage.objectUser
+  echo "Granted $2, paranoidList and the ledger to $1"
+}
+grant "$deploy_sa" paranoidVms
+grant "$cleanup_sa" paranoidVmsDelete
+# Only the deploy account puts VMs on the network.
 retry gcloud compute networks subnets add-iam-policy-binding paranoid --region="$region" \
-  --member="serviceAccount:$sa" --role="projects/$project/roles/paranoidSubnet"
-# Read and write the ledger, in this bucket only
-retry gcloud storage buckets add-iam-policy-binding "gs://$bucket" \
-  --member="serviceAccount:$sa" --role=roles/storage.objectUser
-echo "Granted the roles to $sa"
+  --member="serviceAccount:$deploy_sa" --role="projects/$project/roles/paranoidSubnet"
 
 step "Workload Identity Federation for GitHub Actions"
 pool=paranoid-github
@@ -197,11 +217,13 @@ case "$state" in
     --display-name="GitHub Actions for Paranoid" ;;
   DELETED) gcloud iam workload-identity-pools undelete "$pool" --location=global ;;
 esac
-# Only tokens for runs of this repository's main branch in its gcp
-# environment are accepted. The numeric IDs can't be taken over by someone
-# who creates a repository or account with the same name later.
-mapping="google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.repository_owner_id=assertion.repository_owner_id,attribute.ref=assertion.ref,attribute.environment=assertion.environment"
-accept="assertion.repository_id == '$repo_id' && assertion.repository_owner_id == '$owner_id' && assertion.ref == 'refs/heads/main' && assertion.environment == 'gcp'"
+# Only tokens for runs of this repository's main branch in its gcp or
+# gcp-cleanup environment are accepted. The numeric IDs can't be taken over
+# by someone who creates a repository or account with the same name later.
+# attribute.repository_environment ties each environment to its own service
+# account below.
+mapping="google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.repository_owner_id=assertion.repository_owner_id,attribute.ref=assertion.ref,attribute.environment=assertion.environment,attribute.repository_environment=assertion.repository_id + ':' + assertion.environment"
+accept="assertion.repository_id == '$repo_id' && assertion.repository_owner_id == '$owner_id' && assertion.ref == 'refs/heads/main' && assertion.environment in ['gcp', 'gcp-cleanup']"
 state=$(gcloud iam workload-identity-pools providers describe "$provider" --location=global \
   --workload-identity-pool="$pool" --format='value(state)' 2>/dev/null || true)
 case "$state" in
@@ -224,10 +246,18 @@ case "$state" in
     ;;
 esac
 pool_name="projects/$number/locations/global/workloadIdentityPools/$pool"
-retry gcloud iam service-accounts add-iam-policy-binding "$sa" \
+members="principalSet://iam.googleapis.com/$pool_name/attribute.repository_environment"
+# An older setup let any of the repository's runs act as the deploy account.
+gcloud iam service-accounts remove-iam-policy-binding "$deploy_sa" \
   --role=roles/iam.workloadIdentityUser \
-  --member="principalSet://iam.googleapis.com/$pool_name/attribute.repository_id/$repo_id"
-echo "Runs of $repo's main branch in its gcp environment can act as $sa"
+  --member="principalSet://iam.googleapis.com/$pool_name/attribute.repository_id/$repo_id" \
+  >/dev/null 2>&1 || true
+retry gcloud iam service-accounts add-iam-policy-binding "$deploy_sa" \
+  --role=roles/iam.workloadIdentityUser --member="$members/$repo_id:gcp"
+retry gcloud iam service-accounts add-iam-policy-binding "$cleanup_sa" \
+  --role=roles/iam.workloadIdentityUser --member="$members/$repo_id:gcp-cleanup"
+echo "Runs of $repo's main branch can act as $deploy_sa in its gcp environment,"
+echo "and as $cleanup_sa in its gcp-cleanup environment."
 
 step "Budget alert"
 # Only a late warning: billing data lags by hours, and a budget doesn't stop
@@ -249,19 +279,39 @@ else
   echo "Administrator or Costs Manager role. Create it in the console instead (docs/deploy/gcp.md)." >&2
 fi
 
+me=$(gh api user --jq .id)
+[[ $me =~ ^[0-9]+$ ]] || {
+  echo "Couldn't look up your GitHub account." >&2
+  exit 1
+}
+branches='"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}'
+
 step "Done. Now give GitHub these settings, none of which is a secret:"
 cat <<EOF
 
-# The gcp environment, which only the main branch may use
-gh api --method PUT "repos/$repo/environments/gcp" --input - <<<'{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}'
+# gcp, for deploys: only the main branch, and every deploy waits for your
+# approval. "Prevent self-review" is off, so you can approve your own.
+gh api --method PUT "repos/$repo/environments/gcp" --input - <<<'{"reviewers": [{"type": "User", "id": $me}], "prevent_self_review": false, $branches}'
 gh api --method POST "repos/$repo/environments/gcp/deployment-branch-policies" -f name=main -f type=branch
 
-# Its variables
-gh variable set GCP_PROJECT --repo "$repo" --env gcp --body "$project"
-gh variable set GCP_REGION --repo "$repo" --env gcp --body "$region"
-gh variable set GCP_ZONE --repo "$repo" --env gcp --body "$zone"
-gh variable set GCP_BUCKET --repo "$repo" --env gcp --body "$bucket"
-gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$repo" --env gcp --body "$pool_name/providers/$provider"
-gh variable set GCP_SERVICE_ACCOUNT --repo "$repo" --env gcp --body "$sa"
+# gcp-cleanup, for Stop and the hourly cleanup: only the main branch, no
+# approval, and it can only delete
+gh api --method PUT "repos/$repo/environments/gcp-cleanup" --input - <<<'{$branches}'
+gh api --method POST "repos/$repo/environments/gcp-cleanup/deployment-branch-policies" -f name=main -f type=branch
+
+# Keep the Actions logs, which anyone can read in a public repository, for
+# 1 day
+gh api --method PUT "repos/$repo/actions/permissions/artifact-and-log-retention" -F days=1
+
+# Where things are, for both environments
+gh variable set GCP_PROJECT --repo "$repo" --body "$project"
+gh variable set GCP_REGION --repo "$repo" --body "$region"
+gh variable set GCP_ZONE --repo "$repo" --body "$zone"
+gh variable set GCP_BUCKET --repo "$repo" --body "$bucket"
+gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$repo" --body "$pool_name/providers/$provider"
+
+# Which service account each environment acts as, and the monthly limit
+gh variable set GCP_SERVICE_ACCOUNT --repo "$repo" --env gcp --body "$deploy_sa"
+gh variable set GCP_SERVICE_ACCOUNT --repo "$repo" --env gcp-cleanup --body "$cleanup_sa"
 gh variable set MONTHLY_BUDGET_USD --repo "$repo" --env gcp --body "$limit"
 EOF
