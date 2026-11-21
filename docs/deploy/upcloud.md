@@ -193,14 +193,15 @@ gh variable set UPCLOUD_ZONE --env upcloud --body de-fra1 --repo <owner>/<repo>
 
 The **Deploy to UpCloud** workflow's inputs win over the variables, and the variables over the defaults.
 
-| Name               | Default                        | What it does                                                                                                                                                    |
-| ------------------ | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MAX_INVITES`      | `5`                            | Invites the server creates before it powers off, from 1 to 10000. The `max_invites` input overrides it.                                                         |
-| `LIFETIME_MINUTES` | `60`                           | Minutes until the server powers off at the latest, from 1 to 1440 (24 hours), counted from when it starts. The `lifetime_minutes` input overrides it.           |
-| `MAX_EGRESS_MBIT`  | `2`                            | Limit on all the server's outbound traffic, in Mbit/s, from 1 to 50, against abuse. At 2 Mbit/s, the app's files load in about a second.                        |
-| `UPCLOUD_ZONE`     | `fi-hel1`                      | [Zone](https://upcloud.com/docs/getting-started/locations/). In the EU: `fi-hel1`, `fi-hel2`, `de-fra1`, `nl-ams1`, `dk-cph1`, `se-sto1`, `pl-waw1`, `es-mad1`. |
-| `UPCLOUD_PLAN`     | `STARTER-1xCPU-1GB`            | [Plan](https://upcloud.com/docs/products/cloud-servers/configurations/). The default is the cheapest. See [Costs](#costs) before changing it.                   |
-| `UPCLOUD_TEMPLATE` | `Debian GNU/Linux 13 (Trixie)` | UpCloud's Debian image with cloud-init. Change it only if UpCloud renames it.                                                                                   |
+| Name                  | Default                        | What it does                                                                                                                                                                                                                                                |
+| --------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MAX_INVITES`         | `5`                            | Invites the server creates before it powers off, from 1 to 10000. The `max_invites` input overrides it.                                                                                                                                                     |
+| `LIFETIME_MINUTES`    | `60`                           | Minutes until the server powers off at the latest, from 1 to 1440 (24 hours), counted from when it starts. The `lifetime_minutes` input overrides it.                                                                                                       |
+| `MAX_EGRESS_MBIT`     | `2`                            | Limit on all the server's outbound traffic, in Mbit/s, from 1 to 50, against abuse. At 2 Mbit/s, the app's files load in about a second.                                                                                                                    |
+| `UPCLOUD_ZONE`        | `fi-hel1`                      | [Zone](https://upcloud.com/docs/getting-started/locations/). In the EU: `fi-hel1`, `fi-hel2`, `de-fra1`, `nl-ams1`, `dk-cph1`, `se-sto1`, `pl-waw1`, `es-mad1`.                                                                                             |
+| `UPCLOUD_PLAN`        | `STARTER-1xCPU-1GB`            | [Plan](https://upcloud.com/docs/products/cloud-servers/configurations/): `STARTER-1xCPU-1GB`, `STARTER-1xCPU-2GB` or `PREMIUM-1xCPU-1GB`, the plans in [`prices.json`](../../deploy/upcloud/prices.json). The default is the cheapest. See [Costs](#costs). |
+| `MAX_DEPLOY_COST_USD` | `1`                            | The most one deploy may cost in the worst case, in US dollars, excluding VAT. A deploy that could cost more is refused before anything is created. See [Costs](#costs).                                                                                     |
+| `UPCLOUD_TEMPLATE`    | `Debian GNU/Linux 13 (Trixie)` | UpCloud's Debian image with cloud-init. Change it only if UpCloud renames it.                                                                                                                                                                               |
 
 The only secret is `UPCLOUD_TOKEN`. Never put a token or password in a variable: variables are shown in logs and to anyone with access to the repository.
 
@@ -239,15 +240,21 @@ GitHub can delay scheduled workflows, sometimes by more than an hour, and turns 
 
 Checked on 2026-11-20 on [UpCloud's pricing page](https://upcloud.com/pricing/) and in [UpCloud's docs](https://upcloud.com/docs/products/cloud-servers/configurations/). Prices exclude VAT.
 
-| Plan                             | CPU and memory | Disk          | Per month at most       | Per hour | Billed while off                                                              |
-| -------------------------------- | -------------- | ------------- | ----------------------- | -------- | ----------------------------------------------------------------------------- |
-| `STARTER-1xCPU-1GB`, the default | 1 core, 1 GB   | 10 GB         | €3                      | €0.0045  | Yes                                                                           |
-| `STARTER-1xCPU-2GB`              | 1 core, 2 GB   | 20 GB         | €6                      | €0.0089  | Yes                                                                           |
-| `PREMIUM-1xCPU-1GB`              | 1 core, 1 GB   | 25 GB MaxIOPS | €5                      | €0.0074  | Yes                                                                           |
-| `CLOUDNATIVE-1xCPU-4GB`          | 1 core, 4 GB   | None included | €12, plus disk and IPv4 | €0.0179  | No, but its disk (€0.115 per GB a month) and IPv4 address (€3.47 a month) are |
+| Plan                             | CPU and memory | Disk          | Per month at most | Per hour | Billed while off |
+| -------------------------------- | -------------- | ------------- | ----------------- | -------- | ---------------- |
+| `STARTER-1xCPU-1GB`, the default | 1 core, 1 GB   | 10 GB         | €3                | €0.0045  | Yes              |
+| `STARTER-1xCPU-2GB`              | 1 core, 2 GB   | 20 GB         | €6                | €0.0089  | Yes              |
+| `PREMIUM-1xCPU-1GB`              | 1 core, 1 GB   | 25 GB MaxIOPS | €5                | €0.0074  | Yes              |
 
 - **Hourly, with a monthly cap.** UpCloud bills by the starting hour, and never more than 672 hours (28 days) a month. The hourly price is the monthly price divided by 672.
-- **Starter and Premium plans include the disk and one IPv4 address**, and are billed the same whether the server is on or off, until it's deleted. Cloud Native plans stop billing while off, but their disk and IPv4 address don't, so for a server that's deleted within an hour of powering off, Starter is cheaper.
+- **Starter and Premium plans include the disk and one IPv4 address**, and are billed the same whether the server is on or off, until it's deleted. These three are the only plans a deploy accepts: other plans bill their disk and IPv4 address separately, which the cost check doesn't cover.
+- **Prices are the same in every zone**, and the deploy only accepts the EU zones listed in [Optional settings](#6-optional-settings).
+- **The worst case for one deploy**, which **Deploy to UpCloud** checks before it creates anything: every started hour of the lifetime, plus 2 hours until Clean up UpCloud deletes the server, at the plan's price. Outbound traffic is free. The check works in US dollars, so [`prices.json`](../../deploy/upcloud/prices.json) holds UpCloud's euro prices converted at the European Central Bank's rate for 2026-11-20, 1.0990 dollars to the euro. With the default plan and `MAX_DEPLOY_COST_USD` of 1:
+  - 60 minutes, the default: $0.0148;
+  - 24 hours, the most: $0.1276, so every lifetime fits.
+
+  If a deploy would cost more than the limit, it stops with "The worst case … is more than the limit" and the longest lifetime that fits.
+
 - **Worst case for a month:** there's only ever one server, so even if Clean up UpCloud never runs, the most it can cost is one month of its plan: **€3** with the default.
 - **A typical deploy** of an hour costs less than one cent.
 - **Network traffic is free.** UpCloud charges nothing for inbound or outbound traffic, under its [Fair Transfer Policy](https://upcloud.com/docs/products/networking/network-transfer/): `STARTER-1xCPU-1GB` adds 0.5 TiB a month to your account's allowance, counted for the time the server exists. Past the allowance, UpCloud emails a warning and may slow the server to 100 Mbit/s, but doesn't charge more. `MAX_EGRESS_MBIT` keeps a server far below it.
@@ -311,6 +318,8 @@ The run's log says which step failed and why. There's no SSH, so you can't log i
 | A permission error such as 403 when creating or deleting a server, storage or firewall rule | The account from step 3 lacks a permission. Give it all servers and all storages. For B, if you turned off **Allow access to Control Panel** and the error started then, turn it back on.                                                                     |
 | "Not enough credits", or the account can't create servers                                   | Add balance as in step 2. During the trial, some zones aren't available: pay €10 to upgrade.                                                                                                                                                                  |
 | Creating firewall rules fails during the trial                                              | UpCloud locks the firewall during the trial. Pay €10 to upgrade the account.                                                                                                                                                                                  |
+| "The worst case … is more than the limit"                                                   | The deploy refused before creating anything. Choose a lifetime no longer than the one the message gives, or raise `MAX_DEPLOY_COST_USD`. See [Costs](#costs).                                                                                                 |
+| "Price file … has no prices for" a zone, or "has no price for" a plan                       | The deploy only accepts the EU zones and the plans in [`prices.json`](../../deploy/upcloud/prices.json). Set `UPCLOUD_ZONE` or `UPCLOUD_PLAN` to one of them.                                                                                                 |
 | A plan or template isn't found                                                              | UpCloud may have renamed it. Run `upctl server plans` or check the [plans](https://upcloud.com/docs/products/cloud-servers/configurations/), and set `UPCLOUD_PLAN` or `UPCLOUD_TEMPLATE`.                                                                    |
 | "The app didn't come up in time"                                                            | The server took too long to set up, or its setup failed. The deploy deleted it. The message gives the last reason, for example "Couldn't connect", which means the server never got as far as starting its web server. Run Deploy again, or try another zone. |
 | "HTTPS certificate problem"                                                                 | Let's Encrypt didn't give a certificate for the hostname. It allows only 5 certificates a week for the same hostname, which happens if you deploy many times in a week and get the same IP address. Wait, or try another zone to get another address.         |
@@ -338,11 +347,12 @@ The server keeps no access logs. Its own logs hold only connections and errors, 
 [`deploy-upcloud.yml`](../../.github/workflows/deploy-upcloud.yml):
 
 1. Checks the settings, before it changes anything.
-2. Installs `upctl` 3.37.0, UpCloud's command-line tool, from its release, after checking its checksum.
-3. Deletes any existing Paranoid server, running or off, with its storage.
-4. Creates a server named `paranoid-<run id>`, with the labels `app=paranoid`, `run`, `created` and `expires` (the Unix times it was created and its lifetime ends), and [`deploy/server/cloud-init.yaml`](../../deploy/server/cloud-init.yaml) as its setup data. It has only a public IPv4 address, and its login is a throwaway SSH key whose private half is deleted at once, so UpCloud sets and sends no root password.
-5. Sets the server's firewall ([`firewall-rules.sh`](../../deploy/upcloud/firewall-rules.sh)). UpCloud's firewall is stateless, so besides new connections on TCP 80 and 443 it lets in only the answers the server needs: DNS from UpCloud's resolvers, and HTTP, HTTPS and time-server answers to the ports Linux uses for its own outgoing connections. Everything else is dropped, port 22 included.
-6. Waits up to 10 minutes for `https://<host>/healthz` and a socket.io handshake. If they don't come up, it deletes the server and fails, with the reason from the last attempt.
+2. Works out the worst-case cost from [`prices.json`](../../deploy/upcloud/prices.json), with the shared [`packages/deploy`](../../packages/deploy/src/cli.ts), and stops if it's above `MAX_DEPLOY_COST_USD`, or if the zone or plan isn't in the price file.
+3. Installs `upctl` 3.37.0, UpCloud's command-line tool, from its release, after checking its checksum.
+4. Deletes any existing Paranoid server, running or off, with its storage.
+5. Creates a server named `paranoid-<run id>`, with the labels `app=paranoid`, `run`, `created` and `expires` (the Unix times it was created and its lifetime ends), and [`deploy/server/cloud-init.yaml`](../../deploy/server/cloud-init.yaml) as its setup data. It has only a public IPv4 address, and its login is a throwaway SSH key whose private half is deleted at once, so UpCloud sets and sends no root password.
+6. Sets the server's firewall ([`firewall-rules.sh`](../../deploy/upcloud/firewall-rules.sh)). UpCloud's firewall is stateless, so besides new connections on TCP 80 and 443 it lets in only the answers the server needs: DNS from UpCloud's resolvers, and HTTP, HTTPS and time-server answers to the ports Linux uses for its own outgoing connections. Everything else is dropped, port 22 included.
+7. Waits up to 10 minutes for `https://<host>/healthz` and a socket.io handshake. If they don't come up, it deletes the server and fails, with the reason from the last attempt.
 
 On the server, cloud-init turns off SSH, locks root's password and sets a timer that powers off at the end of the lifetime. It then fetches exactly the deployed commit from the public repository with `git`, which checks every file against its hash, so the server needs no credentials. [`deploy/server/setup.sh`](../../deploy/server/setup.sh) from that commit does the rest:
 

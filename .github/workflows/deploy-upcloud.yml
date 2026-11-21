@@ -58,6 +58,7 @@ jobs:
           MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
           LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
           MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
+          MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
           ZONE: ${{ vars.UPCLOUD_ZONE || 'fi-hel1' }}
           PLAN: ${{ vars.UPCLOUD_PLAN || 'STARTER-1xCPU-1GB' }}
           DEFAULT_PLAN: STARTER-1xCPU-1GB
@@ -68,6 +69,23 @@ jobs:
             exit 1
           fi
           bash deploy/upcloud/settings.sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Before anything is deleted or created, so a deploy above the limit
+      # changes nothing. The server is billed from its creation until
+      # cleanup-upcloud.yml deletes it, at the latest the price file's
+      # cleanupDelayMinutes after its lifetime, running or not. A zone or plan
+      # that isn't in the price file is refused here too.
+      - name: Check the worst-case cost
+        run: |
+          node packages/deploy/src/cli.ts --prices deploy/upcloud/prices.json \
+            --region "$ZONE" --server "$PLAN" \
+            --lifetime-minutes "$LIFETIME_MINUTES" \
+            --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
 
       - name: Set up upctl
         id: upctl

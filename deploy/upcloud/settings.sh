@@ -22,6 +22,8 @@ whole() {
 whole max_invites "$MAX_INVITES" 1 10000
 whole lifetime_minutes "$LIFETIME_MINUTES" 1 1440
 whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
+[[ $MAX_DEPLOY_COST_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
+  fail "MAX_DEPLOY_COST_USD must be an amount in US dollars such as 1 or 2.50, not '$MAX_DEPLOY_COST_USD'"
 [[ $ZONE =~ ^[a-z]{2}-[a-z]{3}[0-9]{1,2}$ ]] ||
   fail "UPCLOUD_ZONE must be an UpCloud zone such as fi-hel1 or de-fra1, not '$ZONE'"
 [[ $PLAN =~ ^[A-Za-z0-9-]{1,40}$ ]] ||
@@ -33,8 +35,9 @@ whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
   echo "MAX_INVITES=$((10#$MAX_INVITES))"
   echo "LIFETIME_MINUTES=$((10#$LIFETIME_MINUTES))"
   echo "MAX_EGRESS_MBIT=$((10#$MAX_EGRESS_MBIT))"
+  echo "MAX_DEPLOY_COST_USD=$MAX_DEPLOY_COST_USD"
   echo "ZONE=$ZONE"
   echo "PLAN=$PLAN"
   echo "TEMPLATE=$TEMPLATE"
 } >>"$GITHUB_ENV"
-echo "Invites: $MAX_INVITES, lifetime: $LIFETIME_MINUTES min, outbound limit: $MAX_EGRESS_MBIT Mbit/s, zone: $ZONE, plan: $PLAN, template: $TEMPLATE"
+echo "Invites: $MAX_INVITES, lifetime: $LIFETIME_MINUTES min, outbound limit: $MAX_EGRESS_MBIT Mbit/s, cost limit: \$$MAX_DEPLOY_COST_USD, zone: $ZONE, plan: $PLAN, template: $TEMPLATE"
