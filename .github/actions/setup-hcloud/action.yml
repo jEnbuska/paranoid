@@ -1,0 +1,22 @@
+name: Set up hcloud
+description: >-
+  Installs a pinned release of the Hetzner Cloud CLI, checked against the
+  checksum from the release's checksums.txt. It writes no config file: each
+  step that calls hcloud gets HCLOUD_TOKEN through its own `env:`.
+
+runs:
+  using: composite
+  steps:
+    - name: Install hcloud
+      shell: bash
+      env:
+        HCLOUD_VERSION: 1.70.2
+        HCLOUD_SHA256: b844bd28240112b0254183ba5266d0a0f59a6167c196636936459755efb88050
+      run: |
+        archive="$RUNNER_TEMP/hcloud.tar.gz"
+        curl -fsSL --retry 3 -o "$archive" "https://github.com/hetznercloud/cli/releases/download/v${HCLOUD_VERSION}/hcloud-linux-amd64.tar.gz"
+        echo "$HCLOUD_SHA256  $archive" | sha256sum --check --strict -
+        mkdir -p "$RUNNER_TEMP/hcloud"
+        tar -xzf "$archive" -C "$RUNNER_TEMP/hcloud" hcloud
+        echo "$RUNNER_TEMP/hcloud" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/hcloud/hcloud" version
