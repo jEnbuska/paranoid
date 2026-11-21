@@ -8,10 +8,12 @@ name: Clean up Azure
 # Azure, see deploy/azure/backstop.json) does the same within minutes
 # whatever GitHub does.
 #
-# It signs in through GitHub OIDC, with no secret, using the `azure`
-# environment, which only `main` may use. Scheduled runs use the default
-# branch, `dev`, so they can't use the environment themselves: the `start`
-# job starts this workflow on `main` instead, and that run cleans up.
+# It signs in through GitHub OIDC, with no secret, as paranoid-cleaner,
+# which can only find and delete, using the `azure-cleanup` environment,
+# which only `main` may use. Unlike `azure`, it needs no approval, so the
+# schedule never waits. Scheduled runs use the default branch, `dev`, so they
+# can't use the environment themselves: the `start` job starts this workflow
+# on `main` instead, and that run cleans up.
 
 on:
   schedule:
@@ -25,7 +27,7 @@ jobs:
   start:
     name: Start the cleanup on main
     # Without the variables bootstrap.sh printed, nothing can be deployed.
-    if: github.event_name == 'schedule' && vars.AZURE_CLIENT_ID != ''
+    if: github.event_name == 'schedule' && vars.AZURE_CLEANUP_CLIENT_ID != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -33,7 +35,7 @@ jobs:
       contents: read
 
     steps:
-      # Without an azure environment or a cleanup-azure.yml on main, nothing
+      # Without an azure-cleanup environment or a cleanup-azure.yml on main, nothing
       # can have been deployed. deploy-azure.yml and cleanup-azure.yml reach
       # main together.
       - name: Start the cleanup on main
@@ -52,8 +54,8 @@ jobs:
             echo "::error::$error"
             exit 1
           }
-          if missing "repos/$REPO/environments/azure"; then
-            echo "There's no azure environment, so there's nothing to clean up."
+          if missing "repos/$REPO/environments/azure-cleanup"; then
+            echo "There's no azure-cleanup environment, so there's nothing to clean up."
           elif missing "repos/$REPO/contents/.github/workflows/cleanup-azure.yml?ref=main"; then
             echo "cleanup-azure.yml isn't on main yet, and neither is deploy-azure.yml, so there's nothing to clean up."
           else
@@ -66,7 +68,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: azure
+    environment: azure-cleanup
     permissions:
       contents: read
       id-token: write
@@ -86,7 +88,7 @@ jobs:
       - name: Sign in to Azure
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_CLEANUP_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 

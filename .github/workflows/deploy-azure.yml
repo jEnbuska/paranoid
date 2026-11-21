@@ -6,10 +6,11 @@ name: Deploy to Azure
 # docs/deploy/azure.md.
 #
 # No secret exists for Azure. The job signs in through GitHub OIDC as the
-# managed identity bootstrap.sh made, whose federated credential trusts only
-# this repository's `azure` environment, which only `main` may use. The IDs
-# below are repository variables, not secrets. Only a manual run starts this
-# workflow, never a pull request.
+# managed identity paranoid-deployer, whose federated credential trusts only
+# this repository's `azure` environment, which only `main` may use and which
+# waits for the owner's approval before each deploy. The IDs below are
+# repository variables, not secrets. Only a manual run starts this workflow,
+# never a pull request.
 
 on:
   workflow_dispatch:

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deletes Paranoid VMs on Azure, with their disks, NICs and public IPs. The
-# az CLI is signed in as the deploying identity, and RESOURCE_GROUP is the
-# resource group bootstrap.sh made.
+# az CLI is signed in as paranoid-deployer or paranoid-cleaner, and
+# RESOURCE_GROUP is the resource group bootstrap.sh made.
 #
 # Usage:
 #   delete-servers.sh all          every VM, running or not
