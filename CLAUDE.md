@@ -69,6 +69,12 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
   - Skip a matrix job's steps, never the job: a skipped matrix job reports one check under its unexpanded name, `End-to-end tests (${{ matrix.browser }})`, so the required `End-to-end tests (chromium)`, `(firefox)` and `(webkit)` would wait forever. A non-matrix job can skip with `if:`, which counts as passing.
 - The rules for branches, PRs and releases are in [CONTRIBUTING.md](CONTRIBUTING.md). PRs go into `dev`, except a release PR from `dev` into `main`. Sessions never release unless the user tells them to for that specific PR.
 - Branch names start with the ticket number: `<TICKET_NUMBER>-<name>`, for example `2-peers-stuck-connecting`. `hotfix/*` branches have no ticket and keep that name.
+- Commit messages start with the ticket number too, for example `#6 Add the GCP workflows`. Whenever git opens a message for editing, it deletes the lines that start with `#` as comments, so:
+  - `git commit -m '#N ...'` is safe: git strips comments only from a message it opened in an editor.
+  - Run every step of a rebase with `-c core.commentChar=';'`: the `git -c core.commentChar=';' rebase origin/dev` that starts it and each `git -c core.commentChar=';' rebase --continue`. On `--continue` alone it keeps the subject but leaves the `# Conflicts:` lines git wrote when the rebase stopped.
+  - Amend with `git -c core.commentChar=';' commit --amend`, or with `--no-edit` or `-m`.
+  - After any rebase, check with `git log --format='%B' origin/dev..HEAD` that every message still starts with its `#N` and has no `Conflicts:` lines.
+  - Fix one with `git commit --amend --cleanup=verbatim -m '<message>'`, on the tip commit or, for an older one, at an `edit` stop of `git -c core.commentChar=';' rebase -i origin/dev`.
 - Sessions commit and push without asking first.
 - Keep PR branches up to date by rebasing onto `origin/dev` and pushing with `--force-with-lease`. PRs land with "Rebase and merge", and merge commits are refused.
 - The `rebase-prs` skill (`.claude/skills/rebase-prs`) rebases every ready PR into `dev` that has fallen behind, unless it conflicts, as the signed-in `gh` user, so CI runs on the new heads. After the user merges a PR, the session that made it runs the skill. Drafts are left alone, and a PR that conflicts gets one comment, after which its session rebases it itself. A Dependabot PR is never rebased by anyone else, because Dependabot then stops updating it: the skill comments `@dependabot rebase` instead.
