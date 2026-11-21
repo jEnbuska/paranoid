@@ -1,3 +1,4 @@
+// Throwaway: a change that touches no dependency file
 /**
  * A knip reporter that runs after the default one (see the `knip` script in
  * package.json) and explains each finding: what knip saw and how to fix it.
