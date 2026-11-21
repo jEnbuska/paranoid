@@ -1,0 +1,98 @@
+name: Clean up Hetzner
+
+# Every hour, deletes the Paranoid servers on Hetzner Cloud that are powered
+# off or past their expiry time. Hetzner bills a server that's off just like
+# one that's running, so this is what stops the cost.
+#
+# HCLOUD_TOKEN is a secret of the `hetzner-cleanup` environment, which only
+# `main` may use, and only the step that calls hcloud gets it. Unlike
+# `hetzner`, which deploy-hetzner.yml uses, it has no required reviewers, so
+# the hourly cleanup never waits for an approval. Scheduled runs use the
+# default branch, `dev`, so they can't use the environment themselves: the
+# `start` job starts this workflow on `main` instead, and that run cleans up.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  start:
+    name: Start the cleanup on main
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      # Without a hetzner-cleanup environment or a cleanup-hetzner.yml on
+      # main, there's nothing to clean up with. deploy-hetzner.yml and
+      # cleanup-hetzner.yml reach main together.
+      - name: Start the cleanup on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          missing() {
+            local error
+            if error=$(gh api "$1" --silent 2>&1); then
+              return 1
+            fi
+            if [[ $error == *"HTTP 404"* ]]; then
+              return 0
+            fi
+            echo "::error::$error"
+            exit 1
+          }
+          if missing "repos/$REPO/environments/hetzner-cleanup"; then
+            echo "There's no hetzner-cleanup environment, so there's nothing to clean up with."
+          elif missing "repos/$REPO/contents/.github/workflows/cleanup-hetzner.yml?ref=main"; then
+            echo "cleanup-hetzner.yml isn't on main yet, and neither is deploy-hetzner.yml, so there's nothing to clean up."
+          else
+            gh workflow run cleanup-hetzner.yml --repo "$REPO" --ref main
+            echo "Started the cleanup on main."
+          fi
+
+  cleanup:
+    name: Delete finished servers
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: hetzner-cleanup
+    # Not shared with deploy-hetzner.yml, which may wait hours for its approval
+    # in the `hetzner` group. Running beside a deploy or a stop is safe: this
+    # deletes only servers that are off or expired, never the one a deploy is
+    # setting up, nor the SSH key it has just created, and delete-servers.sh
+    # skips a server something else deleted first.
+    concurrency:
+      group: hetzner-cleanup
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check for the token
+        id: token
+        env:
+          HAS_TOKEN: ${{ secrets.HCLOUD_TOKEN != '' }}
+        run: |
+          echo "present=$HAS_TOKEN" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_TOKEN" != true ]; then
+            echo "::notice::The hetzner-cleanup environment has no HCLOUD_TOKEN secret, so there's nothing to clean up."
+          fi
+
+      - uses: ./.github/actions/setup-hcloud
+        if: steps.token.outputs.present == 'true'
+
+      - name: Delete the servers that are off or expired
+        if: steps.token.outputs.present == 'true'
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: bash deploy/hetzner/delete-servers.sh finished

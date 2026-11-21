@@ -209,6 +209,8 @@ Each provider has its own step-by-step guide, which assumes only a GitHub accoun
 
 <!-- One line per provider, in alphabetical order: - [Provider](docs/deploy/<provider>.md), where it runs. -->
 
+- [Hetzner Cloud](docs/deploy/hetzner.md), a German provider, in Germany or Finland.
+
 ## Continuous integration
 
 GitHub Actions workflows live in [`.github/workflows`](.github/workflows):

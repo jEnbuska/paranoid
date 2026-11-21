@@ -109,6 +109,11 @@ Anyone with a fork can start a Paranoid server from GitHub Actions. Each provide
 - User data and labels hold only values the scripts have checked, so an input can't inject commands.
 - Pin every download (provider CLIs, Node.js, Caddy, gitleaks) to a version and check its checksum. Update the version and checksum together.
 - `shellcheck` checks `deploy/**/*.sh` in CI. Keep the deploy scripts there.
+- Hetzner Cloud ([docs/deploy/hetzner.md](docs/deploy/hetzner.md)): `deploy-hetzner.yml`, `stop-hetzner.yml` and `cleanup-hetzner.yml` manage one server, with scripts in `deploy/hetzner`.
+  - `.github/actions/setup-hcloud` installs a pinned `hcloud`, which reads `HCLOUD_TOKEN` from the environment and writes no config file. Never pass `--debug`, which logs requests.
+  - `deploy/hetzner/settings.sh` checks every value before it reaches user data or labels.
+  - Servers are created with an SSH key whose private half is deleted, so Hetzner sets no root password, and `create-server.sh` fails if the response holds one. Never print `hcloud`'s JSON output.
+  - Hetzner tokens have no prefix, so `.gitleaks.toml` flags any random 64-character string of letters and digits, with an entropy threshold no hex checksum can reach.
 
 ## End-to-end tests
 
