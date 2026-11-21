@@ -120,6 +120,8 @@ Your fork is public, so everyone can see its workflow runs and their logs, and a
 - **Stopping and cleaning up don't wait.** **Stop AWS** and the hourly **Clean up AWS** use a second environment, `aws-cleanup`, with no reviewer, so they work at once, even when you're away. Its role, `paranoid-cleanup`, can only list and terminate Paranoid's servers, so it can't cost you anything.
 - **Logs go after a day.** Run logs show the server's URL and IP address, and your AWS account ID in the role names. None of that is secret, but there's no reason to keep it public, so the logs are deleted after 1 day, the shortest GitHub allows.
 
+Keep your fork public, as step 1 says. GitHub offers required reviewers only on public repositories, unless you pay for GitHub Enterprise. A private copy on GitHub Pro or Team can still limit the environments to `main`, but deploys then don't wait for anyone's approval. On GitHub Free, a private repository has no environments at all, so neither protection works. See [Deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
+
 ### With the GitHub CLI
 
 On your own computer, with [`gh`](https://cli.github.com) signed in to your GitHub account, run the commands the setup script printed, in order:
