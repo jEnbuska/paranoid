@@ -60,6 +60,16 @@ When an issue is too big for one PR, split it. Pieces that can't really be built
 
 Run the checks listed in the [README](README.md#scripts) before pushing. CI runs the end-to-end tests in Chromium, Firefox and WebKit on every PR. If a browser fails on a ready PR, move the PR to draft and add a comment saying which browser and test failed.
 
+## Commit messages
+
+Start each commit message with its ticket number, for example `#6 Add the GCP workflows`. Whenever git opens a message in your editor (`git commit` without `-m`, `git commit --amend`, `git rebase --continue` after a conflict, `git rebase -i`), it deletes the lines that start with `#` as comments, and the subject is gone. `git commit -m` is safe. Fix it for good in your own clone by making `;` the comment character:
+
+```bash
+git config core.commentChar ';'
+```
+
+It's a local setting, so it can't be committed, and each clone needs it once. Without it, pass `-c core.commentChar=';'` to both the `git rebase` that starts a rebase and each `--continue`. If a message has already lost its first line, put it back with `git commit --amend --cleanup=verbatim -m '<message>'`, which keeps the message exactly as you give it.
+
 ## Answering review comments
 
 The maintainer reviews PRs on GitHub. Answer every comment on your PR, whether it's a comment on a line, a review or a plain PR comment, on GitHub in that comment's thread, so the PR records what was asked and what came of it. Reviews and plain PR comments have no threads, so answer them with a PR comment that quotes them.
