@@ -53,11 +53,14 @@ while IFS=$'\t' read -r name zone status created stopped deployment month; do
   found=1
   echo "Deleting $name in $zone ($status)"
   # Stop, cleanup and a deploy can delete the same VM at once. The one whose
-  # delete finds it gone leaves the settlement to the other.
+  # delete finds it gone leaves the settlement to the other. One that Google
+  # Cloud deletes at the end of its lifetime keeps its full reservation.
   if ! gcloud compute instances delete "$name" --zone="$zone" --delete-disks=all \
     --quiet 2>"$error"; then
-    if grep -qiE 'not found|notFound|was not found' "$error"; then
-      echo "$name was already deleted by another run."
+    # Gone, or being deleted by another run or by Google Cloud at the end
+    # of its lifetime
+    if grep -qiE 'not ?found|was not found|not ready|resourceNotReady|being deleted' "$error"; then
+      echo "$name is already gone or being deleted elsewhere."
       continue
     fi
     cat "$error" >&2
@@ -83,8 +86,12 @@ if [ "$1" = run ] && [ "$found" = 0 ]; then
 fi
 
 # A boot disk is deleted with its VM. One that was left behind anyway, with
-# no VM using it, is deleted too.
-gcloud compute disks list --filter='name ~ ^paranoid- AND -users:*' \
+# no VM using it, is deleted too, but only once it's older than the longest
+# lifetime (24 hours) and an hour more. A disk that a deploy is creating
+# right now, before its VM uses it, is never touched.
+# -P1DT1H: created more than 25 hours ago, in gcloud's filter syntax
+gcloud compute disks list \
+  --filter='name ~ ^paranoid- AND -users:* AND creationTimestamp < -P1DT1H' \
   --format='value(name,zone.basename())' |
   while read -r name zone; do
     echo "Deleting the disk $name in $zone, which no VM uses"
