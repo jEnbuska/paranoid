@@ -56,12 +56,41 @@ if ((${#ids[@]} == 0)); then
   echo "No instance to terminate."
   exit 0
 fi
-aws ec2 terminate-instances --instance-ids "${ids[@]}" >/dev/null
-
-# Their backstop schedules have nothing left to do.
+# One at a time, so one that's gone doesn't stop the others. Stop, Clean up,
+# a failed deploy and the backstop can all terminate the same instance at
+# once. Terminating one that's shutting down or terminated already succeeds,
+# and one that's gone altogether counts as done too.
+gone() {
+  [[ $1 == *InvalidInstanceID.NotFound* ]]
+}
+failed=0
+terminated=()
 for id in "${ids[@]}"; do
-  aws scheduler delete-schedule --group-name "$SCHEDULE_GROUP" --name "paranoid-$id" 2>/dev/null || true
+  if error=$(aws ec2 terminate-instances --instance-ids "$id" 2>&1 >/dev/null); then
+    terminated+=("$id")
+  elif gone "$error"; then
+    echo "$id is already gone."
+  else
+    echo "::error::Couldn't terminate $id: $error"
+    failed=1
+  fi
+
+  # Its backstop schedule has nothing left to do. One that's already gone,
+  # because it ran or something else deleted it, is fine. Any other error
+  # only leaves a schedule that costs nothing and deletes itself after it
+  # runs.
+  if ! error=$(aws scheduler delete-schedule --group-name "$SCHEDULE_GROUP" --name "paranoid-$id" 2>&1 >/dev/null) &&
+    [[ $error != *ResourceNotFoundException* ]]; then
+    echo "::warning::Couldn't delete the backstop schedule of $id: $error"
+  fi
 done
 
-aws ec2 wait instance-terminated --instance-ids "${ids[@]}"
-echo "Terminated ${#ids[@]} instance(s)."
+# ${a[@]+...}: an empty list, without set -u failing on older bash
+for id in ${terminated[@]+"${terminated[@]}"}; do
+  if ! error=$(aws ec2 wait instance-terminated --instance-ids "$id" 2>&1 >/dev/null) && ! gone "$error"; then
+    echo "::error::$id didn't terminate: $error"
+    failed=1
+  fi
+done
+echo "Terminated ${#terminated[@]} instance(s)."
+exit "$failed"
