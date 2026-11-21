@@ -16,6 +16,9 @@
 #   - the role paranoid-deploy, which only GitHub Actions jobs of
 #     <owner>/<repo> in its `aws` environment can assume, and which can only
 #     start, list and terminate the app's instances;
+#   - the role paranoid-cleanup, which only jobs in its `aws-cleanup`
+#     environment can assume, and which can only list and terminate the
+#     app's instances;
 #   - the role paranoid-scheduler, which EventBridge Scheduler uses to
 #     terminate an instance when its lifetime is over;
 #   - the schedule group paranoid, for those one-time schedules;
@@ -77,9 +80,26 @@ owner_id=$(jq -r .owner.id <<<"$repo_json")
 repo_id=$(jq -r .id <<<"$repo_json")
 created=$(jq -r .created_at <<<"$repo_json")
 [[ $owner_id =~ ^[0-9]+$ && $repo_id =~ ^[0-9]+$ ]] || fail "GitHub didn't return the IDs of $repository."
-subjects=$(jq -cn --arg immutable "repo:$owner_name@$owner_id/$repo_name@$repo_id:environment:$ENVIRONMENT" \
-  --arg names "repo:$owner_name/$repo_name:environment:$ENVIRONMENT" --arg created "$created" '
-  if $created >= "2026-07-15" then [$immutable] else [$immutable, $names] end')
+# subjects <environment>: the subjects of jobs in that environment
+subjects() {
+  jq -cn --arg immutable "repo:$owner_name@$owner_id/$repo_name@$repo_id:environment:$1" \
+    --arg names "repo:$owner_name/$repo_name:environment:$1" --arg created "$created" '
+    if $created >= "2026-07-15" then [$immutable] else [$immutable, $names] end'
+}
+
+# github_trust <environment>: a trust policy for jobs of this repository in
+# that environment, which only `main` may use
+github_trust() {
+  jq -cn --arg provider "$provider_arn" --arg host "$OIDC_HOST" --argjson subjects "$(subjects "$1")" '{
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Principal: {Federated: $provider},
+      Action: "sts:AssumeRoleWithWebIdentity",
+      Condition: {StringEquals: {($host + ":aud"): "sts.amazonaws.com", ($host + ":sub"): $subjects}}
+    }]
+  }'
+}
 
 tags="Key=$TAG_KEY,Value=$TAG_VALUE"
 
@@ -196,16 +216,9 @@ ensure_role "$SCHEDULER_ROLE" "Paranoid: terminates an instance when its lifetim
 scheduler_role_arn="arn:aws:iam::$account:role/$SCHEDULER_ROLE"
 
 # 5. The deploy role. Only jobs of this repository that use its `aws`
-# environment, which only `main` may use, can assume it.
-deploy_trust=$(jq -cn --arg provider "$provider_arn" --arg host "$OIDC_HOST" --argjson subjects "$subjects" '{
-  Version: "2012-10-17",
-  Statement: [{
-    Effect: "Allow",
-    Principal: {Federated: $provider},
-    Action: "sts:AssumeRoleWithWebIdentity",
-    Condition: {StringEquals: {($host + ":aud"): "sts.amazonaws.com", ($host + ":sub"): $subjects}}
-  }]
-}')
+# environment, which only `main` may use and whose jobs wait for the owner's
+# approval, can assume it.
+deploy_trust=$(github_trust "$ENVIRONMENT")
 # Every permission is limited to this region, and to the app's resources
 # wherever EC2 can tell them apart. See the PR that added this file for why
 # each one is needed.
@@ -303,7 +316,43 @@ ensure_role "$DEPLOY_ROLE" "Paranoid: GitHub Actions starts and terminates the a
   "$deploy_trust" "$deploy_permissions"
 deploy_role_arn="arn:aws:iam::$account:role/$DEPLOY_ROLE"
 
-# 6. The budget, a late warning only: AWS checks costs a few times a day, so
+# 6. The cleanup role, for Stop AWS and Clean up AWS. Only jobs in the
+# `aws-cleanup` environment, which only `main` may use and which has no
+# reviewer so they never wait, can assume it. It can only list instances,
+# terminate the app's, and delete their backstop schedules: nothing that
+# starts a server or costs money.
+cleanup_permissions=$(jq -cn --arg region "$region" --arg instances "$instances" \
+  --arg key "$TAG_KEY" --arg value "$TAG_VALUE" \
+  --arg schedules "arn:aws:scheduler:$region:$account:schedule/$SCHEDULE_GROUP/*" '{
+  Version: "2012-10-17",
+  Statement: [
+    {
+      Sid: "TerminateOnlyTheAppsInstances",
+      Effect: "Allow",
+      Action: "ec2:TerminateInstances",
+      Resource: $instances,
+      Condition: {StringEquals: {("aws:ResourceTag/" + $key): $value}}
+    },
+    {
+      Sid: "DescribeHasNoResourceLevelPermissions",
+      Effect: "Allow",
+      Action: "ec2:DescribeInstances",
+      Resource: "*",
+      Condition: {StringEquals: {"aws:RequestedRegion": $region}}
+    },
+    {
+      Sid: "DeleteTheBackstopSchedules",
+      Effect: "Allow",
+      Action: "scheduler:DeleteSchedule",
+      Resource: $schedules
+    }
+  ]
+}')
+ensure_role "$CLEANUP_ROLE" "Paranoid: GitHub Actions terminates the app's instances" \
+  "$(github_trust "$CLEANUP_ENVIRONMENT")" "$cleanup_permissions"
+cleanup_role_arn="arn:aws:iam::$account:role/$CLEANUP_ROLE"
+
+# 7. The budget, a late warning only: AWS checks costs a few times a day, so
 # an alert can come hours after the cost. It covers the whole account.
 # Budgets are global, and their API is in us-east-1.
 budget_json=$(jq -cn --arg name "$BUDGET" --arg amount "$budget" '{
@@ -339,12 +388,21 @@ with the GitHub CLI (or in Settings > Secrets and variables > Actions >
 Variables):
 
 gh variable set AWS_ROLE_ARN --repo $repository --body $deploy_role_arn
+gh variable set AWS_CLEANUP_ROLE_ARN --repo $repository --body $cleanup_role_arn
 gh variable set AWS_SCHEDULER_ROLE_ARN --repo $repository --body $scheduler_role_arn
 gh variable set AWS_SECURITY_GROUP_ID --repo $repository --body $sg
 gh variable set AWS_REGION --repo $repository --body $region
 
-If your fork has no "$ENVIRONMENT" environment yet, create it and limit it to main:
+Then create the two environments, both limited to main. Deploys wait for
+your approval (you're the required reviewer, and may approve your own runs);
+Stop and Clean up don't wait:
 
-gh api --method PUT repos/$repository/environments/$ENVIRONMENT -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+printf '{"prevent_self_review":false,"reviewers":[{"type":"User","id":%s}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' "\$(gh api user --jq .id)" | gh api --method PUT repos/$repository/environments/$ENVIRONMENT --input -
 gh api --method POST repos/$repository/environments/$ENVIRONMENT/deployment-branch-policies -f name=main -f type=branch
+gh api --method PUT repos/$repository/environments/$CLEANUP_ENVIRONMENT -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api --method POST repos/$repository/environments/$CLEANUP_ENVIRONMENT/deployment-branch-policies -f name=main -f type=branch
+
+And keep the public run logs for 1 day only:
+
+gh api --method PUT repos/$repository/actions/permissions/artifact-and-log-retention -F days=1
 EOF

@@ -3,9 +3,11 @@ name: Stop AWS
 # Terminates every Paranoid server on AWS right away. Chats that have started
 # keep working, because they're peer to peer.
 #
-# The job signs in as the paranoid-deploy role with its GitHub OIDC token, in
-# the `aws` environment, which only `main` may use. Only a manual run starts
-# this.
+# The job signs in as the paranoid-cleanup role with its GitHub OIDC token, in
+# the `aws-cleanup` environment, which only `main` may use. That role can only
+# list and terminate Paranoid's servers. The environment has no required
+# reviewer, unlike `aws`, so stopping never waits for an approval. Only a
+# manual run starts this.
 
 on:
   workflow_dispatch:
@@ -25,7 +27,7 @@ jobs:
     name: Terminate the servers
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: aws
+    environment: aws-cleanup
     permissions:
       contents: read
       id-token: write
@@ -37,11 +39,11 @@ jobs:
 
       - name: Check the settings
         env:
-          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          ROLE_ARN: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
           REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
         run: |
-          if ! [[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-deploy$ ]]; then
-            echo "::error::AWS_ROLE_ARN isn't set to the deploy role. Run deploy/aws/bootstrap.sh and set the variables it prints (docs/deploy/aws.md)."
+          if ! [[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-cleanup$ ]]; then
+            echo "::error::AWS_CLEANUP_ROLE_ARN isn't set to the cleanup role. Run deploy/aws/bootstrap.sh and set the variables it prints (docs/deploy/aws.md)."
             exit 1
           fi
           [[ $REGION =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]] || {
@@ -53,7 +55,7 @@ jobs:
       - name: Sign in to AWS
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
           role-session-name: paranoid-stop-${{ github.run_id }}
           aws-region: ${{ env.REGION }}
 
