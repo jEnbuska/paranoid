@@ -73,7 +73,7 @@ if [[ $sg =~ ^sg- ]]; then
 fi
 
 # 4. The roles, with their inline policies
-for role in "$DEPLOY_ROLE" "$SCHEDULER_ROLE"; do
+for role in "$DEPLOY_ROLE" "$CLEANUP_ROLE" "$SCHEDULER_ROLE"; do
   aws iam get-role --role-name "$role" >/dev/null 2>&1 || continue
   for policy in $(aws iam list-role-policies --role-name "$role" --query 'PolicyNames[]' --output text); do
     aws iam delete-role-policy --role-name "$role" --policy-name "$policy"

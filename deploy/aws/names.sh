@@ -8,12 +8,17 @@
 TAG_KEY=app
 TAG_VALUE=paranoid
 
-# The GitHub environment that may assume the deploy role. deploy-aws.yml,
-# stop-aws.yml and cleanup-aws.yml use it, and only main may use it.
+# The GitHub environments, which only main may use. Only deploy-aws.yml uses
+# ENVIRONMENT, which has the owner as its required reviewer, so every deploy
+# waits for their approval. Only jobs in it can assume the deploy role.
+# stop-aws.yml and cleanup-aws.yml use CLEANUP_ENVIRONMENT, which has no
+# reviewer, so they never wait, and its role can only remove servers.
 ENVIRONMENT=aws
+CLEANUP_ENVIRONMENT=aws-cleanup
 
 OIDC_HOST=token.actions.githubusercontent.com
 DEPLOY_ROLE=paranoid-deploy
+CLEANUP_ROLE=paranoid-cleanup
 SCHEDULER_ROLE=paranoid-scheduler
 SCHEDULE_GROUP=paranoid
 SECURITY_GROUP=paranoid

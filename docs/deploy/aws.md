@@ -41,7 +41,8 @@ AWS's prices and rules below were checked on 2026-11-20. They can change, so che
 - **EventBridge Scheduler:** an AWS service that does something at a set time. Here it terminates a server at the end of its lifetime, in case the server didn't power itself off.
 - **CloudShell:** a command line in your browser, inside the console, already signed in to your account. You run the setup script there, so you don't install anything.
 - **AWS Budgets:** emails you when your costs pass an amount you choose.
-- **GitHub environment:** a named set of rules in your fork about which branches may deploy. Here it's `aws`, and only `main` may use it.
+- **GitHub environment:** a named set of rules in your fork for the workflow runs that use it: which branches may use it, and who must approve a run before it starts. Here there are two, both for `main` only: `aws` for deploys, which wait for your approval, and `aws-cleanup` for stopping and cleaning up, which don't.
+- **Required reviewer:** someone who must click **Approve** before a run that uses the environment starts. Here it's you.
 
 ## 1. Fork the repository
 
@@ -97,12 +98,13 @@ The script [`deploy/aws/bootstrap.sh`](../../deploy/aws/bootstrap.sh) creates ev
 
    ```text
    gh variable set AWS_ROLE_ARN --repo <owner>/<repo> --body arn:aws:iam::<account-id>:role/paranoid-deploy
+   gh variable set AWS_CLEANUP_ROLE_ARN --repo <owner>/<repo> --body arn:aws:iam::<account-id>:role/paranoid-cleanup
    gh variable set AWS_SCHEDULER_ROLE_ARN --repo <owner>/<repo> --body arn:aws:iam::<account-id>:role/paranoid-scheduler
    gh variable set AWS_SECURITY_GROUP_ID --repo <owner>/<repo> --body sg-<id>
    gh variable set AWS_REGION --repo <owner>/<repo> --body eu-north-1
    ```
 
-   Keep them for the next step. None of them is a secret.
+   After them come the commands for the environments and the log retention in the next step. Keep it all for the next step. None of it is a secret.
 
 5. AWS Budgets emails you to confirm the alert address only if it's new to AWS. Check your inbox.
 
@@ -112,25 +114,39 @@ What it created, all named `paranoid`, is listed in [No secrets](#no-secrets).
 
 ## 5. Connect your fork to AWS
 
+Your fork is public, so everyone can see its workflow runs and their logs, and anyone with write access to it could start a workflow. Three settings keep that safe:
+
+- **Deploys wait for you.** The `aws` environment has you as its required reviewer, so every deploy waits until you approve it, even one someone else started. Only `main` may use it, and the `paranoid-deploy` role trusts only jobs in it, so nothing else can start a server in your AWS account.
+- **Stopping and cleaning up don't wait.** **Stop AWS** and the hourly **Clean up AWS** use a second environment, `aws-cleanup`, with no reviewer, so they work at once, even when you're away. Its role, `paranoid-cleanup`, can only list and terminate Paranoid's servers, so it can't cost you anything.
+- **Logs go after a day.** Run logs show the server's URL and IP address, and your AWS account ID in the role names. None of that is secret, but there's no reason to keep it public, so the logs are deleted after 1 day, the shortest GitHub allows.
+
 ### With the GitHub CLI
 
-On your own computer, with [`gh`](https://cli.github.com) signed in to your GitHub account, run the four `gh variable set` commands the script printed. Then create the `aws` environment and limit it to `main`:
+On your own computer, with [`gh`](https://cli.github.com) signed in to your GitHub account, run the commands the setup script printed, in order:
 
-```bash
-gh api --method PUT repos/<owner>/<repo>/environments/aws -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
-```
-
-```bash
-gh api --method POST repos/<owner>/<repo>/environments/aws/deployment-branch-policies -f name=main -f type=branch
-```
+1. The five `gh variable set` commands.
+2. The four `gh api` commands for the environments. The first one makes you the `aws` environment's required reviewer: `gh api user --jq .id` looks up your GitHub user ID.
+3. The `gh api` command for the log retention.
 
 ### Or in GitHub's website
 
-1. In your fork, go to **Settings** → **Secrets and variables** → **Actions** → **Variables** tab → **New repository variable**. Add the four variables the script printed: `AWS_ROLE_ARN`, `AWS_SCHEDULER_ROLE_ARN`, `AWS_SECURITY_GROUP_ID` and `AWS_REGION`, each with the value after `--body`.
-2. Go to **Settings** → **Environments** → **New environment**, name it `aws` and click **Configure environment**.
-3. Under **Deployment branches and tags**, choose **Selected branches and tags**, click **Add deployment branch or tag rule**, enter `main` and click **Add rule**.
+1. **Variables:** in your fork, go to **Settings** → **Secrets and variables** → **Actions** → **Variables** tab → **New repository variable**. Add the five variables the script printed: `AWS_ROLE_ARN`, `AWS_CLEANUP_ROLE_ARN`, `AWS_SCHEDULER_ROLE_ARN`, `AWS_SECURITY_GROUP_ID` and `AWS_REGION`, each with the value after `--body`.
+2. **The `aws` environment:** go to **Settings** → **Environments** → **New environment**, name it `aws` and click **Configure environment**. Then:
+   1. Tick **Required reviewers**, type your own GitHub username in the box and choose yourself.
+   2. Leave **Prevent self-review** unticked. Ticked, it would stop you approving the deploys you start yourself, and you're the only reviewer.
+   3. Click **Save protection rules**.
+   4. Under **Deployment branches and tags**, choose **Selected branches and tags**, click **Add deployment branch or tag rule**, enter `main` and click **Add rule**.
+3. **The `aws-cleanup` environment:** go back to **Settings** → **Environments** → **New environment**, name it `aws-cleanup` and click **Configure environment**. Leave **Required reviewers** unticked. Under **Deployment branches and tags**, choose **Selected branches and tags** and add the rule `main`, as above.
+4. **Log retention:** go to **Settings** → **Actions** → **General**. Under **Check, workflow run, status, artifact and log retention**, enter `1` and click **Save**.
 
-Either way, **Settings** → **Secrets and variables** → **Actions** → **Variables** now lists the four variables, and **Settings** → **Environments** → **aws** shows the branch rule `main`. There are no secrets to add.
+Either way, you should now see:
+
+- **Settings** → **Secrets and variables** → **Actions** → **Variables**: the five variables;
+- **Settings** → **Environments** → **aws**: **Required reviewers** with your username, and the branch rule `main`;
+- **Settings** → **Environments** → **aws-cleanup**: the branch rule `main`, and no reviewers;
+- **Settings** → **Actions** → **General**: a retention of 1 day.
+
+There are no secrets to add.
 
 ## 6. Optional settings
 
@@ -159,10 +175,11 @@ The app uses Google's STUN servers unless `VITE_ICE_SERVERS` in [`packages/clien
 
 1. In your fork, go to **Actions** → **Deploy to AWS** → **Run workflow**.
 2. Keep **Use workflow from** on `main`. Optionally fill in the number of invites and the lifetime. Click **Run workflow**.
-3. Click the run that appears. The step **Check the worst-case cost** shows the most this deploy can cost. Setting up the server takes a few minutes, because it installs and builds the app itself.
-4. When the run is green, its **Summary** shows the URL, `https://<ip-with-dashes>.sslip.io`, and when the server shuts down at the latest.
+3. Click the run that appears. It shows **Waiting** and "This workflow is waiting for review". Click **Review deployments**, tick **aws** and click **Approve and deploy**. Nothing runs, and nothing in AWS changes, until you do.
+4. The step **Check the worst-case cost** shows the most this deploy can cost. Setting up the server takes a few minutes, because it installs and builds the app itself.
+5. When the run is green, its **Summary** shows the URL, `https://<ip-with-dashes>.sslip.io`, and when the server shuts down at the latest.
 
-Or with `gh`:
+Or start it with `gh`, then approve it on the run's page as in step 3:
 
 ```bash
 gh workflow run deploy-aws.yml --ref main --repo <owner>/<repo> -f max_invites=5 -f lifetime_minutes=60
@@ -170,14 +187,14 @@ gh workflow run deploy-aws.yml --ref main --repo <owner>/<repo> -f max_invites=5
 
 Open the URL, create an invite and open it in a second browser or on another device, such as your phone. The chat starts once both are connected.
 
-Anyone who has the URL can create invites, which use up `max_invites`. In a public fork, anyone can read the run summary.
+Anyone who has the URL can create invites, which use up `max_invites`. In a public fork, anyone can read the run summary and logs until they're deleted after a day.
 
 ## 8. Stop it, and how it's cleaned up
 
-- **Stop it now:** **Actions** → **Stop AWS** → **Run workflow** on `main` terminates every Paranoid server right away. Chats that have started keep working. Or: `gh workflow run stop-aws.yml --ref main --repo <owner>/<repo>`.
+- **Stop it now:** **Actions** → **Stop AWS** → **Run workflow** on `main` terminates every Paranoid server right away. Chats that have started keep working. It doesn't wait for an approval. Or: `gh workflow run stop-aws.yml --ref main --repo <owner>/<repo>`.
 - **On its own:** the server powers off once the last invite is finished, or at the end of its lifetime, and AWS terminates it when it does. Its disk and IP address go with it.
 - **The backstop:** each deploy also creates a one-time EventBridge Scheduler schedule that terminates the server 5 minutes after its lifetime ends, even if the server never powered itself off. The schedule deletes itself afterwards.
-- **Clean up AWS** runs every hour and terminates any Paranoid server that's past its lifetime, in case both of the above failed. You can also run it by hand from the Actions tab. GitHub can delay scheduled workflows and turns them off in a repository that has had no activity for 60 days, which is why it isn't the only safeguard.
+- **Clean up AWS** runs every hour and terminates any Paranoid server that's past its lifetime, in case both of the above failed. It doesn't wait for an approval either. You can also run it by hand from the Actions tab. GitHub can delay scheduled workflows and turns them off in a repository that has had no activity for 60 days, which is why it isn't the only safeguard.
 
 Starting **Deploy to AWS** again first terminates any Paranoid server that's left, so there's only ever one.
 
@@ -238,8 +255,8 @@ If a server is left, run **Stop AWS**, or select it in **EC2** → **Instances**
 
 Nothing in your fork, its secrets or its variables can give anyone access to your AWS account:
 
-- **No access keys.** GitHub Actions gets an OIDC token for each job, which says which repository and environment the job is for. AWS checks it and gives the job credentials for the `paranoid-deploy` role that last for one hour at most. They're never stored.
-- **Only your fork, only `main`.** The role trusts only jobs of your fork that use the `aws` environment, which only `main` may use. A pull request, another branch or another repository can't use it. The trust uses your GitHub account's and repository's numeric IDs (for repositories created from 15 July 2026, and both IDs and names for older ones), so someone who later takes your username can't use it either.
+- **No access keys.** GitHub Actions gets an OIDC token for each job, which says which repository and environment the job is for. AWS checks it and gives the job credentials for a role that last for one hour at most. They're never stored.
+- **Only your fork, only `main`, only with your approval.** The `paranoid-deploy` role trusts only jobs of your fork that use the `aws` environment, which only `main` may use and which waits for you to approve each run. The `paranoid-cleanup` role trusts only jobs in `aws-cleanup`, which only `main` may use too. A pull request, another branch or another repository can't use either. The trust uses your GitHub account's and repository's numeric IDs (for repositories created from 15 July 2026, and both IDs and names for older ones), so someone who later takes your username can't use it either.
 - **Only Paranoid's servers.** The `paranoid-deploy` role can only:
   - start instances that are tagged `app=paranoid`, from Debian's own images, of the small instance types above, with IMDSv2 required, in the default network with the `paranoid` security group;
   - terminate instances tagged `app=paranoid`;
@@ -247,34 +264,39 @@ Nothing in your fork, its secrets or its variables can give anyone access to you
   - read the name of Debian's latest image;
   - create and delete the backstop schedules, and let EventBridge Scheduler use its own role.
     It can't change the security group, create roles, read anything else or touch any other resource.
+- **The `paranoid-cleanup` role**, for Stop AWS and Clean up AWS, can only list instances, terminate those tagged `app=paranoid` and delete their backstop schedules. It can't start anything.
 - **The `paranoid-scheduler` role** can only terminate instances tagged `app=paranoid`, and only EventBridge Scheduler, for schedules in the `paranoid` group of your account, can use it.
 - **The server has no credentials at all:** no role, and no secret in its setup data. It powers itself off, and that terminates it.
+- **Public logs hold nothing secret.** There's no secret for a workflow to print. The logs show the server's URL and IP address, instance IDs, and your AWS account ID inside the role names, which AWS doesn't treat as secret either. They're deleted after a day.
 
-The setup script created, in the region you chose: the security group `paranoid` (inbound TCP 80 and 443 only; no SSH), the schedule group `paranoid`; and for the whole account: the roles `paranoid-deploy` and `paranoid-scheduler`, the OIDC provider `token.actions.githubusercontent.com` (unless your account had one already) and the budget `paranoid`.
+The setup script created, in the region you chose: the security group `paranoid` (inbound TCP 80 and 443 only; no SSH), the schedule group `paranoid`; and for the whole account: the roles `paranoid-deploy`, `paranoid-cleanup` and `paranoid-scheduler`, the OIDC provider `token.actions.githubusercontent.com` (unless your account had one already) and the budget `paranoid`.
 
-**If something looks wrong,** for example an instance you didn't start: run **Stop AWS**, then in your fork delete the `aws` environment, which stops every workflow from using the role, and check [Checking nothing is left](#checking-nothing-is-left). The root user's password and MFA are the keys to the account, so keep those safe.
+**If something looks wrong,** for example an instance you didn't start: run **Stop AWS**, then in your fork delete the `aws` environment, which stops every workflow from using the deploy role, and check [Checking nothing is left](#checking-nothing-is-left). The root user's password and MFA are the keys to the account, so keep those safe.
 
 ## Troubleshooting
 
 The run's log says which step failed and why. There's no SSH, so you can't log in to a server to look.
 
-| What you see                                                                                                 | What to do                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "AWS_ROLE_ARN isn't set to the deploy role", or another variable isn't set                                   | Set the variables the setup script printed, as in [step 5](#5-connect-your-fork-to-aws). They're **repository** variables, not environment variables or secrets.                                                                                         |
-| "Not authorized to perform sts:AssumeRoleWithWebIdentity"                                                    | The role doesn't trust this run. Check that you started the workflow on `main`, that the environment is called exactly `aws`, and that `AWS_ROLE_ARN` is from the same AWS account. If you renamed or transferred your fork, run the setup script again. |
-| "No OpenIDConnect provider found"                                                                            | The setup script hasn't run in this account, or `teardown.sh` removed it. Run the setup script.                                                                                                                                                          |
-| "Branch is not allowed to deploy to aws", or the run waits for the environment                               | You started the workflow on another branch. Start it on `main`. Check the environment's deployment branch rule says `main`.                                                                                                                              |
-| "The worst case … is more than the limit"                                                                    | The deploy refused before starting anything. The message says the longest lifetime that fits. Choose a shorter lifetime or a lower `MAX_EGRESS_MBIT`, or raise `MAX_DEPLOY_COST_USD`.                                                                    |
-| "AWS_REGION must be one of …" or "AWS_INSTANCE_TYPE must be one of …"                                        | Only the regions and types with prices in `deploy/aws/prices.json` work, so the cost check always has a price.                                                                                                                                           |
-| `UnauthorizedOperation` when starting the instance                                                           | The role's permissions are for another region, security group or instance type. Run the setup script again with the same `AWS_REGION` as the variable, and set the variables it prints.                                                                  |
-| "Your request for accessing resources in this region is being validated", `PendingVerification` or `Blocked` | A new account can take up to a few hours before it can start instances. Wait and run Deploy again. If it lasts more than a day, ask AWS Support (the free Basic plan can open account and billing cases).                                                |
-| An error saying the Free plan can't use a service, or that a subscription is needed                          | Upgrade the account to the Paid plan in **Billing and Cost Management**. Your credits stay.                                                                                                                                                              |
-| `InsufficientInstanceCapacity` in every zone                                                                 | AWS has no free `t4g.micro` in the region right now. Try again later, or set `AWS_INSTANCE_TYPE` to another type.                                                                                                                                        |
-| "The app didn't come up in time"                                                                             | The server took too long to set up, or its setup failed. The deploy terminated it. The message gives the last reason, for example "Couldn't connect", which means the server never got as far as starting its web server. Run Deploy again.              |
-| "HTTPS certificate problem"                                                                                  | Let's Encrypt didn't give a certificate for the hostname. It allows only 5 certificates a week for the same hostname, which can happen if you get the same IP address again. Run Deploy again to get another address.                                    |
-| The setup script says "This needs version 2 of the aws CLI" or "isn't signed in"                             | Run it in CloudShell, which has both.                                                                                                                                                                                                                    |
-| The setup script says "Couldn't look up … on GitHub"                                                         | Check the `<owner>/<repo>` you gave it, and that the fork is public.                                                                                                                                                                                     |
-| A server is left after its lifetime                                                                          | The backstop schedule or the server's own timer failed, and Clean up AWS hasn't run: GitHub delays scheduled runs, and turns them off after 60 days without activity. Run **Stop AWS**, and check **Actions** → **Clean up AWS** is enabled.             |
+| What you see                                                                                                                     | What to do                                                                                                                                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "AWS_ROLE_ARN isn't set to the deploy role", "AWS_CLEANUP_ROLE_ARN isn't set to the cleanup role", or another variable isn't set | Set the variables the setup script printed, as in [step 5](#5-connect-your-fork-to-aws). They're **repository** variables, not environment variables or secrets.                                                                                         |
+| "Not authorized to perform sts:AssumeRoleWithWebIdentity"                                                                        | The role doesn't trust this run. Check that you started the workflow on `main`, that the environment is called exactly `aws`, and that `AWS_ROLE_ARN` is from the same AWS account. If you renamed or transferred your fork, run the setup script again. |
+| "No OpenIDConnect provider found"                                                                                                | The setup script hasn't run in this account, or `teardown.sh` removed it. Run the setup script.                                                                                                                                                          |
+| A deploy shows **Waiting** and "This workflow is waiting for review"                                                             | That's the approval: click **Review deployments**, tick **aws** and click **Approve and deploy**. If you don't see the button, you aren't the environment's required reviewer: add yourself as in [step 5](#5-connect-your-fork-to-aws).                 |
+| You can't approve your own deploy                                                                                                | **Prevent self-review** is ticked on the `aws` environment. Untick it and click **Save protection rules**.                                                                                                                                               |
+| Stop AWS or Clean up AWS waits for review                                                                                        | The `aws-cleanup` environment has a required reviewer. Remove it, so they never wait.                                                                                                                                                                    |
+| "Branch is not allowed to deploy to aws" (or `aws-cleanup`)                                                                      | You started the workflow on another branch. Start it on `main`. Check the environment's deployment branch rule says `main`.                                                                                                                              |
+| "The worst case … is more than the limit"                                                                                        | The deploy refused before starting anything. The message says the longest lifetime that fits. Choose a shorter lifetime or a lower `MAX_EGRESS_MBIT`, or raise `MAX_DEPLOY_COST_USD`.                                                                    |
+| "AWS_REGION must be one of …" or "AWS_INSTANCE_TYPE must be one of …"                                                            | Only the regions and types with prices in `deploy/aws/prices.json` work, so the cost check always has a price.                                                                                                                                           |
+| `UnauthorizedOperation` when starting the instance                                                                               | The role's permissions are for another region, security group or instance type. Run the setup script again with the same `AWS_REGION` as the variable, and set the variables it prints.                                                                  |
+| "Your request for accessing resources in this region is being validated", `PendingVerification` or `Blocked`                     | A new account can take up to a few hours before it can start instances. Wait and run Deploy again. If it lasts more than a day, ask AWS Support (the free Basic plan can open account and billing cases).                                                |
+| An error saying the Free plan can't use a service, or that a subscription is needed                                              | Upgrade the account to the Paid plan in **Billing and Cost Management**. Your credits stay.                                                                                                                                                              |
+| `InsufficientInstanceCapacity` in every zone                                                                                     | AWS has no free `t4g.micro` in the region right now. Try again later, or set `AWS_INSTANCE_TYPE` to another type.                                                                                                                                        |
+| "The app didn't come up in time"                                                                                                 | The server took too long to set up, or its setup failed. The deploy terminated it. The message gives the last reason, for example "Couldn't connect", which means the server never got as far as starting its web server. Run Deploy again.              |
+| "HTTPS certificate problem"                                                                                                      | Let's Encrypt didn't give a certificate for the hostname. It allows only 5 certificates a week for the same hostname, which can happen if you get the same IP address again. Run Deploy again to get another address.                                    |
+| The setup script says "This needs version 2 of the aws CLI" or "isn't signed in"                                                 | Run it in CloudShell, which has both.                                                                                                                                                                                                                    |
+| The setup script says "Couldn't look up … on GitHub"                                                                             | Check the `<owner>/<repo>` you gave it, and that the fork is public.                                                                                                                                                                                     |
+| A server is left after its lifetime                                                                                              | The backstop schedule or the server's own timer failed, and Clean up AWS hasn't run: GitHub delays scheduled runs, and turns them off after 60 days without activity. Run **Stop AWS**, and check **Actions** → **Clean up AWS** is enabled.             |
 
 ## Removing everything
 
@@ -287,7 +309,7 @@ The run's log says which step failed and why. There's no SSH, so you can't log i
 
    It asks before it deletes anything. If the `paranoid` folder is gone, clone your fork again as in [step 4](#4-run-the-one-time-setup). It keeps an OIDC provider that was there before the setup script ran, in case something else uses it.
 
-3. In your fork, delete the `aws` environment (**Settings** → **Environments** → **aws** → **Delete environment**) and the variables starting with `AWS_` (**Settings** → **Secrets and variables** → **Actions** → **Variables**).
+3. In your fork, delete the `aws` and `aws-cleanup` environments (**Settings** → **Environments** → the environment → **Delete environment**) and the variables starting with `AWS_` (**Settings** → **Secrets and variables** → **Actions** → **Variables**).
 4. To close the AWS account too: click your account name at the top right → **Account** → **Close account**, at the bottom. Anything you used that month is still billed. For 90 days you can sign in to reopen it, and then AWS deletes it for good. See [Closing an account](https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-closing.html).
 
 ## Privacy
@@ -300,19 +322,20 @@ What remains visible to others:
 - **CloudTrail** records AWS API calls, such as starting and terminating an instance, in its event history for 90 days. It can't be turned off, it's free, and it doesn't record your users' traffic. AWS also keeps basic metrics for every instance, such as CPU use and bytes sent, without any content.
 - **Google's STUN servers**, the default, see your users' IP addresses when their browsers find a way to connect. `VITE_ICE_SERVERS` can point to another one.
 - **sslip.io** turns the hostname into the IP address, so it sees the lookups. It and **Let's Encrypt's public Certificate Transparency logs** reveal the server's IP-based hostname, but not who uses it.
-- **GitHub**: in a public fork, anyone can read the run summary with the URL.
+- **GitHub**: in a public fork, anyone can read the runs' summaries and logs, with the server's URL and IP address, until they're deleted after 1 day.
 
 ## What a deploy does
 
 [`deploy-aws.yml`](../../.github/workflows/deploy-aws.yml):
 
-1. Checks the settings ([`settings.sh`](../../deploy/aws/settings.sh)), before it changes anything.
-2. Computes the worst-case cost with [`packages/deploy`](../../packages/deploy/src/cli.ts) and the prices in [`prices.json`](../../deploy/aws/prices.json), and refuses if it's above `MAX_DEPLOY_COST_USD`.
-3. Signs in to AWS with the job's OIDC token, as `paranoid-deploy`.
-4. Terminates any existing Paranoid instance ([`terminate.sh`](../../deploy/aws/terminate.sh)).
-5. Starts an instance named `paranoid-<run id>` ([`launch.sh`](../../deploy/aws/launch.sh)), from Debian 13's latest image from Debian's own AWS account, tagged `app=paranoid` and with its `expires` time. Powering off terminates it, its disk is deleted with it, it requires IMDSv2, and it has no key pair and no role. Its setup data is [`deploy/server/cloud-init.yaml`](../../deploy/server/cloud-init.yaml), plus [`public-host.yaml`](../../deploy/aws/public-host.yaml), which asks AWS's metadata service for the server's public IP address, because the server itself only sees a private one.
-6. Creates the backstop schedule, which terminates the instance 5 minutes after its lifetime.
-7. Waits up to 10 minutes for `https://<host>/healthz` and a socket.io handshake. If they don't come up, it terminates the instance and fails, with the reason from the last attempt.
+1. Waits for you to approve it, as the `aws` environment's required reviewer.
+2. Checks the settings ([`settings.sh`](../../deploy/aws/settings.sh)), before it changes anything.
+3. Computes the worst-case cost with [`packages/deploy`](../../packages/deploy/src/cli.ts) and the prices in [`prices.json`](../../deploy/aws/prices.json), and refuses if it's above `MAX_DEPLOY_COST_USD`.
+4. Signs in to AWS with the job's OIDC token, as `paranoid-deploy`.
+5. Terminates any existing Paranoid instance ([`terminate.sh`](../../deploy/aws/terminate.sh)).
+6. Starts an instance named `paranoid-<run id>` ([`launch.sh`](../../deploy/aws/launch.sh)), from Debian 13's latest image from Debian's own AWS account, tagged `app=paranoid` and with its `expires` time. Powering off terminates it, its disk is deleted with it, it requires IMDSv2, and it has no key pair and no role. Its setup data is [`deploy/server/cloud-init.yaml`](../../deploy/server/cloud-init.yaml), plus [`public-host.yaml`](../../deploy/aws/public-host.yaml), which asks AWS's metadata service for the server's public IP address, because the server itself only sees a private one.
+7. Creates the backstop schedule, which terminates the instance 5 minutes after its lifetime.
+8. Waits up to 10 minutes for `https://<host>/healthz` and a socket.io handshake. If they don't come up, it terminates the instance and fails, with the reason from the last attempt.
 
 On the server, cloud-init turns off SSH, locks root's password and sets a timer that powers off at the end of the lifetime. It then fetches exactly the deployed commit from the public repository with `git`, which checks every file against its hash, so the server needs no credentials. [`deploy/server/setup.sh`](../../deploy/server/setup.sh) from that commit does the rest:
 
@@ -322,4 +345,4 @@ On the server, cloud-init turns off SSH, locks root's password and sets a timer 
 - starts Caddy, which gets a Let's Encrypt certificate for `<ip-with-dashes>.sslip.io`, serves the app and passes `/socket.io/` and `/healthz` to the signaling server;
 - limits all outbound traffic to `MAX_EGRESS_MBIT` with `tc`.
 
-[`cleanup-aws.yml`](../../.github/workflows/cleanup-aws.yml) runs every hour on the default branch, which can't use the `aws` environment, so it starts itself on `main`, which can. [`stop-aws.yml`](../../.github/workflows/stop-aws.yml) terminates every Paranoid instance right away. The three workflows share a concurrency group, so only one of them changes instances at a time, and Stop AWS cancels a deploy that's in progress, which then terminates its own instance.
+[`cleanup-aws.yml`](../../.github/workflows/cleanup-aws.yml) runs every hour on the default branch, which can't use the `aws` environment, so it starts itself on `main`, which can. [`stop-aws.yml`](../../.github/workflows/stop-aws.yml) terminates every Paranoid instance right away. Both sign in as `paranoid-cleanup`, in the `aws-cleanup` environment, so they never wait for an approval. The three workflows share a concurrency group, so only one of them changes instances at a time, and Stop AWS cancels a deploy that's in progress, which then terminates its own instance.

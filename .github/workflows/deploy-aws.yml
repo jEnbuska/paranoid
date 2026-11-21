@@ -7,8 +7,14 @@ name: Deploy to AWS
 #
 # There's no AWS secret anywhere: the job gets short-lived credentials for the
 # paranoid-deploy role from its GitHub OIDC token. The role trusts only jobs of
-# this repository that use the `aws` environment, which only `main` may use.
-# Only a manual run starts this workflow, never a pull request.
+# this repository that use the `aws` environment, which only `main` may use,
+# and whose required reviewer is the repository's owner, so every deploy
+# waits for their approval before it starts. Only a manual run starts this
+# workflow, never a pull request.
+#
+# The repository is public, so its run logs are too. Nothing here prints a
+# secret, because there is none, and the guide sets the logs to be deleted
+# after 1 day.
 
 on:
   workflow_dispatch:
