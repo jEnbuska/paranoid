@@ -206,6 +206,8 @@ The second command runs one worker per CPU core, twice Playwright's default, so 
 
 Anyone with a fork can start their own Paranoid server from GitHub Actions: [Deploying Paranoid](docs/deploy/README.md) explains how, lists what each cloud provider needs from GitHub, and links each provider's step-by-step guide.
 
+- [Google Cloud](docs/deploy/gcp.md), in Finland (`europe-north1`) by default, or another of its regions. No secret at all: GitHub Actions signs in with Workload Identity Federation.
+
 ## Continuous integration
 
 GitHub Actions workflows live in [`.github/workflows`](.github/workflows):
