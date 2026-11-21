@@ -1,0 +1,65 @@
+name: Stop AWS
+
+# Terminates every Paranoid server on AWS right away. Chats that have started
+# keep working, because they're peer to peer.
+#
+# The job signs in as the paranoid-cleanup role with its GitHub OIDC token, in
+# the `aws-cleanup` environment, which only `main` may use. That role can only
+# list and terminate Paranoid's servers. The environment has no required
+# reviewer, unlike `aws`, so stopping never waits for an approval. Only a
+# manual run starts this.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shared with deploy-aws.yml, and cancel-in-progress, so stopping never
+# waits: it cancels a deploy in progress, including one waiting for its
+# approval, and any deploy queued behind it. A cancelled deploy terminates
+# the server it started, if it got that far, and this run terminates
+# whatever is left.
+concurrency:
+  group: aws
+  cancel-in-progress: true
+
+jobs:
+  stop:
+    name: Terminate the servers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: aws-cleanup
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the settings
+        env:
+          ROLE_ARN: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
+          REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
+        run: |
+          if ! [[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-cleanup$ ]]; then
+            echo "::error::AWS_CLEANUP_ROLE_ARN isn't set to the cleanup role. Run deploy/aws/bootstrap.sh and set the variables it prints (docs/deploy/aws.md)."
+            exit 1
+          fi
+          [[ $REGION =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]] || {
+            echo "::error::AWS_REGION isn't a region: '$REGION'"
+            exit 1
+          }
+          echo "REGION=$REGION" >> "$GITHUB_ENV"
+
+      - name: Sign in to AWS
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
+          role-session-name: paranoid-stop-${{ github.run_id }}
+          aws-region: ${{ env.REGION }}
+
+      - name: Terminate every server
+        run: bash deploy/aws/terminate.sh all

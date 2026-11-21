@@ -1,0 +1,115 @@
+name: Clean up AWS
+
+# Every hour, terminates the Paranoid servers on AWS that are past their
+# expiry time, or stopped. A server terminates itself when it powers off, and
+# its backstop schedule terminates it at its expiry, so this is the third
+# line: it catches a server whose schedule failed.
+#
+# The job signs in as the paranoid-cleanup role with its GitHub OIDC token, in
+# the `aws-cleanup` environment, which only `main` may use. That role can only
+# list and terminate Paranoid's servers. The environment has no required
+# reviewer, unlike `aws`, so the hourly run never waits for an approval.
+# Scheduled runs use the default branch, `dev`, so they can't use the
+# environment themselves: the `start` job starts this workflow on `main`
+# instead, and that run cleans up.
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  start:
+    name: Start the cleanup on main
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      # Without an aws-cleanup environment or a cleanup-aws.yml on main, there's
+      # nothing to clean up with. deploy-aws.yml and cleanup-aws.yml reach main
+      # together.
+      - name: Start the cleanup on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          missing() {
+            local error
+            if error=$(gh api "$1" --silent 2>&1); then
+              return 1
+            fi
+            if [[ $error == *"HTTP 404"* ]]; then
+              return 0
+            fi
+            echo "::error::$error"
+            exit 1
+          }
+          if missing "repos/$REPO/environments/aws-cleanup"; then
+            echo "There's no aws-cleanup environment, so there's nothing to clean up with. See docs/deploy/aws.md."
+          elif missing "repos/$REPO/contents/.github/workflows/cleanup-aws.yml?ref=main"; then
+            echo "cleanup-aws.yml isn't on main yet, and neither is deploy-aws.yml, so there's nothing to clean up."
+          else
+            gh workflow run cleanup-aws.yml --repo "$REPO" --ref main
+            echo "Started the cleanup on main."
+          fi
+
+  cleanup:
+    name: Terminate finished servers
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: aws-cleanup
+    permissions:
+      contents: read
+      id-token: write
+    # Its own group, not deploy-aws.yml's: a deploy waiting for its approval
+    # may hold that one, and the hourly cleanup must not wait behind it. It's
+    # safe beside a deploy, because it only terminates instances that are
+    # stopped or past their expiry, and a new instance is pending or running
+    # with an expiry in the future. Stop AWS terminating the same instance at
+    # the same time is harmless too.
+    concurrency:
+      group: aws-cleanup
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the settings
+        id: settings
+        env:
+          ROLE_ARN: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
+          REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
+        run: |
+          if ! [[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-cleanup$ ]]; then
+            echo "::notice::AWS_CLEANUP_ROLE_ARN isn't set, so there's nothing to clean up with. See docs/deploy/aws.md."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ $REGION =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]] || {
+            echo "::error::AWS_REGION isn't a region: '$REGION'"
+            exit 1
+          }
+          echo "REGION=$REGION" >> "$GITHUB_ENV"
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Sign in to AWS
+        if: steps.settings.outputs.configured == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
+          role-session-name: paranoid-cleanup-${{ github.run_id }}
+          aws-region: ${{ env.REGION }}
+
+      - name: Terminate the servers that are stopped or expired
+        if: steps.settings.outputs.configured == 'true'
+        run: bash deploy/aws/terminate.sh expired

@@ -1,0 +1,83 @@
+{
+  "checked": "2026-11-20",
+  "about": "Read by packages/deploy (its src/prices.ts explains the format) for the worst-case cost check, and by settings.sh and bootstrap.sh for the allowed regions and instance types.",
+  "sources": {
+    "servers": "Linux on-demand prices per hour, from https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/<region name>/Linux/index.json, the data behind https://aws.amazon.com/ec2/pricing/on-demand/",
+    "public IPv4 address": "$0.005 an hour for an in-use public IPv4 address, from https://aws.amazon.com/vpc/pricing/",
+    "8 GB gp3 disk": "EBS gp3 per GB a month, from https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/<region>/index.csv: 8 GB (ROOT_VOLUME_GB in names.sh) times that price is the item's usdPerMonth",
+    "egress": "data transfer out to the internet, first 10 TB a month, from https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/current/<region>/index.json. AWS's price is per GB; used as the price per 10^9 bytes, which is the same or more if AWS counts GB as 2^30 bytes. The 100 GB a month that are free aren't subtracted.",
+    "wholeHours": "EC2 bills Linux instances by the second, but the public IPv4 address by the hour, so every started hour counts"
+  },
+  "wholeHours": true,
+  "regions": {
+    "eu-north-1": {
+      "name": "Stockholm",
+      "servers": {
+        "t4g.nano": 0.0043,
+        "t4g.micro": 0.0086,
+        "t4g.small": 0.0172,
+        "t3.micro": 0.0108,
+        "t3.small": 0.0216
+      },
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "8 GB gp3 disk",
+          "usdPerMonth": 0.6688
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.09
+      }
+    },
+    "eu-central-1": {
+      "name": "Frankfurt",
+      "servers": {
+        "t4g.nano": 0.0048,
+        "t4g.micro": 0.0096,
+        "t4g.small": 0.0192,
+        "t3.micro": 0.012,
+        "t3.small": 0.024
+      },
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "8 GB gp3 disk",
+          "usdPerMonth": 0.7616
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.09
+      }
+    },
+    "eu-west-1": {
+      "name": "Ireland",
+      "servers": {
+        "t4g.nano": 0.0046,
+        "t4g.micro": 0.0092,
+        "t4g.small": 0.0184,
+        "t3.micro": 0.0114,
+        "t3.small": 0.0228
+      },
+      "items": [
+        {
+          "name": "public IPv4 address",
+          "usdPerHour": 0.005
+        },
+        {
+          "name": "8 GB gp3 disk",
+          "usdPerMonth": 0.704
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0.09
+      }
+    }
+  }
+}
