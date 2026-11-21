@@ -5,6 +5,10 @@
 # so the rules below add them. UpCloud tokens start with `ucat_` (UpCloud's
 # Go SDK checks for that prefix), followed by random letters and digits.
 #
+# Hetzner Cloud API tokens are 64 random letters and digits with no prefix, and
+# neither gitleaks' default rules nor GitHub's secret scanning has a rule for
+# them either (checked on 2026-11-20), so the Hetzner rules at the end add them.
+#
 # Never test these rules with a committed token, not even a fake one: write it
 # to a file git ignores or doesn't track, run `gitleaks dir` on that file and
 # delete it.
@@ -35,3 +39,32 @@ description = "Value of an UpCloud token, password or secret setting"
 regex = '''(?i)upcloud[\w.-]{0,20}?(?:token|password|passwd|pass|secret)[\w.-]{0,10}['"]?[ \t]{0,3}(?:=|:|=>|[ \t])[ \t]{0,3}['"\x60]?([A-Za-z0-9_+/.~!@#%^&*][^\s'"\x60]{11,})'''
 entropy = 3.2
 keywords = ["upcloud"]
+
+# Any Hetzner Cloud API token, wherever it is, whatever it's called: 64 random
+# letters and digits. The entropy keeps out hex strings such as SHA-256
+# checksums and image digests: with 16 symbols, a hex string's entropy is at
+# most 4 bits per character, and a random 64-character token's is about 5.2
+# (above 4.6 in each of 100,000 random samples). A lower threshold flags the
+# checksums in this repository.
+[[rules]]
+id = "hetzner-api-token"
+description = "Hetzner Cloud API token: a random 64-character string of letters and digits"
+regex = '''\b([A-Za-z0-9]{64})\b'''
+entropy = 4.5
+
+# The lockfile's base64 integrity hashes are random too, and a run of exactly
+# 64 letters and digits between their `+` and `/` would match.
+[[rules.allowlists]]
+paths = ['''(?:^|/)pnpm-lock\.yaml$''']
+
+# A value given to a Hetzner token, password or secret setting, such as
+# HCLOUD_TOKEN=..., in case one is ever shorter or longer than 64 characters,
+# or someone writes down the account's password. Like the UpCloud rule: a
+# value starting with `$`, `<` or `-` doesn't match, the entropy keeps out
+# ordinary words, and the name and the value must be on one line.
+[[rules]]
+id = "hetzner-credential"
+description = "Value of a Hetzner token, password or secret setting"
+regex = '''(?i)(?:hcloud|hetzner)[\w.-]{0,20}?(?:token|password|passwd|pass|secret)[\w.-]{0,10}['"]?[ \t]{0,3}(?:=|:|=>|[ \t])[ \t]{0,3}['"\x60]?([A-Za-z0-9_+/.~!@#%^&*][^\s'"\x60]{11,})'''
+entropy = 3.2
+keywords = ["hcloud", "hetzner"]

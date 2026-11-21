@@ -1,0 +1,147 @@
+name: Deploy to Hetzner
+
+# Starts a Paranoid server on Hetzner Cloud for a set number of invites. It
+# powers itself off once the last one is finished, or when its lifetime is
+# over, and cleanup-hetzner.yml then deletes it. See docs/deploy/hetzner.md.
+#
+# The Hetzner API token, HCLOUD_TOKEN, is a secret of the `hetzner`
+# environment, which only `main` may use and which docs/deploy/hetzner.md sets
+# up to need the owner's approval, so every deploy waits for it. Only this
+# workflow uses it: stop-hetzner.yml and cleanup-hetzner.yml use
+# `hetzner-cleanup`, which has no reviewers, so they never wait. Only the
+# steps that call hcloud get the token, through `env:`, and nothing writes it
+# to disk or prints it. Only a manual run starts this workflow, never a pull
+# request, so no PR or fork can reach the secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_invites:
+        description: "Invites before the server shuts down. Empty: the MAX_INVITES variable, or 5."
+        required: false
+        type: string
+      lifetime_minutes:
+        description: "Minutes until it shuts down at the latest, at most 1440 (24 hours). Empty: the LIFETIME_MINUTES variable, or 60."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Shared with stop-hetzner.yml, which cancels a deploy that is running or
+# waiting for approval. A deploy waits for the deploy before it to finish.
+# cleanup-hetzner.yml has its own group, so a deploy waiting for approval
+# doesn't hold up the cleanup.
+concurrency:
+  group: hetzner
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Hetzner
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: hetzner
+      url: ${{ steps.create.outputs.url }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Before anything is deleted, so a bad setting leaves a running server
+      # alone. HAS_TOKEN is only "true" or "false".
+      - name: Check the settings
+        env:
+          HAS_TOKEN: ${{ secrets.HCLOUD_TOKEN != '' }}
+          MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
+          LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
+          MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
+          MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
+          LOCATION: ${{ vars.HCLOUD_LOCATION || 'nbg1' }}
+          SERVER_TYPES: ${{ vars.HCLOUD_SERVER_TYPES || 'cx23,cax11,cpx12' }}
+        run: |
+          if [ "$HAS_TOKEN" != true ]; then
+            echo "::error::The hetzner environment has no HCLOUD_TOKEN secret. See docs/deploy/hetzner.md."
+            exit 1
+          fi
+          bash deploy/hetzner/settings.sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Before anything is deleted or created, so a deploy above the limit
+      # changes nothing. Every type in HCLOUD_SERVER_TYPES is checked, since
+      # the deploy may end up with any of them. The server is billed from its
+      # creation until cleanup-hetzner.yml deletes it, at the latest the price
+      # file's cleanupDelayMinutes after its lifetime, running or off. A
+      # location or type that isn't in the price file is refused here too.
+      - name: Check the worst-case cost
+        run: |
+          IFS=, read -ra types <<<"$SERVER_TYPES"
+          for type in "${types[@]}"; do
+            node packages/deploy/src/cli.ts --prices deploy/hetzner/prices.json \
+              --region "$LOCATION" --server "$type" \
+              --lifetime-minutes "$LIFETIME_MINUTES" \
+              --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
+          done
+
+      - name: Set up hcloud
+        id: hcloud
+        uses: ./.github/actions/setup-hcloud
+
+      # Running or off, so there's only ever one server
+      - name: Delete the existing servers
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: bash deploy/hetzner/delete-servers.sh all
+
+      - name: Set up the firewall
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: bash deploy/hetzner/setup-firewall.sh
+
+      # The server fetches this exact commit of this repository, which is
+      # public, so it needs no credentials.
+      - name: Create the server
+        id: create
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/hetzner/create-server.sh
+
+      # The server installs and builds the app first, which takes a few
+      # minutes.
+      - name: Wait for the app
+        env:
+          HOST: ${{ steps.create.outputs.host }}
+        run: bash deploy/ci/wait-for-app.sh "$HOST" 600
+
+      - name: Write the summary
+        env:
+          URL: ${{ steps.create.outputs.url }}
+          EXPIRES: ${{ steps.create.outputs.expires }}
+          TYPE: ${{ steps.create.outputs.type }}
+        run: |
+          shutdown=$(date -u -d "@$EXPIRES" '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "## Paranoid is running"
+            echo
+            echo "**<$URL>**"
+            echo
+            echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
+            echo "- It's a $TYPE server in $LOCATION. The Clean up Hetzner workflow deletes it within about an hour of shutting down, and Stop Hetzner deletes it right away."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Also when the run is cancelled, for example by stop-hetzner.yml
+      - name: Delete the server after a failed deploy
+        if: (failure() || cancelled()) && steps.hcloud.outcome == 'success'
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/hetzner/delete-servers.sh run "$RUN_ID"
