@@ -4,8 +4,10 @@ name: Stop Google Cloud
 # settles its cost in the ledger. Chats that have started keep working,
 # because they're peer to peer.
 #
-# No secret: it signs in with Workload Identity Federation, in the `gcp`
-# environment, which only `main` may use. Only a manual run starts this.
+# No secret: it signs in with Workload Identity Federation as the delete-only
+# paranoid-cleanup service account, in the `gcp-cleanup` environment, which
+# only `main` may use. It doesn't wait for approval, so it's quick in an
+# emergency, and it can only delete. Only a manual run starts this.
 
 on:
   workflow_dispatch:
@@ -28,7 +30,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    environment: gcp
+    environment: gcp-cleanup
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

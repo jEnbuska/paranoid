@@ -6,10 +6,12 @@ name: Clean up Google Cloud
 # what stops the cost. It never touches a running VM. Google Cloud deletes
 # a VM whose lifetime is over itself.
 #
-# No secret: it signs in with Workload Identity Federation, in the `gcp`
-# environment, which only `main` may use. Scheduled runs use the default
-# branch, `dev`, so they can't use the environment themselves: the `start`
-# job starts this workflow on `main` instead, and that run cleans up.
+# No secret: it signs in with Workload Identity Federation as the delete-only
+# paranoid-cleanup service account, in the `gcp-cleanup` environment, which
+# only `main` may use and which doesn't wait for approval, so the hourly runs
+# don't need anyone. Scheduled runs use the default branch, `dev`, so they
+# can't use the environment themselves: the `start` job starts this workflow
+# on `main` instead, and that run cleans up.
 
 on:
   schedule:
@@ -30,8 +32,8 @@ jobs:
       contents: read
 
     steps:
-      # Without a gcp environment or a cleanup-gcp.yml on main, nothing can
-      # have been deployed. deploy-gcp.yml and cleanup-gcp.yml reach main
+      # Without a gcp-cleanup environment or a cleanup-gcp.yml on main,
+      # nothing can have been deployed. deploy-gcp.yml and cleanup-gcp.yml reach main
       # together.
       - name: Start the cleanup on main
         env:
@@ -49,8 +51,8 @@ jobs:
             echo "::error::$error"
             exit 1
           }
-          if missing "repos/$REPO/environments/gcp"; then
-            echo "There's no gcp environment, so there's nothing to clean up."
+          if missing "repos/$REPO/environments/gcp-cleanup"; then
+            echo "There's no gcp-cleanup environment, so there's nothing to clean up."
           elif missing "repos/$REPO/contents/.github/workflows/cleanup-gcp.yml?ref=main"; then
             echo "cleanup-gcp.yml isn't on main yet, and neither is deploy-gcp.yml, so there's nothing to clean up."
           else
@@ -66,7 +68,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    environment: gcp
+    environment: gcp-cleanup
     # Shared with deploy-gcp.yml and stop-gcp.yml, so only one of them
     # changes VMs or the ledger at a time.
     concurrency:
@@ -87,7 +89,7 @@ jobs:
           GCP_BUCKET: ${{ vars.GCP_BUCKET }}
         run: |
           if [ -z "$GCP_PROJECT" ]; then
-            echo "::notice::The gcp environment has no GCP_PROJECT variable, so there's nothing to clean up."
+            echo "::notice::There's no GCP_PROJECT variable, so there's nothing to clean up."
             echo "configured=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

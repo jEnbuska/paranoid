@@ -10,7 +10,8 @@ name: Deploy to Google Cloud
 # short-lived GitHub OIDC token is exchanged for a short-lived token of the
 # deploy service account, and Google Cloud accepts only tokens for this
 # repository's main branch in the `gcp` environment. Only a manual run starts
-# this workflow, never a pull request.
+# this workflow, never a pull request, and the `gcp` environment makes it wait
+# for the owner's approval before the job starts (docs/deploy/gcp.md).
 
 on:
   workflow_dispatch:

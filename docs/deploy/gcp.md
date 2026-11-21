@@ -40,11 +40,11 @@ Google's prices and rules below were checked on 2026-11-20. They can change, so 
 - **Region and zone:** a region is a place with data centers, for example `europe-north1` in Hamina, Finland. A zone is one data center in it, for example `europe-north1-a`.
 - **Disk:** the VM's storage. It's billed while it exists, even when the VM is off, until it's deleted.
 - **Egress:** traffic going out of Google Cloud to the internet, such as the app's files on their way to your users. Google charges for it by the gigabyte.
-- **Service account:** a login for a program rather than a person. GitHub Actions acts as the service account `paranoid-deploy`, which can only do what a Paranoid deploy needs.
+- **Service account:** a login for a program rather than a person. GitHub Actions uses two: `paranoid-deploy`, which can only do what a Paranoid deploy needs, and `paranoid-cleanup`, which can only delete Paranoid's VMs.
 - **Role:** a set of permissions, such as "create VMs". The setup makes custom roles with only the permissions Paranoid needs.
-- **Workload Identity Federation:** lets GitHub Actions act as the service account without a key. For each run, GitHub gives the run a short-lived signed token saying which repository, branch and environment it's from. Google Cloud checks it, and only accepts runs of your fork's `main` branch in its `gcp` environment.
+- **Workload Identity Federation:** lets GitHub Actions act as the service account without a key. For each run, GitHub gives the run a short-lived signed token saying which repository, branch and environment it's from. Google Cloud checks it, and only accepts runs of your fork's `main` branch in its `gcp` or `gcp-cleanup` environment, each as its own service account.
 - **Bucket:** a folder in Google's file storage, Cloud Storage. Paranoid's holds only the spending limit's ledger.
-- **GitHub environment:** a named set of settings in your fork that only chosen branches can use. Here it's `gcp`, and only `main` can use it.
+- **GitHub environment:** a named set of settings in your fork that only chosen branches can use, and that can make a run wait for someone's approval. There are two, and only `main` can use them: `gcp` for deploys, which wait for your approval, and `gcp-cleanup` for stopping and cleaning up, which don't.
 
 ## 1. Fork the repository
 
@@ -110,8 +110,8 @@ It takes a few minutes. Running it again is safe, so if something fails halfway,
 - the Google Cloud services Paranoid uses (Compute Engine, IAM, Cloud Storage and a few for signing in and budgets). Turning them on costs nothing;
 - a network of its own, `paranoid`, that lets in only web traffic (HTTP and HTTPS), and nothing else, not even SSH;
 - a bucket, `<project-id>-paranoid`, for the spending limit's ledger;
-- the service account `paranoid-deploy`, with only the permissions in [What the setup grants](#what-the-setup-grants-and-why);
-- Workload Identity Federation for your fork's `main` branch in its `gcp` environment;
+- the service accounts `paranoid-deploy` and `paranoid-cleanup`, with only the permissions in [What the setup grants](#what-the-setup-grants-and-why);
+- Workload Identity Federation for your fork's `main` branch: its `gcp` environment as `paranoid-deploy`, and its `gcp-cleanup` environment as `paranoid-cleanup`;
 - a budget alert of $5 a month that emails you at 50%, 90% and 100%. It's in your billing account's currency, so in euros if that's what you pay in.
 
 Nothing it creates costs money while no VM runs, apart from a fraction of a cent a month for the ledger.
@@ -130,18 +130,43 @@ At the end it prints the commands for the next step. The budget alert may fail w
 
 Copy the commands the setup script printed and run them. They:
 
-1. create the `gcp` environment in your fork, and allow only the `main` branch to use it;
-2. set its variables: the project, region, zone, bucket, the Workload Identity provider, the service account and the monthly limit.
+1. create the `gcp` environment, for deploys. Only the `main` branch can use it, and you're its **required reviewer**: every deploy waits until you approve it;
+2. create the `gcp-cleanup` environment, for Stop and the hourly cleanup. Only `main` can use it too, but it doesn't wait for anyone, because those runs can only delete;
+3. keep your fork's Actions logs for 1 day;
+4. set the variables: the project, region, zone, bucket and the Workload Identity provider for both environments, which service account each environment acts as, and the monthly limit.
 
 None of these values is a secret. They say where things are, and Google Cloud only lets your fork's `main` branch use them.
 
-Afterwards, **Settings** → **Environments** → **gcp** in your fork shows the branch rule `main`, no secrets, and these variables: `GCP_PROJECT`, `GCP_REGION`, `GCP_ZONE`, `GCP_BUCKET`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT` and `MONTHLY_BUDGET_USD`.
+### Why approve every deploy, and why keep logs for a day
 
-To do the same in GitHub's website instead: **Settings** → **Environments** → **New environment**, name it `gcp`, under **Deployment branches and tags** choose **Selected branches and tags** and add `main`, then add each variable under **Environment variables** with the value the script printed.
+Your fork is public, so **everything its workflows print is public**: anyone can open the **Actions** tab and read a run's log and summary, with the server's URL. The workflows print nothing secret, because there's nothing secret to print, but a log still says when you ran a server and where. Keeping logs for 1 day means GitHub deletes them a day after each run. 1 day is the shortest GitHub allows.
+
+Only people with write access to your fork can start a workflow, which is usually just you. The required reviewer makes sure of it: a deploy doesn't start, and can't sign in to Google Cloud, until you click **Approve and deploy**. Google Cloud only accepts sign-ins from runs in the `gcp` environment, so a run can't skip the approval and still reach your project. Turning off **Prevent self-review** lets you approve the runs you start yourself.
+
+Stop and the hourly cleanup use `gcp-cleanup` instead. If they waited for approval, a powered-off VM would stay billed until you noticed. They sign in as `paranoid-cleanup`, which can only delete Paranoid's VMs, so running them without approval can't start anything or cost money.
+
+### Or in GitHub's website
+
+In your fork:
+
+1. **Settings** → **Environments** → **New environment**, name it `gcp`, and click **Configure environment**.
+   - Tick **Required reviewers**, type your GitHub username and choose yourself.
+   - Untick **Prevent self-review**.
+   - Under **Deployment branches and tags**, choose **Selected branches and tags**, click **Add deployment branch or tag rule**, enter `main` and click **Add rule**.
+   - Click **Save protection rules**.
+   - Under **Environment variables**, click **Add environment variable** for `GCP_SERVICE_ACCOUNT` and `MONTHLY_BUDGET_USD`, with the values the script printed for `gcp`.
+2. **Settings** → **Environments** → **New environment**, name it `gcp-cleanup`, and click **Configure environment**.
+   - Leave **Required reviewers** off.
+   - Under **Deployment branches and tags**, choose **Selected branches and tags** and add `main`, as above.
+   - Add the environment variable `GCP_SERVICE_ACCOUNT` with the value the script printed for `gcp-cleanup`.
+3. **Settings** → **Actions** → **General**. Under **Artifact and log retention**, enter `1` and click **Save**.
+4. **Settings** → **Secrets and variables** → **Actions** → **Variables** tab → **New repository variable**, for `GCP_PROJECT`, `GCP_REGION`, `GCP_ZONE`, `GCP_BUCKET` and `GCP_WORKLOAD_IDENTITY_PROVIDER`.
+
+Either way, **Settings** → **Environments** then lists `gcp`, with **1 reviewer** and the branch rule `main`, and `gcp-cleanup`, with the branch rule `main`. Neither has any secrets.
 
 ## 7. Optional settings
 
-Everything works with the defaults. To change one, add a variable to the `gcp` environment, for example:
+Everything works with the defaults. To change one, add a variable to the `gcp` environment, which only deploys use, for example:
 
 ```bash
 gh variable set LIFETIME_MINUTES --env gcp --body 120 --repo <owner>/<repo>
@@ -163,8 +188,9 @@ The app uses Google's STUN servers unless `VITE_ICE_SERVERS` in [`packages/clien
 
 1. In your fork, go to **Actions** → **Deploy to Google Cloud** → **Run workflow**.
 2. Keep **Use workflow from** on `main`. Optionally fill in the number of invites and the lifetime. Click **Run workflow**.
-3. Click the run that appears. Setting up the server takes several minutes, because it installs and builds the app itself on a small VM.
-4. When the run is green, its **Summary** shows the URL, `https://<ip-with-dashes>.sslip.io`, when Google Cloud deletes the server at the latest, and what it costs at most.
+3. Click the run that appears. It says **Waiting for review**. Click **Review deployments**, tick **gcp** and click **Approve and deploy**. GitHub also emails you when a run is waiting. Don't leave one waiting: until you approve or cancel it, the hourly cleanup waits behind it. Running Stop Google Cloud cancels it.
+4. Setting up the server takes several minutes, because it installs and builds the app itself on a small VM.
+5. When the run is green, its **Summary** shows the URL, `https://<ip-with-dashes>.sslip.io`, when Google Cloud deletes the server at the latest, and what it costs at most.
 
 Or with `gh`:
 
@@ -172,13 +198,15 @@ Or with `gh`:
 gh workflow run deploy-gcp.yml --ref main --repo <owner>/<repo> -f max_invites=5 -f lifetime_minutes=60
 ```
 
+and then approve it in the run's page, as above.
+
 Open the URL, create an invite and open it in a second browser or on another device. The chat starts once both are connected.
 
-Anyone who has the URL can create invites, which use up `max_invites`. In a public fork, anyone can read the run summary.
+Anyone who has the URL can create invites, which use up `max_invites`. In a public fork, anyone can read the run summary until its log is deleted, a day later. To delete it sooner, open the run, click **⋯** at the top right and **Delete all logs**.
 
 ## 9. Stop it, and how it's cleaned up
 
-- **Stop it now:** **Actions** → **Stop Google Cloud** → **Run workflow** on `main` deletes every Paranoid VM and its disk right away. Chats that have started keep working. Or: `gh workflow run stop-gcp.yml --ref main --repo <owner>/<repo>`.
+- **Stop it now:** **Actions** → **Stop Google Cloud** → **Run workflow** on `main` deletes every Paranoid VM and its disk right away, without waiting for approval. Chats that have started keep working. Or: `gh workflow run stop-gcp.yml --ref main --repo <owner>/<repo>`.
 - **After the last invite:** the VM powers itself off. A powered-off VM no longer costs anything for its CPU or IP address, but its disk is still billed, so the **Clean up Google Cloud** workflow runs every hour and deletes every Paranoid VM that's off, with its disk. You can also run it by hand from the Actions tab.
 - **At the end of its lifetime:** Google Cloud deletes the VM and its disk itself, even if invites are still open, its setup failed or GitHub is down.
 
@@ -258,22 +286,24 @@ If a VM is left, run **Stop Google Cloud**, or delete it in **VM instances**: ti
 
 The run's log says which step failed and why. There's no SSH, so you can't log in to a server to look. When the app doesn't come up, the run shows the VM's setup log.
 
-| What you see                                                                                                                | What to do                                                                                                                                                                                                                                                 |
-| --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "GCP_PROJECT must be a Google Cloud project ID, not ''", or another variable is empty                                       | The `gcp` environment's variables aren't set. Run the commands from [step 6](#6-give-github-the-settings). They must be **environment** variables of `gcp`, or repository variables.                                                                       |
-| "Branch is not allowed to deploy to gcp", or the run waits for the environment                                              | You started the workflow on another branch. Start it on `main`. Check the environment's deployment branch rule says `main`.                                                                                                                                |
-| "Sign in to Google Cloud" fails with `unauthorized_client` or "The given credential is rejected by the attribute condition" | Google Cloud only accepts runs of your fork's `main` branch in the `gcp` environment. Start it on `main`. If you renamed or re-created the fork, run the setup script again with the new `<owner>/<repo>`.                                                 |
-| A permission error such as 403 on `iam.serviceAccounts.getAccessToken`                                                      | The service account can't be used by the run. Run the setup script again, wait a minute, and retry: new permissions can take a few minutes to apply.                                                                                                       |
-| A permission error such as 403 on `compute.instances.create` or another `compute` permission                                | The zone or region variable doesn't match the setup. Run the setup script again and set the variables it prints. If it persists, the role may lack a permission: open an issue with the error.                                                             |
-| "This deployment could cost up to ..., but only ... is left"                                                                | The month's [spending limit](#the-spending-limit) is used up. Use a shorter lifetime, as the message says, wait until next month, or raise `MONTHLY_BUDGET_USD`.                                                                                           |
-| "deploy/gcp/prices.json has no prices for ..."                                                                              | Your region isn't in the price file. Use one of the regions it has, or add yours from Google's pricing pages.                                                                                                                                              |
-| "Compute Engine API has not been used in project ... or it is disabled"                                                     | Run the setup script, which turns it on, and wait a few minutes.                                                                                                                                                                                           |
-| "billing account ... is disabled", or "The billing account is closed"                                                       | Link the project to a working billing account, as in [step 3](#3-create-a-project). A free trial that's over needs **Activate** in the console.                                                                                                            |
-| `ZONE_RESOURCE_POOL_EXHAUSTED`, or the zone has no capacity                                                                 | Google has no `e2-micro` free in that zone right now. Try again later, or run the setup script with another region.                                                                                                                                        |
-| "The app didn't come up in time"                                                                                            | The VM took too long to set up, or its setup failed. The deploy deleted it. The log above gives the last reason and the VM's setup log. Run Deploy again.                                                                                                  |
-| "HTTPS certificate problem"                                                                                                 | Let's Encrypt didn't give a certificate for the hostname. It allows only 5 certificates a week for the same hostname, which can happen if you deploy many times in a week and get the same IP address. Wait, or deploy again later to get another address. |
-| VMs stay after shutting down                                                                                                | Clean up Google Cloud isn't running: GitHub delays scheduled runs, and turns them off after 60 days without activity. Open **Actions** → **Clean up Google Cloud**, enable it if GitHub disabled it, and run it by hand.                                   |
-| The setup script says the budget couldn't be created                                                                        | Your Google account isn't an administrator of the billing account. Create the budget in the console, or ask the administrator.                                                                                                                             |
+| What you see                                                                                                                | What to do                                                                                                                                                                                                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "GCP_PROJECT must be a Google Cloud project ID, not ''", or another variable is empty                                       | The variables aren't set. Run the commands from [step 6](#6-give-github-the-settings). `GCP_SERVICE_ACCOUNT` must be a variable of each environment, with that environment's service account.                                                                                     |
+| The run says **Waiting for review** and doesn't start                                                                       | That's the approval in [step 8](#8-start-a-server): click **Review deployments**, tick **gcp** and **Approve and deploy**. A run that nobody approves is cancelled after 30 days.                                                                                                 |
+| The hourly cleanup waits for review                                                                                         | `gcp-cleanup` has a required reviewer. Remove it: **Settings** → **Environments** → **gcp-cleanup**, untick **Required reviewers** and save.                                                                                                                                      |
+| "Branch is not allowed to deploy to gcp", or the run waits for the environment                                              | You started the workflow on another branch. Start it on `main`. Check the environment's deployment branch rule says `main`.                                                                                                                                                       |
+| "Sign in to Google Cloud" fails with `unauthorized_client` or "The given credential is rejected by the attribute condition" | Google Cloud only accepts runs of your fork's `main` branch in the `gcp` and `gcp-cleanup` environments. Start it on `main`, and check each environment's `GCP_SERVICE_ACCOUNT`. If you renamed or re-created the fork, run the setup script again with the new `<owner>/<repo>`. |
+| A permission error such as 403 on `iam.serviceAccounts.getAccessToken`                                                      | The service account can't be used by the run. Run the setup script again, wait a minute, and retry: new permissions can take a few minutes to apply.                                                                                                                              |
+| A permission error such as 403 on `compute.instances.create` or another `compute` permission                                | The zone or region variable doesn't match the setup. Run the setup script again and set the variables it prints. If it persists, the role may lack a permission: open an issue with the error.                                                                                    |
+| "This deployment could cost up to ..., but only ... is left"                                                                | The month's [spending limit](#the-spending-limit) is used up. Use a shorter lifetime, as the message says, wait until next month, or raise `MONTHLY_BUDGET_USD`.                                                                                                                  |
+| "deploy/gcp/prices.json has no prices for ..."                                                                              | Your region isn't in the price file. Use one of the regions it has, or add yours from Google's pricing pages.                                                                                                                                                                     |
+| "Compute Engine API has not been used in project ... or it is disabled"                                                     | Run the setup script, which turns it on, and wait a few minutes.                                                                                                                                                                                                                  |
+| "billing account ... is disabled", or "The billing account is closed"                                                       | Link the project to a working billing account, as in [step 3](#3-create-a-project). A free trial that's over needs **Activate** in the console.                                                                                                                                   |
+| `ZONE_RESOURCE_POOL_EXHAUSTED`, or the zone has no capacity                                                                 | Google has no `e2-micro` free in that zone right now. Try again later, or run the setup script with another region.                                                                                                                                                               |
+| "The app didn't come up in time"                                                                                            | The VM took too long to set up, or its setup failed. The deploy deleted it. The log above gives the last reason and the VM's setup log. Run Deploy again.                                                                                                                         |
+| "HTTPS certificate problem"                                                                                                 | Let's Encrypt didn't give a certificate for the hostname. It allows only 5 certificates a week for the same hostname, which can happen if you deploy many times in a week and get the same IP address. Wait, or deploy again later to get another address.                        |
+| VMs stay after shutting down                                                                                                | Clean up Google Cloud isn't running: GitHub delays scheduled runs, and turns them off after 60 days without activity. Open **Actions** → **Clean up Google Cloud**, enable it if GitHub disabled it, and run it by hand.                                                          |
+| The setup script says the budget couldn't be created                                                                        | Your Google account isn't an administrator of the billing account. Create the budget in the console, or ask the administrator.                                                                                                                                                    |
 
 ## Removing everything
 
@@ -286,7 +316,7 @@ The run's log says which step failed and why. There's no SSH, so you can't log i
 
    The Google Cloud services it turned on stay on, which costs nothing. Google keeps deleted roles and Workload Identity Federation for 30 to 37 days, so they can be restored, and then removes them. Running the setup script again restores them.
 
-3. In your fork, delete the `gcp` environment: **Settings** → **Environments** → **gcp** → **Delete environment**. That deletes its variables too.
+3. In your fork, delete both environments: **Settings** → **Environments** → **gcp** → **Delete environment**, and the same for **gcp-cleanup**. That deletes their variables too. Then delete the repository variables starting with `GCP_` in **Settings** → **Secrets and variables** → **Actions** → **Variables**.
 4. To remove everything at once, delete the project instead: in the console, **IAM & Admin** → **Settings** → **Shut down**. Google deletes it after 30 days, and it can't cost anything from then on.
 5. To close your billing account: **Billing** → **Account management** → **Close billing account**. You're billed for what was used up to then. To delete the whole Google account, see [Google's account settings](https://myaccount.google.com).
 
@@ -301,19 +331,30 @@ The server keeps no access logs. Its own logs hold only connections and errors, 
 - **Google's STUN servers**, the default, see your users' IP addresses when their browsers find a way to connect. `VITE_ICE_SERVERS` can point to another one.
 - **sslip.io** turns the hostname into the IP address, so it sees the lookups. It and **Let's Encrypt's public Certificate Transparency logs** reveal the server's IP-based hostname, but not who uses it.
 - **The region** decides which country the server is in: Finland by default. The free tier's regions are all in the US.
-- **GitHub**: in a public fork, anyone can read the run summary with the URL, and the run's log.
+- **GitHub**: in a public fork, anyone can read the run summary with the URL, and the run's log, until GitHub deletes it a day later, or you delete it sooner (see [step 6](#why-approve-every-deploy-and-why-keep-logs-for-a-day)).
 
 ## What the setup grants, and why
 
-[`deploy/gcp/bootstrap.sh`](../../deploy/gcp/bootstrap.sh) creates three custom roles for `paranoid-deploy`, and grants it one built-in role. Only your fork's runs, and the project's owners, can act as it, and it can't grant itself or anyone else more.
+[`deploy/gcp/bootstrap.sh`](../../deploy/gcp/bootstrap.sh) creates four custom roles for two service accounts, and grants them two built-in roles. Only your fork's runs, each in its own environment, and the project's owners, can act as them, and neither can grant itself or anyone else more.
 
-| Role, where it's granted                                                             | Permissions                                                                                                                                        | Why                                                                                                                                                                                                                       |
-| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `paranoidVms`, on the project, only for VMs and disks named `paranoid-*` in the zone | `compute.instances.create`, `.delete`, `.get`, `.getSerialPortOutput`, `.setLabels`, `.setMetadata`, `.setTags`; `compute.disks.create`, `.delete` | Create the VM with its labels, startup script and network tag, and its boot disk. Delete them. Read the VM's serial console to show why a setup failed. An IAM condition on the name and zone keeps it from any other VM. |
-| `paranoidList`, on the project                                                       | `compute.instances.list`, `compute.disks.list`, `compute.zoneOperations.get`                                                                       | Find Paranoid's VMs and leftover disks, and wait for a create or delete to finish. Google can't limit listing by name.                                                                                                    |
-| `paranoidSubnet`, on the `paranoid` subnet only                                      | `compute.subnetworks.use`, `compute.subnetworks.useExternalIp`                                                                                     | Put the VM on Paranoid's network, with an external IP address. Not on any other network.                                                                                                                                  |
-| `roles/storage.objectUser`, on the `<project-id>-paranoid` bucket only               | Read, write and delete objects in it                                                                                                               | Read and update the ledger.                                                                                                                                                                                               |
-| `roles/iam.workloadIdentityUser`, on the service account, for your repository's ID   | `iam.serviceAccounts.getAccessToken` and similar                                                                                                   | Lets GitHub runs act as the service account. The Workload Identity provider accepts only your fork's `main` branch in the `gcp` environment, by the repository's and owner's numeric IDs, which can't be reused.          |
+`paranoid-deploy`, for deploys in the `gcp` environment, which wait for your approval:
+
+| Role, where it's granted                                                                          | Permissions                                                                                                                                        | Why                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `paranoidVms`, on the project, only for VMs and disks named `paranoid-*` in the zone              | `compute.instances.create`, `.delete`, `.get`, `.getSerialPortOutput`, `.setLabels`, `.setMetadata`, `.setTags`; `compute.disks.create`, `.delete` | Create the VM with its labels, startup script and network tag, and its boot disk. Delete them. Read the VM's serial console to show why a setup failed. An IAM condition on the name and zone keeps it from any other VM.                |
+| `paranoidList`, on the project                                                                    | `compute.instances.list`, `compute.disks.list`, `compute.zoneOperations.get`                                                                       | Find Paranoid's VMs and leftover disks, and wait for a create or delete to finish. Google can't limit listing by name.                                                                                                                   |
+| `paranoidSubnet`, on the `paranoid` subnet only                                                   | `compute.subnetworks.use`, `compute.subnetworks.useExternalIp`                                                                                     | Put the VM on Paranoid's network, with an external IP address. Not on any other network.                                                                                                                                                 |
+| `roles/storage.objectUser`, on the `<project-id>-paranoid` bucket only                            | Read, write and delete objects in it                                                                                                               | Read and update the ledger.                                                                                                                                                                                                              |
+| `roles/iam.workloadIdentityUser`, on the service account, for your repository's `gcp` environment | `iam.serviceAccounts.getAccessToken` and similar                                                                                                   | Lets GitHub runs act as the service account. The Workload Identity provider accepts only your fork's `main` branch, by the repository's and owner's numeric IDs, which can't be reused, and only a run in `gcp` can act as this account. |
+
+`paranoid-cleanup`, for Stop and the hourly cleanup in the `gcp-cleanup` environment, which don't wait for approval:
+
+| Role, where it's granted                                                                                  | Permissions                                                | Why                                                                                                   |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `paranoidVmsDelete`, on the project, only for VMs and disks named `paranoid-*` in the zone                | `compute.instances.delete`, `.get`; `compute.disks.delete` | Delete Paranoid's VMs and their disks, and read their times for the ledger. It can't create anything. |
+| `paranoidList`, on the project                                                                            | As above                                                   | Find them.                                                                                            |
+| `roles/storage.objectUser`, on the `<project-id>-paranoid` bucket only                                    | As above                                                   | Settle each deleted VM's cost in the ledger.                                                          |
+| `roles/iam.workloadIdentityUser`, on the service account, for your repository's `gcp-cleanup` environment | As above                                                   | Lets those runs act as it, and no others.                                                             |
 
 It doesn't get `iam.serviceAccounts.actAs`, because the VM has no service account, so it can't hand a VM any permission. It can't start a VM again, change a VM's lifetime, open a firewall port, or read or change anything else in the project.
 
@@ -321,11 +362,12 @@ It doesn't get `iam.serviceAccounts.actAs`, because the VM has no service accoun
 
 [`deploy-gcp.yml`](../../.github/workflows/deploy-gcp.yml):
 
-1. Checks the settings, before it changes anything.
-2. Signs in to Google Cloud with Workload Identity Federation, as `paranoid-deploy`.
-3. Checks the [spending limit](#the-spending-limit), and records the deployment's worst case in the ledger.
-4. Deletes any existing Paranoid VM, running or off, with its disk.
-5. Creates an `e2-micro` VM named `paranoid-<run id>-<attempt>` from Google's Debian 13 image, with:
+1. Waits for your approval, in the `gcp` environment.
+2. Checks the settings, before it changes anything.
+3. Signs in to Google Cloud with Workload Identity Federation, as `paranoid-deploy`.
+4. Checks the [spending limit](#the-spending-limit), and records the deployment's worst case in the ledger.
+5. Deletes any existing Paranoid VM, running or off, with its disk.
+6. Creates an `e2-micro` VM named `paranoid-<run id>-<attempt>` from Google's Debian 13 image, with:
    - a 10 GB standard disk that's deleted with it;
    - Shielded VM (secure boot, a virtual TPM and integrity monitoring);
    - no service account, so nothing on it has Google Cloud credentials;
@@ -333,7 +375,7 @@ It doesn't get `iam.serviceAccounts.actAs`, because the VM has no service accoun
    - a maximum run time of its lifetime, after which Google Cloud deletes it;
    - project SSH keys blocked, the interactive serial console off and its copy to Cloud Logging off;
    - [`deploy/gcp/startup.sh`](../../deploy/gcp/startup.sh) as its startup script, and the repository, commit, invites and outbound limit as metadata. Nothing in its metadata is a secret.
-6. Waits up to 20 minutes for `https://<host>/healthz` and a socket.io handshake. If they don't come up, it shows the VM's setup log, deletes the VM and fails, with the reason from the last attempt.
+7. Waits up to 20 minutes for `https://<host>/healthz` and a socket.io handshake. If they don't come up, it shows the VM's setup log, deletes the VM and fails, with the reason from the last attempt.
 
 On the VM, the startup script turns off SSH and locks root's password. It reads the VM's external IP address from Google's metadata server, because the VM itself only sees its private address, and fetches exactly the deployed commit from the public repository with `git`, which checks every file against its hash, so the VM needs no credentials. [`deploy/server/setup.sh`](../../deploy/server/setup.sh) from that commit does the rest, the same as on the other providers:
 
@@ -343,4 +385,4 @@ On the VM, the startup script turns off SSH and locks root's password. It reads 
 - starts Caddy, which gets a Let's Encrypt certificate for `<ip-with-dashes>.sslip.io`, serves the app and passes `/socket.io/` and `/healthz` to the signaling server;
 - limits all outbound traffic to `MAX_EGRESS_MBIT` with `tc`.
 
-[`cleanup-gcp.yml`](../../.github/workflows/cleanup-gcp.yml) runs every hour on the default branch, which can't use the `gcp` environment, so it starts itself on `main`, which can. It deletes only VMs that are off. [`stop-gcp.yml`](../../.github/workflows/stop-gcp.yml) deletes every Paranoid VM right away. All three update the ledger for each VM they delete, and share a concurrency group, so only one of them changes VMs or the ledger at a time. Stop Google Cloud cancels a deploy that's in progress, which then deletes its own VM.
+[`cleanup-gcp.yml`](../../.github/workflows/cleanup-gcp.yml) runs every hour on the default branch, which can't use the `gcp-cleanup` environment, so it starts itself on `main`, which can. It deletes only VMs that are off. It and Stop sign in as `paranoid-cleanup`, and don't wait for approval. [`stop-gcp.yml`](../../.github/workflows/stop-gcp.yml) deletes every Paranoid VM right away. All three update the ledger for each VM they delete, and share a concurrency group, so only one of them changes VMs or the ledger at a time. Stop Google Cloud cancels a deploy that's in progress, which then deletes its own VM.
