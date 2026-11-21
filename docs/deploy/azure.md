@@ -114,7 +114,11 @@ GitHub needs to know which Azure identities to sign in as. These are IDs, not se
 
 Why the environments matter: Azure lets in only runs that use them, and they decide who can start a deploy. `azure` lets only `main` deploy, and every deploy waits until you approve it, so nobody else can start a server on your account, even someone who can start workflows in your fork. Clean up and stop use `azure-cleanup`, also `main` only, with no approval: they can only delete, and the 5-minutely cleanup mustn't wait for you.
 
-Required reviewers only work in public repositories on GitHub's Free, Pro and Team plans. A fork of Paranoid is public, so yours works. In a private copy, GitHub ignores the reviewer, and only the `main` limit protects deploys.
+This needs your fork to stay public. In GitHub's [deployments and environments reference](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments), required reviewers work on the Free, Pro and Team plans only in public repositories, and environments in private repositories need Pro, Team or Enterprise. So:
+
+- **A public fork,** on any plan, has both: the `main` limit and your approval.
+- **A private copy on Pro or Team** keeps the `main` limit, but deploys no longer wait for your approval.
+- **A private copy on GitHub Free** has no environments at all. Azure trusts only runs that use `azure` or `azure-cleanup`, so deploys, cleanups and stops can't sign in: they fail rather than run unprotected. The backstop in Azure still deletes servers.
 
 ### With the GitHub CLI
 
