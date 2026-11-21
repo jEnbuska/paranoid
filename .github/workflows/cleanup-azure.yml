@@ -72,10 +72,12 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    # Shared with deploy-azure.yml and stop-azure.yml, so only one of them
-    # changes servers at a time.
+    # Its own group, so it never waits behind a deploy, even one waiting for
+    # approval. It can run while a deploy creates its server: it only deletes
+    # VMs that Azure has finished creating and that are stopped, or are past
+    # their expiry, and parts without a VM past theirs.
     concurrency:
-      group: azure
+      group: paranoid-azure-cleanup
       cancel-in-progress: false
     env:
       RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'paranoid' }}

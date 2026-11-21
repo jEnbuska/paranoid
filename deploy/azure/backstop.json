@@ -2,7 +2,7 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "metadata": {
-    "description": "The backstop that deletes Paranoid VMs outside GitHub: a Logic App (Consumption plan) with a system-assigned managed identity, which bootstrap.sh gives the Paranoid backstop role on the resource group. Each run lists the VMs tagged app=paranoid, checks each every 2 minutes, and deletes it with its NIC, public IP and disk once it's stopped or past its expires-at tag. deploy-azure.yml starts a run for each new VM, and the daily trigger catches anything left. It holds no secret: Azure gives the identity its tokens."
+    "description": "The backstop that deletes Paranoid VMs outside GitHub: a Logic App (Consumption plan) with a system-assigned managed identity, which bootstrap.sh gives the Paranoid backstop role on the resource group. Each run lists the VMs tagged app=paranoid, checks each every 2 minutes, and deletes it with its NIC, public IP and disk once Azure has finished creating it and it's stopped, or once it's past its expires-at tag. deploy-azure.yml starts a run for each new VM, and the daily trigger catches anything left. It holds no secret: Azure gives the identity its tokens."
   },
   "parameters": {
     "name": {
@@ -89,7 +89,7 @@
               "actions": {
                 "Wait_until_finished": {
                   "type": "Until",
-                  "expression": "@or(equals(outputs('Get_power_state')?['statusCode'], 404), contains(string(body('Get_power_state')?['statuses']), 'PowerState/stopped'), contains(string(body('Get_power_state')?['statuses']), 'PowerState/deallocat'), greaterOrEquals(ticks(utcNow()), ticks(coalesce(items('For_each_VM')?['tags']?['expires-at'], '2000-01-01T00:00:00Z'))))",
+                  "expression": "@or(equals(outputs('Get_power_state')?['statusCode'], 404), and(contains(string(body('Get_power_state')?['statuses']), 'ProvisioningState/succeeded'), or(contains(string(body('Get_power_state')?['statuses']), 'PowerState/stopped'), contains(string(body('Get_power_state')?['statuses']), 'PowerState/deallocat'))), greaterOrEquals(ticks(utcNow()), ticks(coalesce(items('For_each_VM')?['tags']?['expires-at'], '2000-01-01T00:00:00Z'))))",
                   "limit": {
                     "count": 1000,
                     "timeout": "PT26H"
