@@ -15,16 +15,44 @@ on:
 permissions:
   contents: read
 
-# Shared with deploy-gcp.yml and cleanup-gcp.yml. Stopping cancels a deploy
-# in progress, which then deletes the VM it created, and this run deletes
-# whatever is left.
+# Its own group, so it never waits behind a deploy that's waiting for
+# approval or a cleanup. A second Stop waits for the first.
 concurrency:
-  group: gcp
-  cancel-in-progress: true
+  group: paranoid-gcp-stop
+  cancel-in-progress: false
 
 jobs:
+  # A deploy that's queued, waiting for approval or running is cancelled
+  # first. A running one then deletes the VM it created, even one it creates
+  # after the next job has listed the VMs. Through the API, because the
+  # deploy isn't in this workflow's concurrency group.
+  cancel:
+    name: Cancel deploys in progress
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Cancel deploys in progress
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          for status in requested queued pending waiting in_progress; do
+            gh run list --repo "$REPO" --workflow deploy-gcp.yml --status "$status" \
+              --json databaseId --jq '.[].databaseId'
+          done | sort -u | while read -r run; do
+            echo "Cancelling deploy run $run"
+            gh run cancel "$run" --repo "$REPO" || true
+          done
+
   stop:
     name: Delete the VMs
+    needs: cancel
+    # Delete them even if cancelling failed
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

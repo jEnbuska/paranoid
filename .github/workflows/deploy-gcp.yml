@@ -28,10 +28,14 @@ on:
 permissions:
   contents: read
 
-# Shared with stop-gcp.yml and cleanup-gcp.yml, so only one of them changes
-# VMs or the ledger at a time. A deploy waits for the run before it.
+# Only one deploy at a time: the next waits for this one to finish. Stop and
+# cleanup have groups of their own, so neither waits behind a deploy that's
+# waiting for approval. Stop cancels deploys itself, and cleanup only deletes
+# VMs that are powered off, never a new one. Each ledger write checks the
+# ledger's generation, so two runs settling at once can't overwrite each
+# other.
 concurrency:
-  group: gcp
+  group: paranoid-gcp-deploy
   cancel-in-progress: false
 
 jobs:
