@@ -13,6 +13,8 @@
 set -euo pipefail
 
 here=$(dirname "$0")
+error=$(mktemp)
+trap 'rm -f "$error"' EXIT
 filter='name ~ ^paranoid- AND labels.app=paranoid'
 case "$1" in
   all) ;;
@@ -42,7 +44,17 @@ while IFS=$'\t' read -r name zone status created stopped deployment month; do
   [ -n "$name" ] || continue
   found=1
   echo "Deleting $name in $zone ($status)"
-  gcloud compute instances delete "$name" --zone="$zone" --delete-disks=all --quiet
+  # Stop, cleanup and a deploy can delete the same VM at once. The one whose
+  # delete finds it gone leaves the settlement to the other.
+  if ! gcloud compute instances delete "$name" --zone="$zone" --delete-disks=all \
+    --quiet 2>"$error"; then
+    if grep -qiE 'not found|notFound|was not found' "$error"; then
+      echo "$name was already deleted by another run."
+      continue
+    fi
+    cat "$error" >&2
+    exit 1
+  fi
   # A VM that's running now, or was until it was deleted, has no stop time:
   # it counts as running until now.
   if [ "$status" != TERMINATED ] || [ "$stopped" = - ]; then
@@ -68,7 +80,8 @@ gcloud compute disks list --filter='name ~ ^paranoid- AND -users:*' \
   --format='value(name,zone.basename())' |
   while read -r name zone; do
     echo "Deleting the disk $name in $zone, which no VM uses"
-    gcloud compute disks delete "$name" --zone="$zone" --quiet
+    gcloud compute disks delete "$name" --zone="$zone" --quiet ||
+      echo "::warning::Couldn't delete the disk $name. Another run may have deleted it."
   done
 
 if [ "$found" = 0 ]; then

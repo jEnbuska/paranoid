@@ -69,10 +69,12 @@ jobs:
       contents: read
       id-token: write
     environment: gcp-cleanup
-    # Shared with deploy-gcp.yml and stop-gcp.yml, so only one of them
-    # changes VMs or the ledger at a time.
+    # Its own group, so it never waits behind a deploy that's waiting for
+    # approval. It only deletes VMs that are powered off (TERMINATED), never
+    # a new one, which is PROVISIONING, STAGING or RUNNING, and the ledger
+    # writes check the ledger's generation.
     concurrency:
-      group: gcp
+      group: paranoid-gcp-cleanup
       cancel-in-progress: false
 
     steps:
