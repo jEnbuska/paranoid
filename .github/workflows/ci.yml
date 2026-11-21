@@ -138,28 +138,6 @@ jobs:
         if: needs.changes.outputs.checks != 'false' || needs.changes.outputs.format != 'false'
         run: pnpm install --frozen-lockfile
 
-      # Fails a PR that adds a known vulnerability of high severity or worse,
-      # comparing `pnpm audit` on the PR's merge commit with its base
-      # (HEAD^1), so an advisory for a dependency the PR didn't touch doesn't
-      # fail it: the weekly audit (audit.yml) opens an issue for those.
-      # GitHub's dependency review can't read pnpm 12's lockfile, which is two
-      # YAML documents. Pushes skip this: they can't be blocked, and the
-      # weekly audit covers them.
-      - name: Check the changed dependencies for known vulnerabilities
-        if: github.event_name == 'pull_request' && needs.changes.outputs.deps != 'false'
-        run: |
-          git worktree add --detach "$RUNNER_TEMP/base" HEAD^1
-          pnpm audit --json > "$RUNNER_TEMP/audit.json" || true
-          pnpm --dir "$RUNNER_TEMP/base" audit --json > "$RUNNER_TEMP/base-audit.json" || true
-          status=0
-          node scripts/audit-report.mts "$RUNNER_TEMP/audit.json" "$RUNNER_TEMP/base-audit.json" > "$RUNNER_TEMP/report.md" || status=$?
-          if [ "$status" = 1 ]; then
-            cat "$RUNNER_TEMP/report.md"
-            { echo '## Known vulnerabilities this PR adds'; echo; cat "$RUNNER_TEMP/report.md"; } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::This PR adds dependencies with known vulnerabilities of high severity or worse. Update each one to its fixed version, listed above and in the job summary."
-          fi
-          exit "$status"
-
       # The runner image comes with shellcheck. globstar makes `**` match
       # every depth, so scripts in deeper folders are checked too.
       - name: Check the shell scripts
@@ -192,6 +170,32 @@ jobs:
       - name: Build
         if: needs.changes.outputs.checks != 'false'
         run: pnpm build
+
+      # Fails a PR that adds a known vulnerability of high severity or worse,
+      # comparing `pnpm audit` on the PR's merge commit with its base
+      # (HEAD^1), so an advisory for a dependency the PR didn't touch doesn't
+      # fail it: the weekly audit (audit.yml) opens an issue for those.
+      # GitHub's dependency review can't read pnpm 12's lockfile, which is two
+      # YAML documents. Pushes skip this: they can't be blocked, and the
+      # weekly audit covers them. It runs last, and even after an earlier
+      # step fails, so neither hides the other's result.
+      - name: Check the changed dependencies for known vulnerabilities
+        if: >-
+          !cancelled()
+          && github.event_name == 'pull_request'
+          && needs.changes.outputs.deps != 'false'
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/base" HEAD^1
+          pnpm audit --json > "$RUNNER_TEMP/audit.json" || true
+          pnpm --dir "$RUNNER_TEMP/base" audit --json > "$RUNNER_TEMP/base-audit.json" || true
+          status=0
+          node scripts/audit-report.mts "$RUNNER_TEMP/audit.json" "$RUNNER_TEMP/base-audit.json" > "$RUNNER_TEMP/report.md" || status=$?
+          if [ "$status" = 1 ]; then
+            cat "$RUNNER_TEMP/report.md"
+            { echo '## Known vulnerabilities this PR adds'; echo; cat "$RUNNER_TEMP/report.md"; } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::This PR adds dependencies with known vulnerabilities of high severity or worse. Update each one to its fixed version, listed above and in the job summary."
+          fi
+          exit "$status"
 
   e2e:
     name: End-to-end tests (${{ matrix.browser }})
