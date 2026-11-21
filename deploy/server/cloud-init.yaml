@@ -16,11 +16,15 @@
 # the rest.
 
 # No SSH at all, and no password login. The firewall closes port 22 too.
+# ssh_pwauth: false turns off SSH password login.
 ssh_pwauth: false
+# disable_root: true refuses SSH logins as root, even with a key.
 disable_root: true
 
-# bootcmd runs first, early in boot.
+# bootcmd runs first, early in boot, on every boot.
 bootcmd:
+  # Stops the SSH server and masks it, so nothing can start it again. `|| true`
+  # keeps booting on images without SSH.
   - [sh, -c, "systemctl mask --now ssh.service ssh.socket || true"]
   # Powers off after the lifetime, counted from boot, whatever else happens.
   - - systemd-run
@@ -31,19 +35,29 @@ bootcmd:
     - systemctl
     - poweroff
 
+# Refreshes the package lists, then installs what runcmd and setup.sh need:
+# CA certificates for HTTPS, curl for the downloads, git to fetch the code.
 package_update: true
 packages: [ca-certificates, curl, git]
 
+# Writes files before runcmd runs.
 write_files:
+  # The deploy's settings, read by setup.sh and paranoid-egress.service.
   - path: /etc/paranoid/deploy.env
+    # Octal file mode: the owner (root) may read and write it (6), its group
+    # and everyone else may only read it (4 and 4). Nobody may run it. It's
+    # readable by all because it holds no secrets, only checked numbers and the
+    # hostname. Quoted, so YAML keeps it as the string "0644" and not a number.
     permissions: "0644"
     content: |
       MAX_INVITES=${MAX_INVITES}
       MAX_EGRESS_MBIT=${MAX_EGRESS_MBIT}
       PARANOID_HOST=${PARANOID_HOST}
 
+# runcmd runs once, on the first boot, after write_files and packages.
 # Fetches exactly the deployed commit. git checks every object against its
-# hash, so the code is that commit's, whatever the network does.
+# hash, so the code is that commit's, whatever the network does. Then it locks
+# root's password and hands over to setup.sh.
 runcmd:
   - - sh
     - -ec

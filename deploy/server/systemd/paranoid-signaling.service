@@ -1,49 +1,79 @@
+# Runs the signaling server (packages/signaling-server) on 127.0.0.1:8181,
+# behind Caddy, as a throwaway user with no privileges, and powers the machine
+# off once its last invite is finished. setup.sh installs it into
+# /etc/systemd/system and enables it.
+
 [Unit]
 Description=Paranoid signaling server
+# Starts once the network is up and the egress limit is in place.
 After=network-online.target paranoid-egress.service
 Wants=network-online.target
 # The server exits with code 0 only once its last invite is finished
 # (MAX_INVITES), and then the whole machine powers off. Any other exit, a
 # signal included, counts as a failure, so stopping the service doesn't.
 SuccessAction=poweroff
+# At most 5 starts in 60 seconds. A server that keeps crashing stays stopped
+# instead of restarting forever.
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Service]
+# Counts as started once Node.js has been executed.
 Type=exec
 WorkingDirectory=/opt/paranoid/app/packages/signaling-server
+# Node.js runs the TypeScript directly, with type stripping.
 ExecStart=/opt/paranoid/node/bin/node src/server.ts
+# PORT, HOST, CORS_ORIGINS and MAX_INVITES, written by setup.sh
 EnvironmentFile=/etc/paranoid/signaling.env
 Environment=NODE_ENV=production
+# Restarts after a crash, 2 seconds later, but not after a clean exit.
 Restart=on-failure
 RestartSec=2s
 
 # Its own throwaway user, no privileges, and a read-only view of the system.
+# A user created when the service starts and removed when it stops.
 DynamicUser=yes
+# No Linux capabilities at all: an empty bounding set and none inherited.
 CapabilityBoundingSet=
 AmbientCapabilities=
+# Can never gain privileges, for example through setuid programs.
 NoNewPrivileges=yes
+# Files it creates are readable and writable only by itself.
 UMask=0077
+# The whole file system is read-only, /home, /root and /run/user are hidden,
+# and /tmp is a private, empty one.
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
+# No physical devices, only pseudo-devices such as /dev/null.
 PrivateDevices=yes
+# Its own user namespace: it sees no other users on the machine.
 PrivateUsers=yes
+# Can't change the hostname or the clock.
 ProtectHostname=yes
 ProtectClock=yes
+# Can't change kernel settings (/proc/sys, /sys), load kernel modules, read
+# the kernel log or change control groups.
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
+# Other users' processes are hidden in /proc.
 ProtectProc=invisible
+# Only IPv4, IPv6 and local Unix sockets.
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Can't create namespaces, use real-time scheduling, set setuid or setgid
+# bits, or leave shared memory and other IPC objects behind.
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 RemoveIPC=yes
+# Can't change the execution domain, and only runs native system calls (no
+# 32-bit ones on a 64-bit machine).
 LockPersonality=yes
 SystemCallArchitectures=native
-# A call outside the list fails with EPERM instead of killing the process.
+# Only the system calls a normal service needs. A call outside the list fails
+# with EPERM instead of killing the process.
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 # V8's JIT needs memory that is writable and executable, so no
@@ -55,4 +85,5 @@ IPAddressDeny=any
 IPAddressAllow=localhost
 
 [Install]
+# Started at every boot, with the rest of the normal (non-graphical) system.
 WantedBy=multi-user.target

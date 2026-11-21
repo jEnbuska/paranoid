@@ -1,49 +1,80 @@
+# Runs Caddy with deploy/server/Caddyfile: HTTPS on ports 80 and 443 for the
+# client and a proxy to the signaling server, as a throwaway user that may
+# only bind those ports. setup.sh installs it into /etc/systemd/system and
+# enables it.
+
 [Unit]
 Description=Caddy, serving Paranoid over HTTPS
+# Starts once the network is up and the signaling server has started, so it
+# has something to proxy to.
 After=network-online.target paranoid-signaling.service
 Wants=network-online.target
 
 [Service]
+# Caddy tells systemd when it's ready, so it counts as started only then.
 Type=notify
 ExecStart=/usr/local/bin/caddy run --config /opt/paranoid/app/deploy/server/Caddyfile --adapter caddyfile
 # PARANOID_HOST, the hostname to get a certificate for
 EnvironmentFile=/etc/paranoid/caddy.env
 # Certificates go in the state directory, /var/lib/paranoid-caddy/caddy.
 Environment=XDG_DATA_HOME=/var/lib/paranoid-caddy XDG_CONFIG_HOME=/var/lib/paranoid-caddy
+# Created for it, writable only by its user, and kept across restarts.
 StateDirectory=paranoid-caddy
+# Restarts after a crash, 5 seconds later.
 Restart=on-failure
 RestartSec=5s
+# Lets it hold many connections open at once.
 LimitNOFILE=1048576
 
 # Its own throwaway user that may only bind ports 80 and 443, and a read-only
 # view of the system apart from its state directory.
+# A user created when the service starts and removed when it stops.
 DynamicUser=yes
+# Its only capability: binding ports below 1024.
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
+# Can never gain more privileges, for example through setuid programs.
 NoNewPrivileges=yes
+# Files it creates are readable and writable only by itself.
 UMask=0077
+# The whole file system is read-only apart from its state directory,
+# /home, /root and /run/user are hidden, and /tmp is a private, empty one.
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
+# No physical devices, only pseudo-devices such as /dev/null.
 PrivateDevices=yes
+# Can't change the hostname or the clock.
 ProtectHostname=yes
 ProtectClock=yes
+# Can't change kernel settings (/proc/sys, /sys), load kernel modules, read
+# the kernel log or change control groups.
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
+# Other users' processes are hidden in /proc.
 ProtectProc=invisible
+# Only IPv4, IPv6, local Unix sockets and netlink, which Caddy uses to read
+# the network interfaces.
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+# Can't create namespaces, use real-time scheduling, set setuid or setgid
+# bits, or leave shared memory and other IPC objects behind.
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 RemoveIPC=yes
+# Can't change the execution domain, and can't make memory both writable and
+# executable, which Go programs such as Caddy don't need.
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
+# Only native system calls (no 32-bit ones on a 64-bit machine).
 SystemCallArchitectures=native
-# A call outside the list fails with EPERM instead of killing the process.
+# Only the system calls a normal service needs. A call outside the list fails
+# with EPERM instead of killing the process.
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 
 [Install]
+# Started at every boot, with the rest of the normal (non-graphical) system.
 WantedBy=multi-user.target
