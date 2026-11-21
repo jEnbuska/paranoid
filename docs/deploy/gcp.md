@@ -141,9 +141,18 @@ None of these values is a secret. They say where things are, and Google Cloud on
 
 Your fork is public, so **everything its workflows print is public**: anyone can open the **Actions** tab and read a run's log and summary, with the server's URL. The workflows print nothing secret, because there's nothing secret to print, but a log still says when you ran a server and where. Keeping logs for 1 day means GitHub deletes them a day after each run. 1 day is the shortest GitHub allows.
 
-Only people with write access to your fork can start a workflow, which is usually just you. The required reviewer makes sure of it: a deploy doesn't start, and can't sign in to Google Cloud, until you click **Approve and deploy**. Google Cloud only accepts sign-ins from runs in the `gcp` environment, so a run can't skip the approval and still reach your project. Turning off **Prevent self-review** lets you approve the runs you start yourself. On GitHub's Free, Pro and Team plans, required reviewers only work in public repositories, so keep your fork public.
+Only people with write access to your fork can start a workflow, which is usually just you. The required reviewer makes sure of it: a deploy doesn't start, and can't sign in to Google Cloud, until you click **Approve and deploy**. Google Cloud only accepts sign-ins from runs in the `gcp` environment, so a run can't skip the approval and still reach your project. Turning off **Prevent self-review** lets you approve the runs you start yourself.
 
 Stop and the hourly cleanup use `gcp-cleanup` instead. If they waited for approval, a powered-off VM would stay billed until you noticed. They sign in as `paranoid-cleanup`, which can only delete Paranoid's VMs, so running them without approval can't start anything or cost money.
+
+### Keep your fork public
+
+Some of this only works in a public repository ([GitHub's environments reference](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)):
+
+- **Required reviewers** work only in public repositories on GitHub's Free, Pro and Team plans. A private copy on Pro or Team keeps the `main` limit and the environment variables, but deploys start without waiting for your approval.
+- **The `main` limit and environment variables** need Pro, Team or Enterprise in a private repository. On a private copy with GitHub Free, the environments can't hold `GCP_SERVICE_ACCOUNT`, so every deploy, Stop and cleanup stops before signing in to Google Cloud. Nothing runs unprotected: it just doesn't run.
+
+Whatever the plan, Google Cloud only accepts a sign-in from a run of your fork's `main` branch whose token says it's in the `gcp` or `gcp-cleanup` environment, and only a `gcp` run can act as `paranoid-deploy`. A run without an environment is refused.
 
 ### Or in GitHub's website
 
