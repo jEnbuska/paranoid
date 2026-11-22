@@ -1,7 +1,8 @@
 // Runs the preflight CLI against deploy/azure/requirements.json, from the
 // repository root as the composite action does, with a fake GitHub API on
 // localhost. The names are the ones deploy-azure.yml, stop-azure.yml and
-// cleanup-azure.yml read, and docs/deploy/azure.md lists.
+// cleanup-azure.yml read, and docs/deploy/azure.md lists, placed as the
+// common deploy pattern (#135) says.
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
@@ -24,7 +25,6 @@ const id = (n: number) => `00000000-0000-0000-0000-00000000000${n}`;
 /** Every Azure variable, set to an allowed value */
 const ALL: Record<string, string> = {
   AZURE_CLIENT_ID: id(1),
-  AZURE_CLEANUP_CLIENT_ID: id(2),
   AZURE_TENANT_ID: id(3),
   AZURE_SUBSCRIPTION_ID: id(4),
   AZURE_RESOURCE_GROUP: "paranoid",
@@ -169,7 +169,7 @@ const READS = {
     "AZURE_IMAGE",
   ],
   "azure-cleanup": [
-    "AZURE_CLEANUP_CLIENT_ID",
+    "AZURE_CLIENT_ID",
     "AZURE_TENANT_ID",
     "AZURE_SUBSCRIPTION_ID",
     "AZURE_RESOURCE_GROUP",
@@ -179,7 +179,6 @@ const READS = {
 /** A value each patterned variable must refuse */
 const WRONG: Record<string, string> = {
   AZURE_CLIENT_ID: "paranoid-deployer",
-  AZURE_CLEANUP_CLIENT_ID: `${id(2)}x`,
   AZURE_TENANT_ID: "my-tenant",
   AZURE_SUBSCRIPTION_ID: "Azure subscription 1",
   AZURE_RESOURCE_GROUP: "paranoid;rm -rf",
@@ -232,6 +231,31 @@ describe("deploy/azure/requirements.json", () => {
       ]),
     ];
     expect([...new Set(names)].toSorted()).toEqual(Object.keys(ALL).toSorted());
+  });
+
+  it("keeps the identity values in both environments, and tuning in the repository", () => {
+    // #135: identity values and setup outputs are environment variables, in
+    // each environment that uses them, and tuning values are repository
+    // variables.
+    const identity = [
+      "AZURE_CLIENT_ID",
+      "AZURE_TENANT_ID",
+      "AZURE_SUBSCRIPTION_ID",
+      "AZURE_RESOURCE_GROUP",
+    ];
+    for (const { variables } of azure.environments.values()) {
+      expect([...variables.keys()]).toEqual(identity);
+    }
+    expect([...azure.variables.keys()]).toEqual([
+      "AZURE_REGION",
+      "AZURE_VM_SIZE",
+      "AZURE_IMAGE",
+    ]);
+    // So the deploy's preflight before the approval, outside the
+    // environment, checks no identity value.
+    expect([
+      ...checked(JOBS["deploy-azure.yml, before the approval"]).keys(),
+    ]).toEqual(["AZURE_REGION", "AZURE_VM_SIZE", "AZURE_IMAGE"]);
   });
 
   for (const environment of azure.environments.keys()) {
@@ -294,8 +318,8 @@ describe("deploy/azure/requirements.json", () => {
     routes = setUp;
     const result = await run(JOBS["cleanup-azure.yml"], {
       ...ALL,
-      AZURE_CLIENT_ID: "",
       AZURE_REGION: "Sweden Central",
+      AZURE_VM_SIZE: "B2ats_v2",
     });
     expect(result.status).toBe(0);
   });
