@@ -180,7 +180,7 @@ const READS = {
 const WRONG: Record<string, string> = {
   AZURE_CLIENT_ID: "paranoid-deployer",
   AZURE_CLEANUP_CLIENT_ID: `${id(2)}x`,
-  AZURE_TENANT_ID: "contoso.onmicrosoft.com",
+  AZURE_TENANT_ID: "my-tenant",
   AZURE_SUBSCRIPTION_ID: "Azure subscription 1",
   AZURE_RESOURCE_GROUP: "paranoid;rm -rf",
   AZURE_REGION: "Sweden Central",
