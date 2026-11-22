@@ -24,7 +24,7 @@
         "AZURE_RESOURCE_GROUP": {
           "pattern": "^[A-Za-z0-9_()-]{1,90}$",
           "example": "paranoid",
-          "step": "#4-run-the-one-time-setup"
+          "step": "#5-connect-your-fork-to-azure"
         }
       }
     },
@@ -50,7 +50,7 @@
         "AZURE_RESOURCE_GROUP": {
           "pattern": "^[A-Za-z0-9_()-]{1,90}$",
           "example": "paranoid",
-          "step": "#4-run-the-one-time-setup"
+          "step": "#5-connect-your-fork-to-azure"
         }
       }
     }
