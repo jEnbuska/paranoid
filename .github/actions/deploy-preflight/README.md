@@ -121,10 +121,11 @@ A composite action can't read the `secrets` context, so the step passes each sec
 }
 ```
 
+- The names are the ones the provider's page lists in "What this deployment needs" ([the index](../../../docs/deploy/README.md#adding-a-provider) has its template). Keep the two the same.
 - `environments.<name>.variables` are the environment's own variables, and `variables` at the top are repository variables. A repository variable's `environments` says which environments' jobs read it, so a cleanup isn't failed by a variable only the deploy reads. Without it, every job checks it.
 - Each rule is optional unless `"required": true`, and it's checked whenever it's set. `pattern` is a whole-value regular expression, anchored with `^` and `$`. `minimum` and `maximum` make it a number in that range. `example` is shown when a variable is wrong. A secret has no example.
 - `step` is the guide step that fixes it, a link into `guide`.
-- Don't list the shared variables (`MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT`, `MAX_DEPLOY_COST_USD`). `deploy/requirements.json` has them.
+- Don't list the shared variables (`MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT`, `MAX_DEPLOY_COST_USD`). `deploy/requirements.json` has them, with the same rules as the index's [shared table](../../../docs/deploy/README.md#shared-repository-variables).
 - `pnpm --filter deploy test` reads every provider's list, so a misspelled key or a bad pattern fails CI.
 
 ## What it can't see
