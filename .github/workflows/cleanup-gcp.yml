@@ -62,10 +62,10 @@ jobs:
           fi
 
   cleanup:
-    name: Delete powered-off VMs
+    name: Delete finished servers
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
@@ -80,7 +80,8 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -125,6 +126,11 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Delete the VMs that are off or expired
+      # Pinned and checked, not the runner image's gcloud
+      - name: Set up gcloud
         if: steps.settings.outputs.configured == 'true'
-        run: bash deploy/gcp/vms.sh finished
+        uses: ./.github/actions/setup-gcloud
+
+      - name: Delete the servers that are off or expired
+        if: steps.settings.outputs.configured == 'true'
+        run: bash deploy/gcp/delete-servers.sh finished

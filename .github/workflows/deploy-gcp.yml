@@ -54,7 +54,8 @@ jobs:
       url: ${{ steps.create.outputs.url }}
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -92,7 +93,7 @@ jobs:
       # Every provider's limit on one deploy, MAX_DEPLOY_COST_USD, with the
       # same worst case as the ledger below. Before signing in, so a deploy
       # that's too expensive never reaches Google Cloud.
-      - name: Check the deploy's cost limit
+      - name: Check the worst-case cost
         run: >-
           node packages/deploy/src/cli.ts --prices deploy/gcp/prices.json
           --region "$GCP_REGION" --server e2-micro
@@ -110,6 +111,10 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
+      # Pinned and checked, not the runner image's gcloud
+      - name: Set up gcloud
+        uses: ./.github/actions/setup-gcloud
+
       # Google Cloud's own second limit, GCP_MONTHLY_BUDGET_USD, on the
       # month's total. Before the VM exists. A running VM's reservation still
       # counts in full here, so this can only refuse too early, never too late.
@@ -119,18 +124,18 @@ jobs:
           REGION: ${{ env.GCP_REGION }}
         run: bash deploy/gcp/ledger.sh reserve
 
-      # Running or stopped, so there's only ever one VM
-      - name: Delete the existing VMs
-        run: bash deploy/gcp/vms.sh all
+      # Running or stopped, so there's only ever one server
+      - name: Delete the existing servers
+        run: bash deploy/gcp/delete-servers.sh all
 
       # The VM fetches this exact commit of this repository, which is public,
       # so it needs no credentials.
-      - name: Create the VM
+      - name: Create the server
         id: create
         env:
           REPOSITORY: ${{ github.repository }}
           COMMIT: ${{ github.sha }}
-        run: bash deploy/gcp/create-vm.sh
+        run: bash deploy/gcp/create-server.sh
 
       # The VM installs and builds the app first, which takes a while on an
       # e2-micro.
@@ -143,7 +148,6 @@ jobs:
         env:
           URL: ${{ steps.create.outputs.url }}
           EXPIRES: ${{ steps.create.outputs.expires }}
-          WORST_CASE: ${{ steps.budget.outputs.worst_case_usd }}
           REMAINING: ${{ steps.budget.outputs.remaining_usd }}
         run: |
           shutdown=$(date -u -d "@$EXPIRES" '+%Y-%m-%d %H:%M UTC')
@@ -154,12 +158,13 @@ jobs:
             echo
             echo "- It shuts down once $MAX_INVITES invites are finished, and Google Cloud deletes it at $shutdown at the latest. Chats that have started keep working after that."
             echo "- It's an e2-micro VM in $GCP_ZONE. The Clean up Google Cloud workflow deletes it within about an hour of shutting down, and the Stop Google Cloud workflow deletes it right away."
-            echo "- It costs at most \$$WORST_CASE. \$$REMAINING of this month's \$$GCP_MONTHLY_BUDGET_USD limit is left for other deployments."
+            echo "- The most it can cost is \$$WORST_CASE_USD."
+            echo "- \$$REMAINING of this month's \$$GCP_MONTHLY_BUDGET_USD Google Cloud limit is left for other deployments."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The setup's output, from the VM's serial console, to show why it
       # didn't come up. It holds only the setup's own messages.
-      - name: Show the VM's setup log
+      - name: Show the server's setup log
         if: failure() && steps.create.outcome == 'success'
         run: |
           gcloud compute instances get-serial-port-output "paranoid-$DEPLOYMENT" \
@@ -167,6 +172,6 @@ jobs:
 
       # Also when the run is cancelled, for example by stop-gcp.yml. Releases
       # the reservation if no VM was created.
-      - name: Delete the VM after a failed deploy
+      - name: Delete the server after a failed deploy
         if: (failure() || cancelled()) && steps.budget.outcome == 'success'
-        run: bash deploy/gcp/vms.sh run "$DEPLOYMENT"
+        run: bash deploy/gcp/delete-servers.sh run "$DEPLOYMENT"

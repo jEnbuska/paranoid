@@ -100,5 +100,5 @@ To also remove the GitHub environments and the variables:
 
 gh api --method DELETE "repos/<owner>/<repo>/environments/gcp"
 gh api --method DELETE "repos/<owner>/<repo>/environments/gcp-cleanup"
-for name in GCP_PROJECT GCP_REGION GCP_ZONE GCP_BUCKET GCP_WORKLOAD_IDENTITY_PROVIDER; do gh variable delete "\$name" --repo <owner>/<repo>; done
+for name in GCP_REGION GCP_ZONE GCP_MONTHLY_BUDGET_USD; do gh variable delete "\$name" --repo <owner>/<repo>; done
 EOF

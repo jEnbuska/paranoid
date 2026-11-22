@@ -4,9 +4,9 @@
 # Only VMs named paranoid-* and labeled app=paranoid are touched, and the
 # deploy identity can't delete any other VM anyway.
 #
-# Usage: vms.sh all|finished|run <deployment>
+# Usage: delete-servers.sh all|finished|run <deployment>
 #   all: every Paranoid VM, running or not (deploy-gcp.yml, stop-gcp.yml)
-#   finished: those that powered off, or are past their paranoid-expires
+#   finished: those that powered off, or are past their expires
 #     label, the Unix time their lifetime ends, never a VM before it
 #     (cleanup-gcp.yml). Google Cloud deletes a VM at the end of its
 #     lifetime itself; this is in case that ever fails.
@@ -24,13 +24,13 @@ case "$1" in
   finished) ;;
   run)
     [[ ${2:-} =~ ^[0-9]+-[0-9]+$ ]] || {
-      echo "Usage: vms.sh run <deployment>" >&2
+      echo "Usage: delete-servers.sh run <deployment>" >&2
       exit 2
     }
     filter="$filter AND name=paranoid-$2"
     ;;
   *)
-    echo "Usage: vms.sh all|finished|run <deployment>" >&2
+    echo "Usage: delete-servers.sh all|finished|run <deployment>" >&2
     exit 2
     ;;
 esac
@@ -42,9 +42,9 @@ now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 vms=$(gcloud compute instances list --filter="$filter" --format=json |
   jq -r --arg mode "$1" --argjson now "$(date +%s)" '.[]
     | select($mode != "finished" or .status == "TERMINATED"
-      or ((.labels["paranoid-expires"] // "") | test("^[0-9]+$") and tonumber <= $now))
+      or ((.labels["expires"] // "") | test("^[0-9]+$") and tonumber <= $now))
     | [.name, (.zone | split("/") | last), .status, .creationTimestamp,
-    (.lastStopTimestamp // "-"), (.labels["paranoid-deployment"] // "-"),
+    (.lastStopTimestamp // "-"), (.labels["run"] // "-"),
     (.labels["paranoid-month"] // "-")] | @tsv')
 
 found=0

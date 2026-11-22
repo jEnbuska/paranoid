@@ -303,15 +303,20 @@ gh api --method POST "repos/$repo/environments/gcp-cleanup/deployment-branch-pol
 # 1 day
 gh api --method PUT "repos/$repo/actions/permissions/artifact-and-log-retention" -F days=1
 
-# Where things are, for both environments
-gh variable set GCP_PROJECT --repo "$repo" --body "$project"
-gh variable set GCP_REGION --repo "$repo" --body "$region"
-gh variable set GCP_ZONE --repo "$repo" --body "$zone"
-gh variable set GCP_BUCKET --repo "$repo" --body "$bucket"
-gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$repo" --body "$pool_name/providers/$provider"
-
-# Which service account each environment acts as, and the monthly limit
+# Who signs in, and to what: identity values live only in the environments,
+# never in repository variables, and each environment has its own
+# service account under the same name
+for env in gcp gcp-cleanup; do
+  gh variable set GCP_PROJECT --repo "$repo" --env "\$env" --body "$project"
+  gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$repo" --env "\$env" --body "$pool_name/providers/$provider"
+  gh variable set GCP_BUCKET --repo "$repo" --env "\$env" --body "$bucket"
+done
 gh variable set GCP_SERVICE_ACCOUNT --repo "$repo" --env gcp --body "$deploy_sa"
 gh variable set GCP_SERVICE_ACCOUNT --repo "$repo" --env gcp-cleanup --body "$cleanup_sa"
-gh variable set GCP_MONTHLY_BUDGET_USD --repo "$repo" --env gcp --body "$limit"
+
+# Where the server runs, and the monthly limit: repository variables, like
+# every provider's tuning and limits
+gh variable set GCP_REGION --repo "$repo" --body "$region"
+gh variable set GCP_ZONE --repo "$repo" --body "$zone"
+gh variable set GCP_MONTHLY_BUDGET_USD --repo "$repo" --body "$limit"
 EOF

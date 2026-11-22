@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Checks the Google Cloud deploy settings and passes them to the later steps
 # of the job through GITHUB_ENV. The workflows set each one from the workflow
-# input, then the `gcp` environment's variable, then the default (see
-# docs/deploy/gcp.md). bootstrap.sh prints the commands that set the
-# variables.
+# input, then the variable, then the default (see docs/deploy/gcp.md).
+# Identity values (project, bucket, Workload Identity provider, service
+# account) are variables of the job's environment; tuning and limits are
+# repository variables. bootstrap.sh prints the commands that set them.
 #
 # Only checked values reach GITHUB_ENV and the VM's metadata, so an input
 # can't add lines or commands to either.

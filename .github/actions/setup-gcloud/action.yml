@@ -1,0 +1,57 @@
+name: Set up gcloud
+description: >-
+  Installs the Google Cloud CLI at a pinned version instead of using the one
+  on the runner image, from its core, gcloud-deps and bundled Python
+  components, each checked against its SHA-256 before it's unpacked.
+
+# The components and their SHA-256 checksums are from Google's component
+# manifest for this version, which gcloud's own updater checks against:
+# https://dl.google.com/dl/cloudsdk/channels/rapid/components-v594.0.0.json
+# Google's install page only lists checksums for the latest, unversioned
+# archive, which changes with every release, so it can't be pinned.
+#
+# To update: pick the new version, read the manifest for it, and update the
+# version, every source path and every checksum together.
+
+runs:
+  using: composite
+  steps:
+    - name: Install gcloud 594.0.0
+      shell: bash
+      run: |
+        set -euo pipefail
+        base=https://dl.google.com/dl/cloudsdk/channels/rapid
+        root="$RUNNER_TEMP/google-cloud-sdk"
+        mkdir -p "$root"
+        while read -r source sha256; do
+          file="$RUNNER_TEMP/$(basename "$source")"
+          curl -fsSL --retry 3 -o "$file" "$base/$source"
+          echo "$sha256  $file" | sha256sum --check --strict -
+          tar -xzf "$file" -C "$root" --no-same-owner
+          rm -f "$file"
+        done <<'EOF'
+        components/google-cloud-sdk-core-20261113082344.tar.gz 1c2fdd00db6bb1d60b0cda31eb3eabe2c0c8b762fb5a1aa7e9d2c30ace1e0b50
+        components/google-cloud-sdk-gcloud-deps-20261106082013.tar.gz da085036b39328aedcf43423e29676f40a7743c593f7165d1e5d7bc0e56d2b69
+        components/google-cloud-sdk-bundled-python3-unix-linux-x86_64-20261026202537.tar.gz 9e8b3aecfeb9ea793747793aa29f5a56012242b4c52996aa719d5157f6dfabf1
+        EOF
+        {
+          # Ahead of the runner's own gcloud on the PATH
+          echo "$root/bin"
+        } >>"$GITHUB_PATH"
+        {
+          echo "CLOUDSDK_PYTHON=$root/platform/bundledpythonunix/bin/python3"
+          echo "CLOUDSDK_CORE_DISABLE_PROMPTS=1"
+          echo "CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK=true"
+        } >>"$GITHUB_ENV"
+
+    - name: Check gcloud's version
+      shell: bash
+      run: |
+        set -euo pipefail
+        command -v gcloud
+        version=$(gcloud version --format=json | jq -r '."Google Cloud SDK"')
+        if [ "$version" != 594.0.0 ]; then
+          echo "::error::Expected gcloud 594.0.0 from the pinned components, got '$version'."
+          exit 1
+        fi
+        echo "gcloud $version"

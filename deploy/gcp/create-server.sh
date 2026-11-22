@@ -27,7 +27,12 @@ set -euo pipefail
 }
 
 name="paranoid-$DEPLOYMENT"
-expires=$(($(date +%s) + LIFETIME_MINUTES * 60))
+# Labels, like every provider's: app, run (the run's ID and attempt, which
+# the ledger is keyed on), created and expires, in Unix seconds, and
+# paranoid-month for the ledger. Label values must be lowercase letters,
+# digits, - and _, which these are.
+created=$(date +%s)
+expires=$((created + LIFETIME_MINUTES * 60))
 details=$(mktemp)
 trap 'rm -f "$details"' EXIT
 
@@ -56,7 +61,7 @@ gcloud compute instances create "$name" \
   --network-tier=STANDARD \
   --stack-type=IPV4_ONLY \
   --tags=paranoid \
-  --labels="app=paranoid,paranoid-deployment=$DEPLOYMENT,paranoid-month=$MONTH,paranoid-expires=$expires" \
+  --labels="app=paranoid,run=$DEPLOYMENT,created=$created,expires=$expires,paranoid-month=$MONTH" \
   --no-service-account \
   --no-scopes \
   --shielded-secure-boot \

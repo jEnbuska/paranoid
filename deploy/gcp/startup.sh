@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # The startup script of a Paranoid VM on Google Cloud, passed as its
-# startup-script metadata by create-vm.sh. Google's guest agent runs it as
+# startup-script metadata by create-server.sh. Google's guest agent runs it as
 # root at every boot.
 #
 # Google's Debian images have no cloud-init, so this does what
 # deploy/server/cloud-init.yaml does on other clouds, and then runs the same
 # provider-neutral deploy/server/setup.sh. Keep the two in step. The lifetime
-# limit isn't here: Google Cloud deletes the VM itself (create-vm.sh).
+# limit isn't here: Google Cloud deletes the VM itself (create-server.sh).
 #
 # The VM is behind Google's NAT and only sees its private address, so this
 # reads its external address from the metadata server and passes the

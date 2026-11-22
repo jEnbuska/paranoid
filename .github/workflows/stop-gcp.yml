@@ -26,16 +26,17 @@ concurrency:
 
 jobs:
   stop:
-    name: Delete the VMs
+    name: Delete the servers
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
     environment: gcp-cleanup
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -68,5 +69,9 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Delete every VM
-        run: bash deploy/gcp/vms.sh all
+      # Pinned and checked, not the runner image's gcloud
+      - name: Set up gcloud
+        uses: ./.github/actions/setup-gcloud
+
+      - name: Delete every server
+        run: bash deploy/gcp/delete-servers.sh all
