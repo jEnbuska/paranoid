@@ -64,7 +64,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: upcloud-cleanup
-    # actions: read, to list the deploy runs that haven't finished
+    # actions: read, for the preflight to read the environments' settings
+    # and to list the deploy runs that haven't finished
     permissions:
       actions: read
       contents: read
@@ -83,26 +84,27 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check for the token
-        id: token
+      # owner-only "false": the scheduled run starts as whoever last edited
+      # the schedule, and the run on main as github-actions[bot]. Without a
+      # valid token the run fails, so a cleanup that can't run shows.
+      - name: Run the preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: upcloud
+          environment: upcloud-cleanup
+          owner-only: "false"
+          vars: ${{ toJSON(vars) }}
         env:
-          HAS_TOKEN: ${{ secrets.UPCLOUD_TOKEN != '' }}
-        run: |
-          echo "present=$HAS_TOKEN" >> "$GITHUB_OUTPUT"
-          if [ "$HAS_TOKEN" != true ]; then
-            echo "::notice::The upcloud-cleanup environment has no UPCLOUD_TOKEN secret, so there's nothing to clean up."
-          fi
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
 
       - name: Set up upctl
         uses: ./.github/actions/setup-upctl
-        if: steps.token.outputs.present == 'true'
 
       # A deploy that hasn't finished may be creating its server, so its disk
       # is never treated as left behind. If the list can't be read, the
       # cleanup deletes no disks without a server this time.
       - name: Find the deploys that haven't finished
         id: active
-        if: steps.token.outputs.present == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -117,7 +119,6 @@ jobs:
           fi
 
       - name: Delete the servers that are off or expired
-        if: steps.token.outputs.present == 'true'
         env:
           UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
           ACTIVE_RUNS: ${{ steps.active.outputs.runs }}

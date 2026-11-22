@@ -27,6 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: upcloud-cleanup
+    permissions:
+      contents: read
+      actions: read # the preflight reads the environments' settings
 
     steps:
       - name: Check out the repository
@@ -34,14 +37,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check for the token
+      - name: Run the preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: upcloud
+          environment: upcloud-cleanup
+          vars: ${{ toJSON(vars) }}
         env:
-          HAS_TOKEN: ${{ secrets.UPCLOUD_TOKEN != '' }}
-        run: |
-          if [ "$HAS_TOKEN" != true ]; then
-            echo "::error::The upcloud-cleanup environment has no UPCLOUD_TOKEN secret. See docs/deploy/upcloud.md."
-            exit 1
-          fi
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
 
       - name: Set up upctl
         uses: ./.github/actions/setup-upctl

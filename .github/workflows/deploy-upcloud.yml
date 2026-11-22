@@ -37,13 +37,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Before the approval: fails a run that someone without admin permission
+  # on the repository started, or one whose environments aren't set up as
+  # the guide says, before anyone is asked to approve it.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # reads the environments' settings
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: upcloud
+          environment: upcloud
+          in-environment: "false"
+          vars: ${{ toJSON(vars) }}
+
   deploy:
     name: Deploy to UpCloud
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
       name: upcloud
       url: ${{ steps.create.outputs.url }}
+    permissions:
+      contents: read
+      actions: read # the preflight reads the environments' settings
 
     steps:
       - name: Check out the repository
@@ -51,11 +79,22 @@ jobs:
         with:
           persist-credentials: false
 
-      # Before anything is deleted, so a bad setting leaves a running server
-      # alone. HAS_TOKEN is only "true" or "false".
+      # After the approval, with the environment's secret, which it only
+      # tests for being set and matching its pattern
+      - name: Run the preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: upcloud
+          environment: upcloud
+          vars: ${{ toJSON(vars) }}
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+
+      # Before anything is deleted, so a bad input leaves a running server
+      # alone. The workflow's inputs win over the variables the preflight
+      # checked, so they're checked here.
       - name: Check the settings
         env:
-          HAS_TOKEN: ${{ secrets.UPCLOUD_TOKEN != '' }}
           MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
           LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
           MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
@@ -64,12 +103,7 @@ jobs:
           PLAN: ${{ vars.UPCLOUD_PLAN || 'STARTER-1xCPU-1GB' }}
           DEFAULT_PLAN: STARTER-1xCPU-1GB
           TEMPLATE: ${{ vars.UPCLOUD_TEMPLATE || 'Debian GNU/Linux 13 (Trixie)' }}
-        run: |
-          if [ "$HAS_TOKEN" != true ]; then
-            echo "::error::The upcloud environment has no UPCLOUD_TOKEN secret. See docs/deploy/upcloud.md."
-            exit 1
-          fi
-          bash deploy/upcloud/settings.sh
+        run: bash deploy/upcloud/settings.sh
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
