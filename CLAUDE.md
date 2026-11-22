@@ -25,7 +25,7 @@ Vulnerabilities are reported privately, through the repository's "Report a vulne
 
 ## Monorepo
 
-pnpm workspace (`pnpm-workspace.yaml`) with five packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and its CLI, run by Node.js directly from TypeScript, with each provider's price file in `deploy/<provider>/prices.json`) and `packages/e2e` (Playwright tests).
+pnpm workspace (`pnpm-workspace.yaml`) with five packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and preflight, and their CLIs, run by Node.js directly from TypeScript, with each provider's price file and requirements in `deploy/<provider>/prices.json` and `requirements.json`) and `packages/e2e` (Playwright tests).
 
 ## Installing dependencies
 
@@ -97,7 +97,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 
 ## Tooling
 
-- Node.js 24 (`.nvmrc`, `engines` in `package.json`). The signaling server runs with `node src/server.ts` / `node --watch`, and the deploy workflows run `node packages/deploy/src/cli.ts`, using Node's built-in type stripping. There is no tsx, ts-node or build step; don't add one. Type errors only show up in `pnpm typecheck`.
+- Node.js 24 (`.nvmrc`, `engines` in `package.json`). The signaling server runs with `node src/server.ts` / `node --watch`, and the deploy workflows run `node packages/deploy/src/cli.ts` and `preflight-cli.ts`, using Node's built-in type stripping. There is no tsx, ts-node or build step; don't add one. Type errors only show up in `pnpm typecheck`.
 - Code Node runs (the server, `shared-lib` and `packages/deploy`) must be plain type-strippable TypeScript, which `tsc` enforces with `erasableSyntaxOnly` and `verbatimModuleSyntax`:
   - Relative imports need the `.ts` extension: `import { x } from "./invites.ts"`.
   - Type-only imports use `import type`.
@@ -127,6 +127,7 @@ Anyone with a fork can start a Paranoid server from GitHub Actions. Each provide
 - `deploy/server` (cloud-init, `setup.sh`, systemd units, Caddyfile) is provider-neutral: no cloud provider's API, metadata or CLI. `deploy/ci` holds provider-neutral scripts the workflows run. A new provider gets its own scripts and workflows and reuses `deploy/server` and `deploy/ci`.
 - A provider that needs `PARANOID_HOST` (a server behind NAT that only sees a private address) checks it before filling it into `cloud-init.yaml`, and every provider adds it to its `envsubst` list, empty if unused.
 - `packages/deploy` holds the worst-case cost check. A deploy workflow that uses it runs it with its provider's price file, `deploy/<provider>/prices.json`, before it creates anything.
+- Every deploy, stop and cleanup workflow runs the deploy preflight (`.github/actions/deploy-preflight`) first, before any cloud step. A provider's `deploy/<provider>/requirements.json` is the list of what it needs from GitHub: its environments, their variables and secrets, and its repository variables, by name and rule, never a value (format: `deploy/requirements.schema.json`). `deploy/requirements.json` lists the shared repository variables. A workflow that reads a new variable or secret adds it to the list in the same PR. The action's README has the calling pattern: a deploy runs it in a job without the environment and again as the environment job's first step, cleanup passes `owner-only: "false"`, and each listed secret is passed through `env:` under its own name.
 - A provider's credentials reach only the steps that need them, through `env:`. Never put them in a file, an input, a variable, user data, a label or a summary, and never echo them. The server never gets them.
 - Deploy workflows run only on `workflow_dispatch` and `schedule`, never `pull_request` or `pull_request_target`, and use their provider's environment, which only `main` may use.
 - User data and labels hold only values the scripts have checked, so an input can't inject commands.
