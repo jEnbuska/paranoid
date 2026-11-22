@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# Passes the Google Cloud deploy's settings to the later steps of the job
-# through GITHUB_ENV, after the checks only this script can do. Only
-# deploy-gcp.yml runs it: stop and cleanup take the two values they need
-# straight from the variables, which the preflight checked. The deploy preflight
-# (.github/actions/deploy-preflight, with deploy/gcp/requirements.json)
-# already checked every variable's name, pattern and range in the step before,
-# so they aren't checked again here. See docs/deploy/gcp.md.
+# Checks the Google Cloud deploy's settings and passes them to the later
+# steps of the job through GITHUB_ENV. Only deploy-gcp.yml runs it: stop and
+# cleanup create nothing, and take the two values they need straight from
+# the variables. See docs/deploy/gcp.md.
 #
-# What's left for this script:
-# - the deploy workflow's inputs, max_invites and lifetime_minutes, which win
-#   over the variables the preflight checked;
-# - that the zone is in the region, and that deploy/gcp/prices.json has
-#   prices for the region, which the preflight's patterns can't say.
+# The deploy preflight (.github/actions/deploy-preflight, with
+# deploy/gcp/requirements.json) checked the variables in the step before.
+# Every value that reaches the VM, in its metadata, its labels or the flags
+# that create it, is checked here again anyway, before it's written (#141):
+# the invites, lifetime and outbound limit, the region and zone, and the
+# run's ID. So are the inputs, which win over the variables the preflight
+# saw, and what no pattern can say: that the zone is in the region and that
+# deploy/gcp/prices.json has prices for it. Values that never reach the VM,
+# the project, the bucket and the cost limits, are left to the preflight,
+# and the cost check and ledger read them as numbers.
 #
-# Only checked values reach GITHUB_ENV and the VM's metadata, so an input
-# can't add lines or commands to either.
+# Only checked values reach GITHUB_ENV and the VM, so an input can't add
+# lines or commands to either.
 set -euo pipefail
 
 fail() {
@@ -29,7 +31,9 @@ whole() {
   fi
 }
 
-[[ $GCP_ZONE == "$GCP_REGION"-? ]] ||
+[[ $GCP_REGION =~ ^[a-z]+-[a-z]+[0-9]{1,2}$ ]] ||
+  fail "GCP_REGION must be a Google Cloud region such as europe-north1, not '$GCP_REGION'."
+[[ $GCP_ZONE =~ ^$GCP_REGION-[a-z]$ ]] ||
   fail "GCP_ZONE must be a zone in GCP_REGION ($GCP_REGION), such as $GCP_REGION-a, not '$GCP_ZONE'."
 
 {
@@ -42,9 +46,11 @@ whole() {
   echo "CLOUDSDK_CORE_DISABLE_PROMPTS=1"
 } >>"$GITHUB_ENV"
 
-# The inputs, which the preflight doesn't see
+# Into the VM's metadata, labels and --max-run-duration. The first two can
+# also be inputs, which the preflight doesn't see.
 whole max_invites "$MAX_INVITES" 1 10000
 whole lifetime_minutes "$LIFETIME_MINUTES" 1 1440
+whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
 [[ $RUN_ID =~ ^[0-9]+$ && $RUN_ATTEMPT =~ ^[0-9]+$ ]] ||
   fail "The run ID and attempt aren't numbers."
 
