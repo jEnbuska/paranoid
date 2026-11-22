@@ -110,6 +110,14 @@ Everything you push stays public, and a commit on a pull request can't be remove
 - Commit with your [GitHub noreply address](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-email-preferences/setting-your-commit-email-address).
 - Turn on "Keep my email addresses private" and "Block command line pushes that expose my email" in your [email settings](https://github.com/settings/emails) before opening a pull request. GitHub creates some commits for you, such as "Update branch", "Rebase and merge" and the test merge for every open pull request. Without that setting they carry your account's address, whatever your local git settings say.
 
+## Reporting a security vulnerability
+
+Don't open a public issue, pull request or discussion about a vulnerability. Paranoid is an end-to-end encrypted chat, and a public report could put people at risk before a fix is out.
+
+Report it privately with the [Report a vulnerability](https://github.com/jEnbuska/paranoid/security/advisories/new) form on the repository's Security tab. Only the maintainer, and anyone they add to the report, can see it. [`SECURITY.md`](SECURITY.md) says what to include and what happens next.
+
+The fix is made in the advisory's temporary private fork, not in a public branch, and it's released when the maintainer publishes the advisory.
+
 ## Hotfixes
 
 A hotfix is a `hotfix/*` branch into `dev` that doesn't need an issue. It's released like everything else, through `dev`. Only branches in this repository count, because a fork can name a branch anything, so a fix from a fork links an issue.
