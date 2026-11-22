@@ -1,0 +1,61 @@
+{
+  "$schema": "../requirements.schema.json",
+  "guide": "docs/deploy/azure.md",
+  "environments": {
+    "azure": {
+      "reviewers": "required",
+      "step": "#4-connect-your-fork-to-azure"
+    },
+    "azure-cleanup": {
+      "reviewers": "none",
+      "step": "#4-connect-your-fork-to-azure"
+    }
+  },
+  "variables": {
+    "AZURE_CLIENT_ID": {
+      "required": true,
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "environments": ["azure"],
+      "step": "#4-connect-your-fork-to-azure"
+    },
+    "AZURE_CLEANUP_CLIENT_ID": {
+      "required": true,
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "environments": ["azure-cleanup"],
+      "step": "#4-connect-your-fork-to-azure"
+    },
+    "AZURE_TENANT_ID": {
+      "required": true,
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "step": "#4-connect-your-fork-to-azure"
+    },
+    "AZURE_SUBSCRIPTION_ID": {
+      "required": true,
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "step": "#4-connect-your-fork-to-azure"
+    },
+    "AZURE_RESOURCE_GROUP": {
+      "pattern": "^[A-Za-z0-9_()-]{1,90}$",
+      "example": "paranoid",
+      "step": "#3-run-the-one-time-setup"
+    },
+    "AZURE_REGION": {
+      "pattern": "^[a-z][a-z0-9]{2,30}$",
+      "example": "swedencentral",
+      "environments": ["azure"],
+      "step": "#6-optional-settings"
+    },
+    "AZURE_VM_SIZE": {
+      "pattern": "^Standard_[A-Za-z0-9_]{1,40}$",
+      "example": "Standard_B2ats_v2",
+      "environments": ["azure"],
+      "step": "#6-optional-settings"
+    },
+    "AZURE_IMAGE": {
+      "pattern": "^[A-Za-z0-9._-]+:[A-Za-z0-9._-]+:[A-Za-z0-9._-]+:[A-Za-z0-9._-]+$",
+      "example": "Debian:debian-13:13-gen2:latest",
+      "environments": ["azure"],
+      "step": "#6-optional-settings"
+    }
+  }
+}
