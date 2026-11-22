@@ -4,53 +4,53 @@
   "environments": {
     "azure": {
       "reviewers": "required",
-      "step": "#4-connect-your-fork-to-azure",
+      "step": "#5-connect-your-fork-to-azure",
       "variables": {
         "AZURE_CLIENT_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-          "step": "#4-connect-your-fork-to-azure"
+          "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_TENANT_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-          "step": "#4-connect-your-fork-to-azure"
+          "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_SUBSCRIPTION_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-          "step": "#4-connect-your-fork-to-azure"
+          "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_RESOURCE_GROUP": {
           "pattern": "^[A-Za-z0-9_()-]{1,90}$",
           "example": "paranoid",
-          "step": "#4-connect-your-fork-to-azure"
+          "step": "#4-run-the-one-time-setup"
         }
       }
     },
     "azure-cleanup": {
       "reviewers": "none",
-      "step": "#4-connect-your-fork-to-azure",
+      "step": "#5-connect-your-fork-to-azure",
       "variables": {
         "AZURE_CLIENT_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-          "step": "#4-connect-your-fork-to-azure"
+          "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_TENANT_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-          "step": "#4-connect-your-fork-to-azure"
+          "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_SUBSCRIPTION_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-          "step": "#4-connect-your-fork-to-azure"
+          "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_RESOURCE_GROUP": {
           "pattern": "^[A-Za-z0-9_()-]{1,90}$",
           "example": "paranoid",
-          "step": "#4-connect-your-fork-to-azure"
+          "step": "#4-run-the-one-time-setup"
         }
       }
     }

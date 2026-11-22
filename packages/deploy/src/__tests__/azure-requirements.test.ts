@@ -221,8 +221,8 @@ describe("deploy/azure/requirements.json", () => {
         secrets.size,
       ]),
     ).toEqual([
-      ["azure", "required", "#4-connect-your-fork-to-azure", 0],
-      ["azure-cleanup", "none", "#4-connect-your-fork-to-azure", 0],
+      ["azure", "required", "#5-connect-your-fork-to-azure", 0],
+      ["azure-cleanup", "none", "#5-connect-your-fork-to-azure", 0],
     ]);
     const names = [
       ...azure.variables.keys(),
@@ -333,7 +333,7 @@ describe("deploy/azure/requirements.json", () => {
     );
     expect(result.status).toBe(1);
     expect(result.output).toBe(
-      `::error::The environment azure-cleanup doesn't exist. Fix: ${guide}#4-connect-your-fork-to-azure\n`,
+      `::error::The environment azure-cleanup doesn't exist. Fix: ${guide}#5-connect-your-fork-to-azure\n`,
     );
   });
 
