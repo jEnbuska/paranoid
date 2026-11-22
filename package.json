@@ -9,7 +9,8 @@
   },
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
-    "test": "pnpm -r run test",
+    "test": "pnpm -r run test && node --test \"scripts/**/*.test.mts\"",
+    "check:deploy-docs": "node scripts/check-deploy-docs.mts",
     "test:e2e": "pnpm --filter e2e test:e2e",
     "typecheck": "pnpm -r run typecheck",
     "lint": "oxlint",
@@ -22,6 +23,7 @@
     "knip": "^6.45.1",
     "oxfmt": "^0.75.0",
     "oxlint": "^1.90.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "yaml": "^2.9.1"
   }
 }
