@@ -10,19 +10,19 @@
           "required": true,
           "pattern": "^arn:aws:iam::[0-9]{12}:role/paranoid-deploy$",
           "example": "arn:aws:iam::123456789012:role/paranoid-deploy",
-          "step": "#4-run-the-one-time-setup"
+          "step": "#5-connect-your-fork-to-aws"
         },
         "AWS_SCHEDULER_ROLE_ARN": {
           "required": true,
           "pattern": "^arn:aws:iam::[0-9]{12}:role/paranoid-scheduler$",
           "example": "arn:aws:iam::123456789012:role/paranoid-scheduler",
-          "step": "#4-run-the-one-time-setup"
+          "step": "#5-connect-your-fork-to-aws"
         },
         "AWS_SECURITY_GROUP_ID": {
           "required": true,
           "pattern": "^sg-[0-9a-f]{8,17}$",
           "example": "sg-0123456789abcdef0",
-          "step": "#4-run-the-one-time-setup"
+          "step": "#5-connect-your-fork-to-aws"
         }
       }
     },
@@ -34,7 +34,7 @@
           "required": true,
           "pattern": "^arn:aws:iam::[0-9]{12}:role/paranoid-cleanup$",
           "example": "arn:aws:iam::123456789012:role/paranoid-cleanup",
-          "step": "#4-run-the-one-time-setup"
+          "step": "#5-connect-your-fork-to-aws"
         }
       }
     }

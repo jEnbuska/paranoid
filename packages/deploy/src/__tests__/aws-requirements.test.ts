@@ -245,7 +245,7 @@ describe("deploy/aws/requirements.json", () => {
         const result = await run(job, vars);
         expect(result.status).toBe(1);
         expect(result.output).toBe(
-          `::error::The variable ${missing} isn't set in the environment ${job.environment}. Fix: ${guide}#4-run-the-one-time-setup\n`,
+          `::error::The variable ${missing} isn't set in the environment ${job.environment}. Fix: ${guide}#5-connect-your-fork-to-aws\n`,
         );
       });
     }
