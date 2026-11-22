@@ -12,6 +12,17 @@ The repository is public. No secret or token is ever committed, in any file, bra
 - CI's secret scan (gitleaks, with the providers' token rules in `.gitleaks.toml`) runs on every PR and push, docs-only PRs included. GitHub's own secret scanning doesn't know every provider's tokens, such as UpCloud's, so this scan is the backstop. A provider whose token format neither gitleaks' default rules nor GitHub's know gets a rule in `.gitleaks.toml`. Test it only with a fake token in a file git doesn't track, and delete the file afterwards. Never commit or push one.
 - Sessions never ask for, read or handle a real token. The user adds it as an environment secret.
 
+## Security vulnerabilities
+
+Vulnerabilities are reported privately, through the repository's "Report a vulnerability" form on the Security tab (private vulnerability reporting). A report becomes a draft security advisory that only the maintainer and the people they add can see. CONTRIBUTING.md's "Reporting a security vulnerability" section is the reporter's side.
+
+- Never discuss a private report, its details or its fix in public before the advisory is published: no issue, ticket, PR, commit message, PR or issue comment, branch name, label or workflow log. That includes the Planning session's tickets. The advisory is the ticket.
+- A session that finds a vulnerability itself treats it the same way: it tells the user in its chat, writes nothing about it on GitHub, and the user decides whether to open a draft advisory.
+- The fix is made in the advisory's temporary private fork, which GitHub creates for it ("Start a temporary private fork" on the advisory), or only once the user says how. Never in a branch or PR of this repository.
+- GitHub Actions don't run in a temporary private fork, so run the checks from "Commands" locally there, end-to-end tests included.
+- Commits merged from the fork become public in `dev`, so their messages say what changed in code, not what it exposed. The advisory carries the details.
+- The user merges the fix, publishes the advisory and decides when. Sessions never publish, close or change an advisory's severity, and never request a CVE.
+
 ## Monorepo
 
 pnpm workspace (`pnpm-workspace.yaml`) with five packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and its CLI, run by Node.js directly from TypeScript, with each provider's price file in `deploy/<provider>/prices.json`) and `packages/e2e` (Playwright tests).
