@@ -12,6 +12,11 @@
 set -euo pipefail
 
 here=$(dirname "$0")
+# The run ID goes into every name and `run` label, so it's checked too.
+[[ $RUN_ID =~ ^[0-9]{1,20}$ ]] || {
+  echo "::error::Unexpected run ID: $RUN_ID"
+  exit 1
+}
 name="paranoid-$RUN_ID"
 created=$(date +%s)
 expires=$((created + LIFETIME_MINUTES * 60))
