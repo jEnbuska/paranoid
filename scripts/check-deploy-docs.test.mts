@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  anchors,
   checkDeployDocs,
   readFiles,
   section,
@@ -14,8 +15,60 @@ const SHARED = `## Shared repository variables
 
 | Variable | What it does | Default | Allowed values |
 | --- | --- | --- | --- |
-| \`MAX_INVITES\` | Invites. | \`5\` | 1 to 10000 |
+| \`MAX_INVITES\` | Invites. | \`5\` | A whole number from 1 to 10000 |
+| \`MAX_DEPLOY_COST_USD\` | The cost limit. | \`1\` | An amount with up to two decimals, such as \`2.50\`, below 10000 |
 `;
+
+/** deploy/requirements.json, matching SHARED */
+const SHARED_LIST = {
+  $schema: "./requirements.schema.json",
+  guide: "docs/deploy/README.md",
+  variables: {
+    MAX_INVITES: {
+      pattern: "^[0-9]{1,6}$",
+      minimum: 1,
+      maximum: 10000,
+      example: "5",
+      step: "#shared-repository-variables",
+    },
+    MAX_DEPLOY_COST_USD: {
+      pattern: "^[0-9]{1,4}(\\.[0-9]{1,2})?$",
+      example: "2.50",
+      step: "#shared-repository-variables",
+    },
+  },
+};
+
+const CONNECT = "#4-create-the-credentials-and-connect-your-fork";
+const role = { required: true, pattern: "^arn:[a-z0-9:/-]+$", step: CONNECT };
+const token = { required: true, pattern: "^tok_[a-z]+$", step: CONNECT };
+const optional = { pattern: "^[a-z0-9-]+$", step: "#5-optional-settings" };
+
+/** deploy/acme/requirements.json, matching PAGE */
+const ACME_LIST = {
+  $schema: "../requirements.schema.json",
+  guide: "docs/deploy/acme.md",
+  environments: {
+    acme: {
+      reviewers: "required",
+      step: CONNECT,
+      variables: { ACME_ROLE_ARN: role },
+      secrets: { ACME_TOKEN: token },
+    },
+    "acme-cleanup": {
+      reviewers: "none",
+      step: CONNECT,
+      variables: { ACME_ROLE_ARN: role },
+      secrets: { ACME_TOKEN: token },
+    },
+  },
+  variables: {
+    ACME_ZONE: { ...optional, environments: ["acme"] },
+    ACME_PLAN: { ...optional, environments: ["acme"] },
+  },
+};
+
+const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
 const index = (rows: string[]) => `# Deploying Paranoid
 
@@ -49,12 +102,21 @@ jobs:
       name: acme
       url: \${{ steps.create.outputs.url }}
     steps:
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: acme
+          environment: acme
+          vars: \${{ toJSON(vars) }}
+        env:
+          ACME_TOKEN: \${{ secrets.ACME_TOKEN }}
       - name: Create
         if: vars.ACME_ZONE != ''
         env:
           ACME_TOKEN: \${{ secrets.ACME_TOKEN }}
           GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
           MAX_INVITES: \${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
+          MAX_DEPLOY_COST_USD: \${{ vars.MAX_DEPLOY_COST_USD || '1' }}
           ACME_PLAN: \${{ vars.ACME_PLAN || 'small' }}
           ACME_ROLE_ARN: \${{ vars.ACME_ROLE_ARN }}
         run: echo "vars.NOT_AN_EXPRESSION"
@@ -69,6 +131,14 @@ jobs:
     runs-on: ubuntu-latest
     environment: acme-cleanup
     steps:
+      - uses: ./.github/actions/deploy-preflight
+        with:
+          provider: acme
+          environment: acme-cleanup
+          owner-only: "false"
+          vars: \${{ toJSON(vars) }}
+        env:
+          ACME_TOKEN: \${{ secrets.ACME_TOKEN }}
       - name: Delete finished servers
         env:
           ACME_TOKEN: \${{ secrets.ACME_TOKEN }}
@@ -149,8 +219,20 @@ function acme(): Files {
     ["docs/deploy/README.md", index([ACME_ROW])],
     ["docs/deploy/acme.md", PAGE],
     ["deploy/acme/README.md", "See [Acme](../../docs/deploy/acme.md).\n"],
+    ["deploy/requirements.json", json(SHARED_LIST)],
+    ["deploy/acme/requirements.json", json(ACME_LIST)],
   ]);
 }
+
+type Json = Record<string, any>;
+
+/** Changes a preflight list's JSON in place. */
+const editList = (files: Files, path: string, change: (list: Json) => void) => {
+  const list = JSON.parse(files.get(path) ?? "{}") as Json;
+  change(list);
+  files.set(path, json(list));
+  return files;
+};
 
 const edit = (files: Files, path: string, from: string, to: string) => {
   const text = files.get(path) ?? "";
@@ -188,6 +270,7 @@ describe("usage", () => {
       "ACME_PLAN",
       "ACME_ROLE_ARN",
       "ACME_ZONE",
+      "MAX_DEPLOY_COST_USD",
       "MAX_INVITES",
     ]);
   });
@@ -200,13 +283,38 @@ describe("section", () => {
   });
 });
 
+describe("anchors", () => {
+  it("gives headings GitHub's anchors, numbering repeats", () => {
+    const lines =
+      "# Title\n## 5. Optional settings\n```\n## Not a heading\n```\n### Who's it for?\n## Title\n".split(
+        "\n",
+      );
+    assert.deepEqual(
+      [...anchors(lines)],
+      ["#title", "#5-optional-settings", "#whos-it-for", "#title-1"],
+    );
+  });
+});
+
 describe("checkDeployDocs", () => {
   it("passes when the docs match the workflows", () => {
     assert.deepEqual(checkDeployDocs(acme()), []);
   });
 
   it("passes with no providers and an empty providers table", () => {
-    const files: Files = new Map([["docs/deploy/README.md", index([])]]);
+    const files: Files = new Map([
+      ["docs/deploy/README.md", index([])],
+      ["deploy/requirements.json", json(SHARED_LIST)],
+    ]);
+    assert.deepEqual(checkDeployDocs(files), []);
+  });
+
+  it("leaves a provider's list alone until its workflows land", () => {
+    const files: Files = new Map([
+      ["docs/deploy/README.md", index([])],
+      ["deploy/requirements.json", json(SHARED_LIST)],
+      ["deploy/acme/requirements.json", json(ACME_LIST)],
+    ]);
     assert.deepEqual(checkDeployDocs(files), []);
   });
 
@@ -305,9 +413,14 @@ describe("checkDeployDocs", () => {
       ]) {
         files.set(
           path,
-          (files.get(path) ?? "").replace(/^.*ACME_TOKEN.*\n/m, ""),
+          (files.get(path) ?? "").replace(/^.*ACME_TOKEN.*\n/gm, ""),
         );
       }
+      editList(files, "deploy/acme/requirements.json", (list) => {
+        for (const environment of Object.values(list.environments)) {
+          delete (environment as Json).secrets;
+        }
+      });
       files.set("docs/deploy/README.md", index([NO_SECRET_ROW]));
       expectError(files, /lists `ACME_TOKEN`, which no workflow of acme uses/);
     });
@@ -527,6 +640,11 @@ describe("checkDeployDocs", () => {
           "| `ACME_ROLE_ARN` | `acme` | The role. | Required | | Step 4 |\n| `ACME_CLEANUP_ROLE_ARN` | `acme-cleanup` |",
         ),
       );
+      editList(files, "deploy/acme/requirements.json", (list) => {
+        const cleanup = list.environments["acme-cleanup"].variables;
+        cleanup.ACME_CLEANUP_ROLE_ARN = cleanup.ACME_ROLE_ARN;
+        delete cleanup.ACME_ROLE_ARN;
+      });
       const errors = checkDeployDocs(files);
       assert.deepEqual(
         errors.filter((error) => !/second name/.test(error)),
@@ -559,6 +677,13 @@ describe("checkDeployDocs", () => {
         .replace("## 6. Start", "## 5. Start")
         .replace("## 7. Stop", "## 6. Stop");
       files.set("docs/deploy/acme.md", page);
+      // The list links the renumbered headings
+      files.set(
+        "deploy/acme/requirements.json",
+        (files.get("deploy/acme/requirements.json") ?? "")
+          .replaceAll("#4-create", "#3-create")
+          .replaceAll("#5-optional", "#4-optional"),
+      );
       assert.deepEqual(checkDeployDocs(files), []);
     });
 
@@ -624,9 +749,14 @@ describe("checkDeployDocs", () => {
       ]) {
         files.set(
           path,
-          (files.get(path) ?? "").replace(/^.*ACME_TOKEN.*\n/m, ""),
+          (files.get(path) ?? "").replace(/^.*ACME_TOKEN.*\n/gm, ""),
         );
       }
+      editList(files, "deploy/acme/requirements.json", (list) => {
+        for (const environment of Object.values(list.environments)) {
+          delete (environment as Json).secrets;
+        }
+      });
       files.set("docs/deploy/README.md", index([NO_SECRET_ROW]));
       const page = files.get("docs/deploy/acme.md") ?? "";
       files.set(
@@ -657,6 +787,367 @@ describe("checkDeployDocs", () => {
       const files = oidc();
       files.set("docs/deploy/README.md", index([ACME_ROW]));
       expectError(files, /"Needs a secret" says "Yes"/);
+    });
+  });
+
+  describe("a provider's preflight list", () => {
+    const LIST = "deploy/acme/requirements.json";
+    const acmeList = (change: (list: Json) => void) =>
+      editList(acme(), LIST, change);
+
+    it("fails on a provider with workflows and no list", () => {
+      const files = acme();
+      files.delete(LIST);
+      expectError(
+        files,
+        /^deploy\/acme\/requirements\.json: is missing\. acme has workflows/,
+      );
+    });
+
+    it("fails on a list that can't be read", () => {
+      const files = acme();
+      files.set(LIST, "{");
+      expectError(files, /^deploy\/acme\/requirements\.json: .*JSON/);
+    });
+
+    it("fails on a name the list has and the page doesn't", () => {
+      const files = acmeList((list) => {
+        list.variables.ACME_SIZE = optional;
+      });
+      expectError(
+        files,
+        /requirements\.json: lists `ACME_SIZE`, a repository variable, which docs\/deploy\/acme\.md's "What this deployment needs" doesn't\.$/,
+      );
+    });
+
+    it("fails on a name the page has and the list doesn't", () => {
+      const files = acmeList((list) => {
+        delete list.variables.ACME_PLAN;
+      });
+      expectError(
+        files,
+        /requirements\.json: doesn't list `ACME_PLAN`, a repository variable, which .* does\. Add it/,
+      );
+    });
+
+    it("fails on a secret the list doesn't have", () => {
+      const files = acmeList((list) => {
+        delete list.environments.acme.secrets;
+        delete list.environments["acme-cleanup"].secrets;
+      });
+      expectError(
+        files,
+        /doesn't list `ACME_TOKEN`, a secret in `acme`, `acme-cleanup`/,
+      );
+    });
+
+    it("fails on a shared variable in the list", () => {
+      const files = acmeList((list) => {
+        list.variables.MAX_INVITES = optional;
+      });
+      expectError(
+        files,
+        /lists the shared variable `MAX_INVITES`, which deploy\/requirements\.json already has/,
+      );
+    });
+
+    it("fails on a variable in other environments than the page's", () => {
+      const files = acmeList((list) => {
+        delete list.environments["acme-cleanup"].variables;
+      });
+      expectError(
+        files,
+        /has `ACME_ROLE_ARN` as a variable in `acme`, but .* has it as a variable in `acme`, `acme-cleanup`/,
+      );
+    });
+
+    it("fails on a repository variable the page sets in an environment", () => {
+      const files = acmeList((list) => {
+        list.environments.acme.variables.ACME_ZONE = optional;
+        delete list.variables.ACME_ZONE;
+      });
+      expectError(
+        files,
+        /has `ACME_ZONE` as a variable in `acme`, but .* has it as a repository variable/,
+      );
+    });
+
+    it("fails on a secret the list has as a variable", () => {
+      const files = acmeList((list) => {
+        for (const name of ["acme", "acme-cleanup"]) {
+          const environment = list.environments[name];
+          delete environment.secrets;
+          environment.variables.ACME_TOKEN = token;
+        }
+      });
+      expectError(
+        files,
+        /has `ACME_TOKEN` as a variable in `acme`, `acme-cleanup`, but .* has it as a secret in `acme`, `acme-cleanup`/,
+      );
+    });
+
+    it("fails on a variable that's required in one and optional in the other", () => {
+      const files = acmeList((list) => {
+        list.variables.ACME_PLAN.required = true;
+      });
+      expectError(
+        files,
+        /says `ACME_PLAN` is required, but .*"Variables" says it's optional/,
+      );
+    });
+
+    it("fails on a Required column that's neither Required nor Optional", () => {
+      const files = edit(
+        acme(),
+        "docs/deploy/acme.md",
+        "| The role each signs in as. | Required |",
+        "| The role each signs in as. | Yes |",
+      );
+      expectError(
+        files,
+        /says `ACME_ROLE_ARN`'s Required is "Yes"\. Write "Required" or "Optional"/,
+      );
+    });
+
+    it("fails on an environment the page has and the list doesn't", () => {
+      const files = acmeList((list) => {
+        delete list.environments["acme-cleanup"];
+      });
+      expectError(
+        files,
+        /requirements\.json: doesn't list the environment `acme-cleanup`, which .*"Environments" does/,
+      );
+    });
+
+    it("fails on an environment the list has and the page doesn't", () => {
+      const files = acmeList((list) => {
+        list.environments["acme-old"] = { reviewers: "none", step: CONNECT };
+      });
+      expectError(
+        files,
+        /lists the environment `acme-old`, which .*"Environments" doesn't/,
+      );
+    });
+
+    it("fails on reviewers that differ from the page's", () => {
+      const files = acmeList((list) => {
+        list.environments["acme-cleanup"].reviewers = "required";
+      });
+      expectError(
+        files,
+        /says `acme-cleanup` has required reviewers, but .*"Environments" says "None"/,
+      );
+    });
+
+    it("fails on a step that isn't a heading in the guide", () => {
+      const files = acmeList((list) => {
+        list.variables.ACME_ZONE.step = "#6-optional-settings";
+      });
+      expectError(
+        files,
+        /^deploy\/acme\/requirements\.json: variables\.ACME_ZONE\.step links docs\/deploy\/acme\.md#6-optional-settings, which isn't a heading there/,
+      );
+    });
+
+    it("fails on an environment's step that isn't a heading", () => {
+      const files = acmeList((list) => {
+        list.environments.acme.secrets.ACME_TOKEN.step = "#3-create-the-token";
+      });
+      expectError(
+        files,
+        /environments\.acme\.secrets\.ACME_TOKEN\.step links .*#3-create-the-token/,
+      );
+    });
+  });
+
+  describe("a preflight step", () => {
+    const DEPLOY_PATH = ".github/workflows/deploy-acme.yml";
+    const CLEANUP_PATH = ".github/workflows/cleanup-acme.yml";
+
+    it("fails on a secret the step doesn't pass", () => {
+      const files = edit(
+        acme(),
+        CLEANUP_PATH,
+        "          vars: ${{ toJSON(vars) }}\n        env:\n          ACME_TOKEN: ${{ secrets.ACME_TOKEN }}\n",
+        "          vars: ${{ toJSON(vars) }}\n",
+      );
+      expectError(
+        files,
+        /^\.github\/workflows\/cleanup-acme\.yml: the job `cleanup`'s preflight step doesn't pass the secret ACME_TOKEN, which `acme-cleanup` lists/,
+      );
+    });
+
+    it("fails on a secret passed under another name", () => {
+      const files = edit(
+        acme(),
+        DEPLOY_PATH,
+        "          ACME_TOKEN: ${{ secrets.ACME_TOKEN }}\n      - name: Create",
+        "          TOKEN: ${{ secrets.ACME_TOKEN }}\n      - name: Create",
+      );
+      expectError(files, /`deploy`'s preflight step doesn't pass the secret/);
+    });
+
+    it("needs no secrets outside the environment", () => {
+      const files = edit(
+        acme(),
+        DEPLOY_PATH,
+        "jobs:\n",
+        'jobs:\n  preflight:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: ./.github/actions/deploy-preflight\n        with:\n          provider: acme\n          environment: acme\n          in-environment: "false"\n',
+      );
+      assert.deepEqual(checkDeployDocs(files), []);
+    });
+
+    it("fails on another provider", () => {
+      const files = edit(
+        acme(),
+        DEPLOY_PATH,
+        "provider: acme",
+        "provider: zeta",
+      );
+      expectError(files, /preflight step has `provider: zeta`, not `acme`/);
+    });
+
+    it("fails on an environment the list doesn't have", () => {
+      const files = edit(
+        acme(),
+        DEPLOY_PATH,
+        "environment: acme\n",
+        "environment: acme-prod\n",
+      );
+      expectError(
+        files,
+        /has `environment: acme-prod`, which isn't in deploy\/acme\/requirements\.json/,
+      );
+    });
+
+    it("fails on an environment that isn't the job's", () => {
+      const files = edit(
+        acme(),
+        DEPLOY_PATH,
+        "          environment: acme\n",
+        "          environment: acme-cleanup\n",
+      );
+      expectError(
+        files,
+        /checks the environment `acme-cleanup`, but the job runs in `acme`/,
+      );
+    });
+  });
+
+  describe("the shared list", () => {
+    const LIST = "deploy/requirements.json";
+    const sharedList = (change: (list: Json) => void) =>
+      editList(acme(), LIST, change);
+
+    it("fails when it's missing", () => {
+      const files = acme();
+      files.delete(LIST);
+      expectError(files, /^deploy\/requirements\.json: is missing\./);
+    });
+
+    it("fails on a variable the shared table lists and it doesn't", () => {
+      const files = sharedList((list) => {
+        delete list.variables.MAX_INVITES;
+      });
+      expectError(
+        files,
+        /the shared table lists `MAX_INVITES`, which deploy\/requirements\.json doesn't/,
+      );
+    });
+
+    it("fails on a variable it lists and the shared table doesn't", () => {
+      const files = sharedList((list) => {
+        list.variables.MAX_SERVERS = { pattern: "^[0-9]$", step: "#providers" };
+      });
+      expectError(
+        files,
+        /^deploy\/requirements\.json: lists `MAX_SERVERS`, which the shared table .* doesn't/,
+      );
+    });
+
+    it("fails on a step that isn't a heading in the index", () => {
+      const files = sharedList((list) => {
+        list.variables.MAX_INVITES.step = "#the-invites";
+      });
+      expectError(
+        files,
+        /variables\.MAX_INVITES\.step links docs\/deploy\/README\.md#the-invites, which isn't a heading there/,
+      );
+    });
+
+    it("fails on a default its rule doesn't allow", () => {
+      const files = sharedList((list) => {
+        list.variables.MAX_INVITES.minimum = 10;
+        list.variables.MAX_INVITES.example = "10";
+      });
+      expectError(
+        files,
+        /default for `MAX_INVITES`, `5`, breaks its rule .*: it isn't from 10 to 10000/,
+      );
+    });
+
+    it("fails on a range that differs", () => {
+      const files = sharedList((list) => {
+        list.variables.MAX_INVITES.maximum = 100;
+      });
+      expectError(
+        files,
+        /Allowed values for `MAX_INVITES` says "from 1 to 10000", but deploy\/requirements\.json's range is from 1 to 100/,
+      );
+    });
+
+    it("fails on a range the rule doesn't have", () => {
+      const files = sharedList((list) => {
+        delete list.variables.MAX_INVITES.minimum;
+        delete list.variables.MAX_INVITES.maximum;
+      });
+      expectError(
+        files,
+        /`MAX_INVITES` says "from 1 to 10000", but deploy\/requirements\.json has no range/,
+      );
+    });
+
+    it("fails on a whole number whose rule allows decimals", () => {
+      const files = sharedList((list) => {
+        list.variables.MAX_INVITES.pattern = "^[0-9.]{1,6}$";
+      });
+      expectError(
+        files,
+        /says "whole number", but deploy\/requirements\.json allows `1\.5`/,
+      );
+    });
+
+    it("fails on an example its rule doesn't allow", () => {
+      const files = sharedList((list) => {
+        list.variables.MAX_DEPLOY_COST_USD.pattern = "^[0-9]{1,4}$";
+        list.variables.MAX_DEPLOY_COST_USD.example = "2";
+      });
+      expectError(
+        files,
+        /`MAX_DEPLOY_COST_USD` says "`2\.50`", but deploy\/requirements\.json doesn't allow `2\.50`/,
+      );
+    });
+
+    it("fails on a limit that differs", () => {
+      const files = sharedList((list) => {
+        list.variables.MAX_DEPLOY_COST_USD.pattern =
+          "^[0-9]{1,3}(\\.[0-9]{1,2})?$";
+      });
+      expectError(
+        files,
+        /says "below 10000", but deploy\/requirements\.json doesn't allow `9999`/,
+      );
+    });
+
+    it("fails on decimals that differ", () => {
+      const files = sharedList((list) => {
+        list.variables.MAX_DEPLOY_COST_USD.pattern =
+          "^[0-9]{1,4}(\\.[0-9]{1,3})?$";
+      });
+      expectError(
+        files,
+        /says "up to two decimals", but deploy\/requirements\.json allows `1\.555`/,
+      );
     });
   });
 });

@@ -12,16 +12,32 @@
  * index's common pattern that it can read: that identity values stay in their
  * environments and tuning values in the repository, and the guide's headings.
  * "Adding a provider" in the index describes the tables this reads.
+ *
+ * The preflight's lists are checked against the docs too: each provider's
+ * `deploy/<provider>/requirements.json` names what its page does, in the same
+ * places, and links headings that are on the page; `deploy/requirements.json`
+ * agrees with the index's shared table; and each workflow's preflight step
+ * passes every secret its environment's list names. The lists' own format and
+ * what the preflight does with them are packages/deploy's tests.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
+import type {
+  Requirements,
+  Rule,
+} from "../packages/deploy/src/requirements.ts";
+import requirements, {
+  valueProblem,
+} from "../packages/deploy/src/requirements.ts";
 
 /** Repository files by their path from the root, with `/` separators. */
 export type Files = Map<string, string>;
 
 const INDEX = "docs/deploy/README.md";
 const WORKFLOWS = ".github/workflows/";
+/** The preflight's list of the shared variables */
+const SHARED_LIST = "deploy/requirements.json";
 
 /** Each table's columns, in order, as the docs must write them. */
 export const COLUMNS = {
@@ -160,6 +176,28 @@ function addUse(
   else use.outside.add(workflow);
 }
 
+/** One provider's workflows, by file name, parsed. */
+function workflowsOf(
+  files: Files,
+  provider: string,
+): Array<[string, { jobs?: Record<string, unknown> }]> {
+  const found: Array<[string, { jobs?: Record<string, unknown> }]> = [];
+  for (const [path, text] of files) {
+    if (path.startsWith(WORKFLOWS) && path.endsWith(`-${provider}.yml`)) {
+      found.push([path.slice(WORKFLOWS.length), parse(text) ?? {}]);
+    }
+  }
+  return found;
+}
+
+/** A job's environment: `environment: name` or `environment: { name }`. */
+function jobEnvironment(job: unknown): string | undefined {
+  const raw = (job as { environment?: unknown } | null)?.environment;
+  if (typeof raw === "string") return raw;
+  const name = (raw as { name?: unknown } | undefined)?.name;
+  return typeof name === "string" ? name : undefined;
+}
+
 /** What one provider's workflows use from GitHub. */
 export function usage(files: Files, provider: string): Usage {
   const result: Usage = {
@@ -168,25 +206,13 @@ export function usage(files: Files, provider: string): Usage {
     secrets: new Map(),
     variables: new Map(),
   };
-  for (const [path, text] of files) {
-    if (!path.startsWith(WORKFLOWS) || !path.endsWith(`-${provider}.yml`)) {
-      continue;
-    }
-    const workflow = path.slice(WORKFLOWS.length);
+  for (const [workflow, parsed] of workflowsOf(files, provider)) {
     result.workflows.push(workflow);
-    const { jobs = {}, ...top } = (parse(text) ?? {}) as {
-      jobs?: Record<string, unknown>;
-    };
+    const { jobs = {}, ...top } = parsed;
     // [names, environment]: the workflow's own keys have no environment
     const parts: Array<[unknown, string | undefined]> = [[top, undefined]];
     for (const job of Object.values(jobs)) {
-      const raw = (job as { environment?: unknown } | null)?.environment;
-      const environment =
-        typeof raw === "string"
-          ? raw
-          : typeof (raw as { name?: unknown } | undefined)?.name === "string"
-            ? (raw as { name: string }).name
-            : undefined;
+      const environment = jobEnvironment(job);
       if (environment) {
         const users = result.environments.get(environment) ?? new Set();
         users.add(workflow);
@@ -346,6 +372,7 @@ export function checkDeployDocs(files: Files): string[] {
   const shared = new Set(
     (sharedTable?.rows ?? []).flatMap((row) => codeSpans(row[0]).slice(0, 1)),
   );
+  checkSharedList(errors, files, sharedTable, indexLines);
 
   const providersTable = expectTable(
     errors,
@@ -366,6 +393,19 @@ export function checkDeployDocs(files: Files): string[] {
 
   for (const [provider, use] of usages) {
     checkProvider(errors, files, provider, use, shared, rows.get(provider));
+    // A list whose provider has no workflows yet waits for its page
+    const listPath = `deploy/${provider}/requirements.json`;
+    if (!files.has(listPath)) {
+      errors.push(
+        `${listPath}: is missing. ${provider} has workflows (${list(use.workflows)}), and their preflight reads what to check from it.`,
+      );
+      continue;
+    }
+    const providerList = readList(errors, files, listPath, false);
+    if (providerList) {
+      checkList(errors, files, provider, providerList, shared);
+      checkPreflightSteps(errors, files, provider, providerList);
+    }
   }
 
   // Listed, but with no workflows
@@ -753,6 +793,447 @@ function checkGuide(
   }
 }
 
+// ---------------------------------------------------------- Preflight lists
+
+/** A preflight list, or undefined, with a message, if it can't be read. */
+function readList(
+  errors: string[],
+  files: Files,
+  path: string,
+  shared: boolean,
+): Requirements | undefined {
+  const text = files.get(path);
+  if (text === undefined) return undefined;
+  try {
+    return requirements(path, JSON.parse(text), { shared });
+  } catch (error) {
+    // requirements() names the file and the key; JSON.parse doesn't
+    const message = (error as Error).message;
+    errors.push(message.startsWith(path) ? message : `${path}: ${message}`);
+    return undefined;
+  }
+}
+
+/**
+ * The anchors GitHub gives a page's headings, such as `#5-optional-settings`,
+ * with `-1`, `-2` and on for repeats. Code blocks are skipped.
+ */
+export function anchors(lines: readonly string[]): Set<string> {
+  const seen = new Map<string, number>();
+  const result = new Set<string>();
+  let fenced = false;
+  for (const line of lines) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    const heading = fenced ? null : /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
+    if (!heading) continue;
+    const base = heading[1]
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+      .replace(/\s/g, "-");
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    result.add(`#${count === 0 ? base : `${base}-${count}`}`);
+  }
+  return result;
+}
+
+/** Every `step` a list links, with the key it's under. */
+function steps(list: Requirements): Array<[string, string]> {
+  const found: Array<[string, string]> = [];
+  for (const [name, environment] of list.environments) {
+    const at = `environments.${name}`;
+    found.push([at, environment.step]);
+    for (const kind of ["variables", "secrets"] as const) {
+      for (const [rule, { step }] of environment[kind]) {
+        found.push([`${at}.${kind}.${rule}`, step]);
+      }
+    }
+  }
+  for (const [name, { step }] of list.variables) {
+    found.push([`variables.${name}`, step]);
+  }
+  return found;
+}
+
+/** Each `step` in a list is a heading in its guide. */
+function checkSteps(
+  errors: string[],
+  listPath: string,
+  list: Requirements,
+  guidePath: string,
+  guide: readonly string[],
+): void {
+  const found = anchors(guide);
+  for (const [key, step] of steps(list)) {
+    if (!found.has(step)) {
+      errors.push(
+        `${listPath}: ${key}.step links ${guidePath}${step}, which isn't a heading there. Link the heading that fixes it, or rename the heading back.`,
+      );
+    }
+  }
+}
+
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six"];
+
+/**
+ * What an "Allowed values" cell says that the rule disagrees with: each
+ * example in backticks, "whole number", "from A to B" (or "at least" and
+ * "at most"), "below N" and "up to N decimals".
+ */
+function allowedProblems(rule: Rule, allowed: string): string[] {
+  const problems: string[] = [];
+  const accepts = (value: string) => valueProblem(rule, value) === undefined;
+  const says = (claim: string, value: string, wanted: boolean) => {
+    if (accepts(value) !== wanted) {
+      problems.push(
+        `says "${claim}", but ${SHARED_LIST} ${wanted ? "doesn't allow" : "allows"} \`${value}\``,
+      );
+    }
+  };
+  for (const value of codeSpans(allowed)) {
+    says(`\`${value}\``, value, true);
+  }
+  if (/whole number/i.test(allowed)) says("whole number", "1.5", false);
+
+  const { minimum, maximum } = rule;
+  const range =
+    minimum !== undefined && maximum !== undefined
+      ? `from ${minimum} to ${maximum}`
+      : minimum !== undefined
+        ? `at least ${minimum}`
+        : maximum !== undefined
+          ? `at most ${maximum}`
+          : undefined;
+  const number = String.raw`\d+(?:\.\d+)?`;
+  const written = new RegExp(
+    String.raw`\b(from ${number} to ${number}|at least ${number}|at most ${number})\b`,
+    "i",
+  ).exec(allowed);
+  if (range && written?.[1].toLowerCase() !== range) {
+    problems.push(
+      `says "${written?.[1] ?? allowed}", but ${SHARED_LIST}'s range is ${range}`,
+    );
+  } else if (!range && written) {
+    problems.push(`says "${written[1]}", but ${SHARED_LIST} has no range`);
+  }
+
+  const below = /\bbelow (\d+)/i.exec(allowed);
+  if (below) {
+    const limit = Number(below[1]);
+    says(`below ${limit}`, String(limit), false);
+    says(`below ${limit}`, String(limit - 1), true);
+  }
+  const decimals = /\bup to (\w+) decimals?/i.exec(allowed);
+  if (decimals) {
+    const word = decimals[1].toLowerCase();
+    const places = NUMBER_WORDS.includes(word)
+      ? NUMBER_WORDS.indexOf(word)
+      : Number(word);
+    if (Number.isInteger(places) && places > 0) {
+      const claim = `up to ${decimals[1]} decimals`;
+      says(claim, `1.${"5".repeat(places)}`, true);
+      says(claim, `1.${"5".repeat(places + 1)}`, false);
+    }
+  }
+  return problems;
+}
+
+/**
+ * `deploy/requirements.json` lists the index's shared variables, with rules
+ * that match their Default and Allowed values, and links the index's
+ * headings.
+ */
+function checkSharedList(
+  errors: string[],
+  files: Files,
+  sharedTable: Table | undefined,
+  indexLines: readonly string[],
+): void {
+  if (!files.has(SHARED_LIST)) {
+    errors.push(
+      `${SHARED_LIST}: is missing. The preflight reads the shared variables' rules from it.`,
+    );
+    return;
+  }
+  const list = readList(errors, files, SHARED_LIST, true);
+  if (!list) return;
+  checkSteps(errors, SHARED_LIST, list, INDEX, indexLines);
+  if (!sharedTable) return;
+
+  const rows = new Map(
+    sharedTable.rows.map((r) => [codeSpans(r[0])[0] ?? r[0], r] as const),
+  );
+  for (const [name, row] of rows) {
+    const rule = list.variables.get(name);
+    if (!rule) {
+      errors.push(
+        `${INDEX}: the shared table lists \`${name}\`, which ${SHARED_LIST} doesn't. Add it there, so the preflight checks it.`,
+      );
+      continue;
+    }
+    const fallback = codeSpans(row[2])[0];
+    const problem =
+      fallback === undefined ? undefined : valueProblem(rule, fallback);
+    if (problem) {
+      errors.push(
+        `${INDEX}: the shared table's default for \`${name}\`, \`${fallback}\`, breaks its rule in ${SHARED_LIST}: it ${problem}.`,
+      );
+    }
+    for (const problem of allowedProblems(rule, row[3] ?? "")) {
+      errors.push(
+        `${INDEX}: the shared table's Allowed values for \`${name}\` ${problem}. Make the two agree.`,
+      );
+    }
+  }
+  for (const name of list.variables.keys()) {
+    if (!rows.has(name)) {
+      errors.push(
+        `${SHARED_LIST}: lists \`${name}\`, which the shared table in ${INDEX} doesn't.`,
+      );
+    }
+  }
+}
+
+/** Names in backticks, sorted, so two lists compare as text. */
+const sortedList = (names: Iterable<string>) => list([...names].sort());
+
+/** Where a secret or variable is, as a page or a list says. */
+type Place = {
+  kind: "secret" | "variable";
+  /** "Repository", or the environments it's in, in backticks */
+  where: string;
+  required?: boolean;
+  /** The page's Required column, as written */
+  column?: string;
+};
+
+const placeName = ({ kind, where }: Place) =>
+  where === "Repository" ? `a repository ${kind}` : `a ${kind} in ${where}`;
+
+/** The secrets and variables a provider's list names, and where. */
+function listPlaces(list: Requirements): Map<string, Place> {
+  const environments = new Map<string, { place: Place; in: string[] }>();
+  for (const [environment, own] of list.environments) {
+    for (const kind of ["secrets", "variables"] as const) {
+      for (const [name, rule] of own[kind]) {
+        const found = environments.get(name) ?? {
+          place: {
+            kind: kind === "secrets" ? "secret" : "variable",
+            where: "",
+          },
+          in: [],
+        };
+        found.in.push(environment);
+        // Required if any environment requires it: the page has one column
+        if (kind === "variables") {
+          found.place.required = !!found.place.required || rule.required;
+        }
+        environments.set(name, found);
+      }
+    }
+  }
+  const places = new Map<string, Place>();
+  for (const [name, found] of environments) {
+    places.set(name, { ...found.place, where: sortedList(found.in) });
+  }
+  for (const [name, rule] of list.variables) {
+    places.set(name, {
+      kind: "variable",
+      where: "Repository",
+      required: rule.required,
+    });
+  }
+  return places;
+}
+
+/** The secrets and variables a provider's page names, and where. */
+function pagePlaces(
+  needs: readonly string[],
+  shared: Set<string>,
+): Map<string, Place> {
+  const places = new Map<string, Place>();
+  const secrets = table(section(needs, 3, "Secrets") ?? []);
+  if (secrets?.columns.join(" | ") === COLUMNS.secrets.join(" | ")) {
+    for (const row of secrets.rows) {
+      places.set(codeSpans(row[0])[0] ?? row[0], {
+        kind: "secret",
+        where: sortedList(codeSpans(row[1])),
+      });
+    }
+  }
+  const variables = table(section(needs, 3, "Variables") ?? []);
+  if (variables?.columns.join(" | ") === COLUMNS.variables.join(" | ")) {
+    for (const row of variables.rows) {
+      const name = codeSpans(row[0])[0] ?? row[0];
+      // The index lists the shared ones, and checkProvider reports them here
+      if (shared.has(name)) continue;
+      const environments = codeSpans(row[1]);
+      places.set(name, {
+        kind: "variable",
+        where:
+          environments.length > 0 ? sortedList(environments) : "Repository",
+        // Anything else is reported, by the Required column's own text
+        required: /^required$/i.test(row[3] ?? "")
+          ? true
+          : /^optional$/i.test(row[3] ?? "")
+            ? false
+            : undefined,
+        column: row[3] ?? "",
+      });
+    }
+  }
+  return places;
+}
+
+/**
+ * A provider's list names the environments, secrets and variables its page
+ * does, in the same places, with the same reviewers and the same required
+ * ones, and links headings that are on the page.
+ */
+function checkList(
+  errors: string[],
+  files: Files,
+  provider: string,
+  list: Requirements,
+  shared: Set<string>,
+): void {
+  const listPath = `deploy/${provider}/requirements.json`;
+  const pagePath = `docs/deploy/${provider}.md`;
+  const page = files.get(pagePath);
+  // checkProvider reports a missing page or section
+  if (page === undefined) return;
+  const lines = page.split("\n");
+  checkSteps(errors, listPath, list, pagePath, lines);
+  const needs = section(lines, 2, "What this deployment needs");
+  if (!needs) return;
+  const where = (name: string) =>
+    `${pagePath}'s "What this deployment needs" → "${name}"`;
+
+  const environments = table(section(needs, 3, "Environments") ?? []);
+  if (environments?.columns.join(" | ") === COLUMNS.environments.join(" | ")) {
+    const rows = new Map(
+      environments.rows.map((r) => [codeSpans(r[0])[0] ?? r[0], r] as const),
+    );
+    for (const [name, { reviewers }] of list.environments) {
+      const row = rows.get(name);
+      if (!row) {
+        errors.push(
+          `${listPath}: lists the environment \`${name}\`, which ${where("Environments")} doesn't.`,
+        );
+        continue;
+      }
+      const page = /^none\b/i.test(row[2] ?? "") ? "none" : "required";
+      if (page !== reviewers) {
+        errors.push(
+          `${listPath}: says \`${name}\` has ${reviewers === "none" ? "no required reviewers" : "required reviewers"}, but ${where("Environments")} says "${row[2] ?? ""}".`,
+        );
+      }
+    }
+    for (const name of rows.keys()) {
+      if (!list.environments.has(name)) {
+        errors.push(
+          `${listPath}: doesn't list the environment \`${name}\`, which ${where("Environments")} does. Add it, so the preflight checks it.`,
+        );
+      }
+    }
+  }
+
+  const listed = listPlaces(list);
+  const documented = pagePlaces(needs, shared);
+  for (const [name, place] of listed) {
+    const other = documented.get(name);
+    if (!other) {
+      errors.push(
+        shared.has(name)
+          ? `${listPath}: lists the shared variable \`${name}\`, which ${SHARED_LIST} already has. Remove it.`
+          : `${listPath}: lists \`${name}\`, ${placeName(place)}, which ${pagePath}'s "What this deployment needs" doesn't.`,
+      );
+    } else if (other.kind !== place.kind || other.where !== place.where) {
+      errors.push(
+        `${listPath}: has \`${name}\` as ${placeName(place)}, but ${pagePath}'s "What this deployment needs" has it as ${placeName(other)}.`,
+      );
+    } else if (place.kind === "variable" && other.required === undefined) {
+      errors.push(
+        `${pagePath}: "What this deployment needs" → "Variables" says \`${name}\`'s Required is "${other.column}". Write "Required" or "Optional", as ${listPath} has it ${place.required ? "required" : "optional"}.`,
+      );
+    } else if (place.kind === "variable" && other.required !== place.required) {
+      errors.push(
+        `${listPath}: says \`${name}\` is ${place.required ? "required" : "optional"}, but ${where("Variables")} says it's ${other.required ? "required" : "optional"}.`,
+      );
+    }
+  }
+  for (const [name, place] of documented) {
+    if (!listed.has(name)) {
+      errors.push(
+        `${listPath}: doesn't list \`${name}\`, ${placeName(place)}, which ${pagePath}'s "What this deployment needs" does. Add it, so the preflight checks it.`,
+      );
+    }
+  }
+}
+
+const PREFLIGHT = /(^|\/)\.github\/actions\/deploy-preflight$/;
+
+/**
+ * Each preflight step in a provider's workflows is for that provider and an
+ * environment in its list, and, in the environment's job, passes every
+ * secret the environment lists through `env:` under its own name.
+ */
+function checkPreflightSteps(
+  errors: string[],
+  files: Files,
+  provider: string,
+  list: Requirements,
+): void {
+  const readme = ".github/actions/deploy-preflight/README.md";
+  for (const [workflow, { jobs = {} }] of workflowsOf(files, provider)) {
+    const path = `${WORKFLOWS}${workflow}`;
+    for (const [id, job] of Object.entries(jobs)) {
+      const stepsOfJob = (job as { steps?: unknown } | null)?.steps;
+      if (!Array.isArray(stepsOfJob)) continue;
+      for (const step of stepsOfJob as Array<Record<string, unknown> | null>) {
+        if (typeof step?.uses !== "string" || !PREFLIGHT.test(step.uses)) {
+          continue;
+        }
+        const at = `${path}: the job \`${id}\`'s preflight step`;
+        const inputs = (step.with ?? {}) as Record<string, unknown>;
+        if (inputs.provider !== provider) {
+          errors.push(
+            `${at} has \`provider: ${String(inputs.provider)}\`, not \`${provider}\`.`,
+          );
+        }
+        const environment = String(inputs.environment);
+        const own = list.environments.get(environment);
+        if (!own) {
+          errors.push(
+            `${at} has \`environment: ${environment}\`, which isn't in deploy/${provider}/requirements.json (${sortedList(list.environments.keys())}).`,
+          );
+          continue;
+        }
+        if (String(inputs["in-environment"] ?? "true") === "false") continue;
+        if (jobEnvironment(job) !== environment) {
+          errors.push(
+            `${at} checks the environment \`${environment}\`, but the job runs in ${jobEnvironment(job) ? `\`${jobEnvironment(job)}\`` : "none"}. Give it the job's environment, or \`in-environment: "false"\`.`,
+          );
+        }
+        const env = (step.env ?? {}) as Record<string, unknown>;
+        for (const name of own.secrets.keys()) {
+          const value = env[name];
+          const passed =
+            typeof value === "string" &&
+            Array.from(value.matchAll(EXPRESSION)).some((match) =>
+              new RegExp(`\\bsecrets\\.${name}\\b`).test(match[1]),
+            );
+          if (!passed) {
+            errors.push(
+              `${at} doesn't pass the secret ${name}, which \`${environment}\` lists. Add \`${name}: \${{ secrets.${name} }}\` to its env. See ${readme}.`,
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------------- CLI
 
 /** The files the check reads, from a checkout at `root`. */
@@ -778,7 +1259,11 @@ export function readFiles(root: string): Files {
   for (const name of names("docs/deploy")) {
     if (name.endsWith(".md")) read(`docs/deploy/${name}`);
   }
-  for (const name of names("deploy")) read(`deploy/${name}/README.md`);
+  read(SHARED_LIST);
+  for (const name of names("deploy")) {
+    read(`deploy/${name}/README.md`);
+    read(`deploy/${name}/requirements.json`);
+  }
   return files;
 }
 
