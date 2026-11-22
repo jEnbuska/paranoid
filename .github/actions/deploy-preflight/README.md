@@ -76,7 +76,7 @@ The job's token needs `actions: read`, which GitHub's docs list for reading an e
 
 ### Secrets
 
-A composite action can't read the `secrets` context, so the step passes each secret its environment lists through `env:`, under the secret's own name. An unset secret arrives empty and is reported as not set. One the step doesn't pass at all is reported as a mistake in the workflow.
+A composite action can't read the `secrets` context, so the step passes each secret its environment lists through `env:`, under the secret's own name. An unset secret arrives empty and is reported as not set. One the step doesn't pass at all is reported as a mistake in the workflow, and `pnpm check:deploy-docs` fails on it before it merges.
 
 ## Writing a provider's list
 
@@ -122,12 +122,12 @@ A composite action can't read the `secrets` context, so the step passes each sec
 }
 ```
 
-- The names are the ones the provider's page lists in "What this deployment needs" ([the index](../../../docs/deploy/README.md#adding-a-provider) has its template). Keep the two the same.
+- The names are the ones the provider's page lists in "What this deployment needs" ([the index](../../../docs/deploy/README.md#adding-a-provider) has its template). Keep the two the same: `pnpm check:deploy-docs` fails if they differ, or if a `step` isn't a heading in the guide.
 - `environments.<name>.variables` are the environment's own variables, and `variables` at the top are repository variables. A repository variable's `environments` says which environments' jobs read it, so a cleanup isn't failed by a variable only the deploy reads. Without it, every job checks it.
 - Each rule is optional unless `"required": true`, and it's checked whenever it's set. `pattern` is a whole-value regular expression, anchored with `^` and `$`. `minimum` and `maximum` make it a number in that range. `example` is shown when a variable is wrong. A secret has no example.
 - `step` is the guide step that fixes it, a link into `guide`, by the [common guide skeleton](../../../docs/deploy/README.md#the-same-deploy-on-every-provider): the environments, the credentials in them and the identity values are set in step 5, "Connect your fork" (the credentials themselves are made in step 4), and the tuning values in step 6, "Optional settings". Link the heading the guide actually has, which a provider that folds two steps together, or adds words to one, names its own way.
-- Don't list the shared variables (`MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT`, `MAX_DEPLOY_COST_USD`). `deploy/requirements.json` has them, with the same rules as the index's [shared table](../../../docs/deploy/README.md#shared-repository-variables).
-- `pnpm --filter deploy test` checks every provider's list the same way, in [`provider-requirements.test.ts`](../../../packages/deploy/src/__tests__/provider-requirements.test.ts), so a new provider needs no test of its own. It fails CI on a misspelled key or a bad pattern, and unless the list has the two environments with their reviewers as above, its keys in the example's order, a pattern for every value and an example for every variable, the provider's prefix on every name, and every `step` a heading in the guide, once the guide exists. It also runs the preflight against the list, set and unset. A provider with a secret adds a fake value for it to the test's `FAKE_SECRETS`.
+- Don't list the shared variables (`MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT`, `MAX_DEPLOY_COST_USD`). `deploy/requirements.json` has them, with the same rules as the index's [shared table](../../../docs/deploy/README.md#shared-repository-variables), which `pnpm check:deploy-docs` compares.
+- `pnpm --filter deploy test` checks every provider's list the same way, in [`provider-requirements.test.ts`](../../../packages/deploy/src/__tests__/provider-requirements.test.ts), so a new provider needs no test of its own. It fails CI on a misspelled key or a bad pattern, and unless the list has the two environments with their reviewers as above, its keys in the example's order, a pattern for every value and an example for every variable, and the provider's prefix on every name. It also runs the preflight against the list, set and unset. A provider with a secret adds a fake value for it to the test's `FAKE_SECRETS`.
 
 ## What it can't see
 

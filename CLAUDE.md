@@ -64,7 +64,7 @@ pnpm workspace (`pnpm-workspace.yaml`) with five packages: `packages/client-app`
 - `pnpm test:e2e`: Playwright tests, on their own ports. Install browsers first: `pnpm --filter e2e exec playwright install chromium firefox webkit`.
 - `pnpm format` / `pnpm format:check`: oxfmt over the whole repo.
 - `pnpm knip`: unused files, exports and dependencies in every workspace. After knip's own table, `scripts/knip-explain.mts` explains each finding and how to fix it.
-- `pnpm check:deploy-docs`: checks that `docs/deploy/` lists what the deploy workflows use (see `deploy/CLAUDE.md`).
+- `pnpm check:deploy-docs`: checks that `docs/deploy/` lists what the deploy workflows use, and that the preflight's `requirements.json` lists agree with it (see `deploy/CLAUDE.md`).
 - One package: `pnpm --filter <package> <script>`.
 
 Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm format:check` (or `pnpm format` to fix it) and `pnpm test`, `pnpm build` and `pnpm test:e2e` for client or signaling changes, and `pnpm check:deploy-docs` for deploy workflow or `docs/deploy/` changes. CI runs these too (see `.github/CLAUDE.md`).

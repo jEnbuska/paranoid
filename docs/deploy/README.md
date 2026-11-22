@@ -113,6 +113,15 @@ CI keeps the pages true to the workflows, and checks the parts of the pattern ab
 - a variable's **Set in** doesn't match where the workflows read it, an identity value is set in the repository or a tuning value in an environment, judged by its name's ending (`_ARN`, `_CLIENT_ID`, `_PROJECT` and the like, or `_REGION`, `_SIZE`, `_USD` and the like), a token is a variable, or an identity value has a second, `_CLEANUP_` name;
 - the guide's `##` headings aren't the skeleton's, in its order, with the steps numbered from 1, starting with "Fork" and "Sign up" and ending with "Optional settings", "Start a server" and "Stop it".
 
+It also reads the preflight's lists, `deploy/requirements.json` and each `deploy/<provider>/requirements.json`, so the page, the workflows and what the preflight checks can't drift apart. A provider's list is checked once its workflows land, and the check fails if:
+
+- a provider with workflows has no list, or its list and its page don't name the same environments, secrets and variables in the same places: an environment's required reviewers ("You" or "None"), the environments each secret and environment variable is in, which variables are repository variables, and which are **Required** (write "Required" or "Optional");
+- a `step` in a list isn't a heading in its guide, or, for the shared list, in this index;
+- `deploy/requirements.json` doesn't list the same variables as [the shared table](#shared-repository-variables), or a rule disagrees with its row: the **Default** and each value in backticks under **Allowed values** must pass the rule, and the phrases "whole number", "from A to B", "below N" and "up to N decimals" must say what the rule allows;
+- a workflow's preflight step names another provider or an environment its list doesn't have, checks an environment that isn't its job's, or, in the environment's job, doesn't pass every secret that environment lists through `env:` under its own name.
+
+The lists' own format, and what the preflight does with them, are `packages/deploy`'s tests, which `pnpm test` runs.
+
 The rest of the pattern, such as the CLIs, schedules, timeouts, job and step names, labels and the summary, is for review. Run the check from the repository root:
 
 ```bash
