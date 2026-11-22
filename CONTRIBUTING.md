@@ -53,7 +53,7 @@ GitHub's rebase drops empty commits, but `git rebase` keeps them. So "Update bra
 ## Opening a pull request
 
 1. Find or open an issue, and start your branch from `dev`. Name it `<TICKET_NUMBER>-<name>`, for example `2-peers-stuck-connecting`.
-2. Open the PR against `dev`, with `Closes #N`, `Fixes #N` or `Resolves #N` in its description. The issue has to be open. It closes when the PR merges.
+2. Open the PR against `dev`, with `Closes #N`, `Fixes #N` or `Resolves #N` in its description. The issue has to be open. It closes when the PR merges. Title the PR with its branch name, for example `97-dependency-audit`, and add a colon and a few words when the name doesn't explain the PR: `85-deploy-hetzner: Hetzner Cloud in the EU`. A hotfix PR uses its `hotfix/<name>` branch the same way.
 3. Keep the branch up to date by rebasing, with `git rebase origin/dev` or the "Update with rebase" option on the PR (see [When a PR can merge](#when-a-pr-can-merge), including why not to use that option on a PR whose only commit is empty).
 
 When an issue is too big for one PR, split it. Pieces that can't really be built on their own, because they depend on each other or only make sense together, become [sub-issues](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-sub-issues) of the original issue (`gh issue create --parent <N>`, or `gh issue edit <N> --add-sub-issue <CHILD>` for an existing issue). Work that can be built on its own becomes a separate issue. The same goes for whatever a PR leaves undone: move it to a sub-issue or a separate issue before the PR merges.
@@ -116,7 +116,7 @@ A hotfix is a `hotfix/*` branch into `dev` that doesn't need an issue. It's rele
 
 ## Releases
 
-1. Open a PR from `dev` into `main`.
+1. Open a PR from `dev` into `main`, titled `Release <date>`.
 2. When every check has passed, fast-forward `main`:
 
    ```bash
