@@ -9,7 +9,7 @@ Paranoid has two long-lived branches:
 
 |                                | Into `dev`                                                                                                     | Into `main`                                                     |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Allowed source                 | A PR that links an open issue, or a `hotfix/*` branch in this repository                                       | `dev` of this repository                                        |
+| Allowed source                 | A PR that links an open issue, a `hotfix/*` branch in this repository, or a [Dependabot](#dependabot) update   | `dev` of this repository                                        |
 | Direct pushes                  | Refused, for everyone                                                                                          | Refused, unless they fast-forward to the commit of a passing PR |
 | Force-pushes and deletion      | Refused, for everyone                                                                                          | Refused, for everyone                                           |
 | Must be up to date with target | Yes                                                                                                            | Yes                                                             |
@@ -84,6 +84,7 @@ It goes through the open PRs into `dev` and rebases each one that has fallen beh
 - **PRs from forks and the release PR from `dev` are skipped.** Rebasing the release PR would rewrite `dev`.
 - **A PR that conflicts is left unchanged** and gets one comment saying it needs a manual rebase. The comment is edited once the conflict is gone, and a later conflict gets a new one.
 - **A PR that's up to date is left alone**, whatever state its checks are in.
+- **[Dependabot](#dependabot)'s PRs aren't rebased by the script.** Dependabot stops updating a PR once someone else pushes to its branch, so when one is behind or conflicts, the script comments `@dependabot rebase` and Dependabot rebases it itself.
 
 It acts as whoever `gh` is signed in as, so the rebased commits and the comments come from that account. A push made with a user's login starts CI, so each rebased PR gets its checks again. A GitHub Actions workflow couldn't do the same without a GitHub App or a token in a secret, because pushes made with a workflow's own `GITHUB_TOKEN` don't start workflows.
 
@@ -121,6 +122,21 @@ The fix is made in the advisory's temporary private fork, not in a public branch
 ## Hotfixes
 
 A hotfix is a `hotfix/*` branch into `dev` that doesn't need an issue. It's released like everything else, through `dev`. Only branches in this repository count, because a fork can name a branch anything, so a fix from a fork links an issue.
+
+## Dependabot
+
+Dependabot does one job here: it keeps the GitHub Actions in our workflows up to date. [`.github/dependabot.yml`](.github/dependabot.yml) checks `dev` weekly and opens one PR into `dev` with every action that has a newer release. Every action is pinned to a commit SHA, with its version in a comment on the same line (`uses: actions/checkout@<sha> # v7.0.1`), and Dependabot updates both. It skips releases less than a week old, so a hijacked release has time to be noticed first.
+
+- **Its PRs don't link an issue.** `dependabot.yml` can't set a PR's description, so `PR rules` lets a PR through without one when Dependabot opened it from a `dependabot/*` branch. Both have to hold: anyone who can push can name a branch `dependabot/*`. Everything else applies as usual: CI runs everything, because the PR changes workflows, and the maintainer reviews and merges it.
+- **Its PR titles are Dependabot's own**, not the branch name.
+- **To update one, comment `@dependabot rebase`** rather than rebasing it yourself: once someone else pushes to its branch, Dependabot stops updating it. Close a PR you don't want, and Dependabot won't propose that version again.
+
+What Dependabot doesn't do here:
+
+- **It doesn't check our npm dependencies for vulnerabilities.** [GitHub's docs](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories#pnpm) say Dependabot creates no alerts or security updates for a `pnpm-lock.yaml` written as two YAML documents, which is pnpm 12's format here. `pnpm audit` in CI and the weekly `audit.yml` is the real dependency check. See the [README](README.md#continuous-integration).
+- **It raises no alerts for our actions.** [Alerts only cover actions pinned to a version](https://docs.github.com/en/code-security/reference/supply-chain-security/dependency-graph-supported-package-ecosystems), not to a commit SHA. The weekly version updates are what keeps the actions current.
+- **Security updates are off**, since they'd find nothing to update. Dependabot alerts are on: they cost nothing and start working by themselves if GitHub learns pnpm 12's lockfile format.
+- **It doesn't update npm dependencies.** Those are updated by hand, in a PR that links an issue.
 
 ## Releases
 

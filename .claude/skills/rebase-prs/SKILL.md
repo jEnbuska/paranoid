@@ -26,6 +26,7 @@ It acts as the signed-in `gh` user, so the pushes start CI on the rebased PRs.
 - **Behind `dev` and rebases cleanly:** rebased with GraphQL `updatePullRequestBranch` and `updateMethod: REBASE`, never the REST `update-branch`, which merges. `expectedHeadOid` makes it lose to a push that lands at the same moment.
 - **Conflicts:** left unchanged, with one comment telling the author to rebase onto `origin/<base>`. A later run doesn't repeat the comment while it still conflicts, and edits it once the conflict is gone.
 - **Up to date:** left alone, whatever its checks say.
+- **Dependabot's PRs** (author `dependabot`, branch `dependabot/*`), behind or conflicting: never rebased by the script. It comments `@dependabot rebase`, because Dependabot stops updating a PR once someone else pushes to its branch. Report them as asked, not rebased.
 
 ## Afterwards
 
