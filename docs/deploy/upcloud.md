@@ -4,26 +4,52 @@ This guide takes you from a GitHub account to your own Paranoid server in the EU
 
 You start a server from GitHub Actions for a set number of invites. It powers itself off once the last invite is finished, or when its lifetime is over, and a scheduled workflow then deletes it. Nothing runs between uses. Chats that have started keep working after the server is gone, because they're peer to peer.
 
-UpCloud's prices and rules below were checked on 2026-11-20. They can change, so check the linked pages too.
+UpCloud's prices and rules below were checked on 2026-11-20. They can change, so check the linked pages too. [Deploying Paranoid](README.md) explains how deploying works on every provider, and lists the other providers.
+
+## What this deployment needs
+
+Everything this deployment needs from GitHub, by name. It also reads the [shared repository variables](README.md#shared-repository-variables).
+
+### Environments
+
+| Environment       | Branches    | Required reviewers | Used by                                   |
+| ----------------- | ----------- | ------------------ | ----------------------------------------- |
+| `upcloud`         | `main` only | You                | `deploy-upcloud.yml`                      |
+| `upcloud-cleanup` | `main` only | None               | `cleanup-upcloud.yml`, `stop-upcloud.yml` |
+
+### Secrets
+
+| Secret          | Environment                  | Where its value comes from                                                                                                      |
+| --------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `UPCLOUD_TOKEN` | `upcloud`, `upcloud-cleanup` | An UpCloud API token for each, from the account GitHub Actions uses, created in [step 5](#5-create-the-api-tokens-and-add-them) |
+
+### Variables
+
+| Variable           | Set in     | What it does                            | Required | Default                        | Explained in                   |
+| ------------------ | ---------- | --------------------------------------- | -------- | ------------------------------ | ------------------------------ |
+| `UPCLOUD_ZONE`     | Repository | The zone the server runs in.            | Optional | `fi-hel1`                      | [Step 6](#6-optional-settings) |
+| `UPCLOUD_PLAN`     | Repository | The server's plan, its size and price.  | Optional | `STARTER-1xCPU-1GB`            | [Step 6](#6-optional-settings) |
+| `UPCLOUD_TEMPLATE` | Repository | UpCloud's Debian image with cloud-init. | Optional | `Debian GNU/Linux 13 (Trixie)` | [Step 6](#6-optional-settings) |
 
 ## Contents
 
-1. [Words used in this guide](#words-used-in-this-guide)
-2. [Fork the repository](#1-fork-the-repository)
-3. [Sign up for UpCloud](#2-sign-up-for-upcloud)
-4. [Create an account for GitHub Actions](#3-create-an-account-for-github-actions)
-5. [Create the environments in your fork](#4-create-the-environments-in-your-fork)
-6. [Create the API tokens and add them](#5-create-the-api-tokens-and-add-them)
-7. [Optional settings](#6-optional-settings)
-8. [Start a server](#7-start-a-server)
-9. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
-10. [Costs](#costs)
-11. [Checking nothing is left](#checking-nothing-is-left)
-12. [The tokens](#the-tokens)
-13. [Troubleshooting](#troubleshooting)
-14. [Removing everything](#removing-everything)
-15. [Privacy](#privacy)
-16. [What a deploy does](#what-a-deploy-does)
+1. [What this deployment needs](#what-this-deployment-needs)
+2. [Words used in this guide](#words-used-in-this-guide)
+3. [Fork the repository](#1-fork-the-repository)
+4. [Sign up for UpCloud](#2-sign-up-for-upcloud)
+5. [Create an account for GitHub Actions](#3-create-an-account-for-github-actions)
+6. [Create the environments in your fork](#4-create-the-environments-in-your-fork)
+7. [Create the API tokens and add them](#5-create-the-api-tokens-and-add-them)
+8. [Optional settings](#6-optional-settings)
+9. [Start a server](#7-start-a-server)
+10. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
+11. [Costs](#costs)
+12. [Checking nothing is left](#checking-nothing-is-left)
+13. [The tokens](#the-tokens)
+14. [Troubleshooting](#troubleshooting)
+15. [Removing everything](#removing-everything)
+16. [Privacy](#privacy)
+17. [What a deploy does](#what-a-deploy-does)
 
 ## Words used in this guide
 
@@ -185,25 +211,23 @@ For B, once both tokens are in GitHub, you can go back to your own login and tur
 
 ## 6. Optional settings
 
-Everything works with the defaults. To change one, add a variable in **Settings** → **Environments** → **upcloud** → **Environment variables**, or with `gh`, for example:
+Everything works with the defaults. The settings every provider shares, `MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT` and `MAX_DEPLOY_COST_USD`, are in [Deploying Paranoid's shared variables](README.md#shared-repository-variables). The **Deploy to UpCloud** workflow's inputs win over the variables, and the variables over the defaults.
+
+To change one, add a repository variable in **Settings** → **Secrets and variables** → **Actions** → **Variables** → **New repository variable**, or with `gh`, for example:
 
 ```bash
-gh variable set UPCLOUD_ZONE --env upcloud --body de-fra1 --repo <owner>/<repo>
+gh variable set UPCLOUD_ZONE --body de-fra1 --repo <owner>/<repo>
 ```
 
-The **Deploy to UpCloud** workflow's inputs win over the variables, and the variables over the defaults.
+UpCloud's own settings:
 
-| Name                  | Default                        | What it does                                                                                                                                                                                                                                                |
-| --------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MAX_INVITES`         | `5`                            | Invites the server creates before it powers off, from 1 to 10000. The `max_invites` input overrides it.                                                                                                                                                     |
-| `LIFETIME_MINUTES`    | `60`                           | Minutes until the server powers off at the latest, from 1 to 1440 (24 hours), counted from when it starts. The `lifetime_minutes` input overrides it.                                                                                                       |
-| `MAX_EGRESS_MBIT`     | `2`                            | Limit on all the server's outbound traffic, in Mbit/s, from 1 to 50, against abuse. At 2 Mbit/s, the app's files load in about a second.                                                                                                                    |
-| `UPCLOUD_ZONE`        | `fi-hel1`                      | [Zone](https://upcloud.com/docs/getting-started/locations/). In the EU: `fi-hel1`, `fi-hel2`, `de-fra1`, `nl-ams1`, `dk-cph1`, `se-sto1`, `pl-waw1`, `es-mad1`.                                                                                             |
-| `UPCLOUD_PLAN`        | `STARTER-1xCPU-1GB`            | [Plan](https://upcloud.com/docs/products/cloud-servers/configurations/): `STARTER-1xCPU-1GB`, `STARTER-1xCPU-2GB` or `PREMIUM-1xCPU-1GB`, the plans in [`prices.json`](../../deploy/upcloud/prices.json). The default is the cheapest. See [Costs](#costs). |
-| `MAX_DEPLOY_COST_USD` | `1`                            | The most one deploy may cost in the worst case, in US dollars, excluding VAT. A deploy that could cost more is refused before anything is created. See [Costs](#costs).                                                                                     |
-| `UPCLOUD_TEMPLATE`    | `Debian GNU/Linux 13 (Trixie)` | UpCloud's Debian image with cloud-init. Change it only if UpCloud renames it.                                                                                                                                                                               |
+| Name               | Default                        | What it does                                                                                                                                                                                                                                                  |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UPCLOUD_ZONE`     | `fi-hel1`                      | [Zone](https://upcloud.com/docs/getting-started/locations/). In the EU: `fi-hel1`, `fi-hel2`, `de-fra1`, `nl-ams1`, `dk-cph1`, `se-sto1`, `pl-waw1`, `es-mad1`. Other zones are refused, as they're not in [`prices.json`](../../deploy/upcloud/prices.json). |
+| `UPCLOUD_PLAN`     | `STARTER-1xCPU-1GB`            | [Plan](https://upcloud.com/docs/products/cloud-servers/configurations/): `STARTER-1xCPU-1GB`, `STARTER-1xCPU-2GB` or `PREMIUM-1xCPU-1GB`, the plans in [`prices.json`](../../deploy/upcloud/prices.json). The default is the cheapest. See [Costs](#costs).   |
+| `UPCLOUD_TEMPLATE` | `Debian GNU/Linux 13 (Trixie)` | UpCloud's Debian image with cloud-init. Change it only if UpCloud renames it.                                                                                                                                                                                 |
 
-The only secret is `UPCLOUD_TOKEN`. Never put a token or password in a variable: variables are shown in logs and to anyone with access to the repository.
+The only secrets are the two `UPCLOUD_TOKEN`s. Never put a token or password in a variable: variables are shown in logs and to anyone with access to the repository.
 
 The app uses Google's STUN servers unless `VITE_ICE_SERVERS` in [`packages/client-app/.env`](../../packages/client-app/.env) says otherwise. To use your own, change it in your fork and commit it. It isn't a secret: it's built into the app that every visitor downloads.
 
