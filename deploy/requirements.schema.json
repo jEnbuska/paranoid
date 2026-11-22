@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jEnbuska/paranoid/blob/main/deploy/requirements.schema.json",
+  "title": "Deploy requirements",
+  "description": "What a deployment needs from GitHub, by name: deploy/requirements.json for the shared repository variables, and deploy/<provider>/requirements.json for a provider's environments, variables and secrets. The deploy preflight (.github/actions/deploy-preflight) checks them before any cloud step. Names and rules only, never a value.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["guide"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "guide": {
+      "description": "The guide that explains these settings, from the repository root, such as docs/deploy/upcloud.md. Each `step` is a link into it.",
+      "type": "string",
+      "pattern": "^docs/[A-Za-z0-9/._-]+\\.md$"
+    },
+    "environments": {
+      "description": "The provider's GitHub environments, by name. Each must exist and be limited to the `main` branch. Only a provider's file has them.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/environment"
+      }
+    },
+    "variables": {
+      "description": "Repository variables, by name.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/name"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/repositoryVariable"
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "description": "A variable or secret name as GitHub allows it, in capitals. Names starting with GITHUB_ or PREFLIGHT_ are taken.",
+      "type": "string",
+      "pattern": "^(?!GITHUB_|PREFLIGHT_)[A-Z][A-Z0-9_]{0,99}$"
+    },
+    "step": {
+      "description": "The guide step that fixes it, as a link into the guide, such as #4-create-the-environments-in-your-fork.",
+      "type": "string",
+      "pattern": "^#[a-z0-9-]+$"
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewers", "step"],
+      "properties": {
+        "reviewers": {
+          "description": "\"required\": the environment must have required reviewers, so each run waits for an approval (the deploy environment). \"none\": it must have none, so a scheduled run never waits (the cleanup environment).",
+          "enum": ["required", "none"]
+        },
+        "step": {
+          "$ref": "#/$defs/step"
+        },
+        "variables": {
+          "description": "The environment's own variables, by name, read by the jobs that use it.",
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/name"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/variable"
+          }
+        },
+        "secrets": {
+          "description": "The environment's secrets, by name. The workflow passes each one to the preflight step through `env:`, under its own name.",
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/name"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/secret"
+          }
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["step"],
+      "properties": {
+        "required": {
+          "description": "Whether it must be set. Default false: optional, but checked when set.",
+          "type": "boolean"
+        },
+        "pattern": {
+          "description": "A regular expression (JavaScript syntax) the whole value must match. Anchor it with ^ and $.",
+          "type": "string",
+          "pattern": "^\\^.*\\$$"
+        },
+        "step": {
+          "$ref": "#/$defs/step"
+        }
+      }
+    },
+    "variableRules": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/rule"
+        }
+      ],
+      "properties": {
+        "minimum": {
+          "description": "The smallest number allowed. The value must then be a number.",
+          "type": "number"
+        },
+        "maximum": {
+          "description": "The largest number allowed. The value must then be a number.",
+          "type": "number"
+        },
+        "example": {
+          "description": "An allowed value, shown when the value is wrong.",
+          "type": "string"
+        }
+      }
+    },
+    "variable": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/variableRules"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "repositoryVariable": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/variableRules"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "properties": {
+        "environments": {
+          "description": "The environments whose jobs read it. Default: all of the provider's environments, and every job for a shared variable.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "secret": {
+      "description": "Only checked for being set and matching its pattern. Its value, or any part of it, is never printed. A secret has no example, so nothing that looks like a real one is ever written down.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/rule"
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

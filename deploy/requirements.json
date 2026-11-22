@@ -1,0 +1,32 @@
+{
+  "$schema": "./requirements.schema.json",
+  "guide": "docs/deploy/README.md",
+  "variables": {
+    "MAX_INVITES": {
+      "pattern": "^[0-9]{1,6}$",
+      "minimum": 1,
+      "maximum": 10000,
+      "example": "5",
+      "step": "#shared-repository-variables"
+    },
+    "LIFETIME_MINUTES": {
+      "pattern": "^[0-9]{1,6}$",
+      "minimum": 1,
+      "maximum": 1440,
+      "example": "60",
+      "step": "#shared-repository-variables"
+    },
+    "MAX_EGRESS_MBIT": {
+      "pattern": "^[0-9]{1,6}$",
+      "minimum": 1,
+      "maximum": 50,
+      "example": "2",
+      "step": "#shared-repository-variables"
+    },
+    "MAX_DEPLOY_COST_USD": {
+      "pattern": "^[0-9]{1,4}(\\.[0-9]{1,2})?$",
+      "example": "2.50",
+      "step": "#the-cost-limit"
+    }
+  }
+}
