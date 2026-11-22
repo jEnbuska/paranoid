@@ -18,27 +18,37 @@ const guide =
   "https://github.com/owner/paranoid/blob/abc123/docs/deploy/gcp.md";
 const settingsStep = `${guide}#6-give-github-the-settings`;
 
-/** The repository variables, set as bootstrap.sh sets them */
+// Where each variable goes follows the common pattern (#135): identity
+// values in each environment whose jobs read them, tuning values and limits
+// in the repository. Moving one means moving it between these lists and in
+// requirements.json.
+
+/** The repository variables: tuning and limits */
 const REPOSITORY: Record<string, string> = {
-  GCP_PROJECT: "my-project-123",
   GCP_REGION: "europe-north1",
   GCP_ZONE: "europe-north1-a",
-  GCP_BUCKET: "my-project-123-paranoid",
+  GCP_MONTHLY_BUDGET_USD: "5",
+};
+
+/** The repository variables that may be left unset, for their default */
+const OPTIONAL = ["GCP_MONTHLY_BUDGET_USD"];
+
+/** The repository variables only the deploy reads */
+const DEPLOY_ONLY = ["GCP_MONTHLY_BUDGET_USD"];
+
+/** The identity values, set in each environment as bootstrap.sh sets them */
+const identity = (serviceAccount: string) => ({
+  GCP_PROJECT: "my-project-123",
   GCP_WORKLOAD_IDENTITY_PROVIDER:
     "projects/123456789012/locations/global/workloadIdentityPools/paranoid-github/providers/github",
-};
+  GCP_SERVICE_ACCOUNT: `${serviceAccount}@my-project-123.iam.gserviceaccount.com`,
+  GCP_BUCKET: "my-project-123-paranoid",
+});
 
 /** Each environment's own variables */
 const ENVIRONMENT: Record<string, Record<string, string>> = {
-  gcp: {
-    GCP_SERVICE_ACCOUNT:
-      "paranoid-deploy@my-project-123.iam.gserviceaccount.com",
-    GCP_MONTHLY_BUDGET_USD: "5",
-  },
-  "gcp-cleanup": {
-    GCP_SERVICE_ACCOUNT:
-      "paranoid-cleanup@my-project-123.iam.gserviceaccount.com",
-  },
+  gcp: identity("paranoid-deploy"),
+  "gcp-cleanup": identity("paranoid-cleanup"),
 };
 
 const repo = "/repos/owner/paranoid";
@@ -181,8 +191,10 @@ function where(name: string, job: Job): string {
 /** The required variables each job checks */
 function required(job: Job): string[] {
   return [
-    ...Object.keys(REPOSITORY),
-    ...(job.inEnvironment === "true" ? ["GCP_SERVICE_ACCOUNT"] : []),
+    ...Object.keys(REPOSITORY).filter((name) => !OPTIONAL.includes(name)),
+    ...(job.inEnvironment === "true"
+      ? Object.keys(ENVIRONMENT[job.environment])
+      : []),
   ];
 }
 
@@ -241,10 +253,23 @@ describe("deploy/gcp/requirements.json", () => {
       },
     ]);
     expect([...gcp.variables.keys()]).toEqual(Object.keys(REPOSITORY));
-    // Every repository variable is read by all three workflows
-    for (const rule of gcp.variables.values()) {
-      expect(rule.environments).toBeUndefined();
+    // All three workflows read the region and zone, and only the deploy
+    // reads the monthly limit.
+    for (const [name, rule] of gcp.variables) {
+      expect(rule.environments).toEqual(
+        DEPLOY_ONLY.includes(name) ? ["gcp"] : undefined,
+      );
     }
+  });
+
+  it("leaves the monthly limit to the deploy", async () => {
+    routes = setUp;
+    const job = JOBS["cleanup-gcp.yml"];
+    const result = await run(job, {
+      ...vars(job),
+      GCP_MONTHLY_BUDGET_USD: "$5",
+    });
+    expect(result.status).toBe(0);
   });
 
   for (const [name, job] of Object.entries(JOBS)) {

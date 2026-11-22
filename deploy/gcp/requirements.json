@@ -6,16 +6,29 @@
       "reviewers": "required",
       "step": "#6-give-github-the-settings",
       "variables": {
+        "GCP_PROJECT": {
+          "required": true,
+          "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
+          "example": "my-project-123",
+          "step": "#6-give-github-the-settings"
+        },
+        "GCP_WORKLOAD_IDENTITY_PROVIDER": {
+          "required": true,
+          "pattern": "^projects/[0-9]{1,20}/locations/global/workloadIdentityPools/[a-z0-9-]{4,32}/providers/[a-z0-9-]{4,32}$",
+          "example": "projects/123456789012/locations/global/workloadIdentityPools/paranoid-github/providers/github",
+          "step": "#6-give-github-the-settings"
+        },
         "GCP_SERVICE_ACCOUNT": {
           "required": true,
           "pattern": "^paranoid-deploy@[a-z][a-z0-9-]{4,28}[a-z0-9]\\.iam\\.gserviceaccount\\.com$",
           "example": "paranoid-deploy@my-project-123.iam.gserviceaccount.com",
           "step": "#6-give-github-the-settings"
         },
-        "GCP_MONTHLY_BUDGET_USD": {
-          "pattern": "^[0-9]{1,4}(\\.[0-9]{1,2})?$",
-          "example": "5",
-          "step": "#the-spending-limits"
+        "GCP_BUCKET": {
+          "required": true,
+          "pattern": "^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$",
+          "example": "my-project-123-paranoid",
+          "step": "#6-give-github-the-settings"
         }
       }
     },
@@ -23,22 +36,34 @@
       "reviewers": "none",
       "step": "#6-give-github-the-settings",
       "variables": {
+        "GCP_PROJECT": {
+          "required": true,
+          "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
+          "example": "my-project-123",
+          "step": "#6-give-github-the-settings"
+        },
+        "GCP_WORKLOAD_IDENTITY_PROVIDER": {
+          "required": true,
+          "pattern": "^projects/[0-9]{1,20}/locations/global/workloadIdentityPools/[a-z0-9-]{4,32}/providers/[a-z0-9-]{4,32}$",
+          "example": "projects/123456789012/locations/global/workloadIdentityPools/paranoid-github/providers/github",
+          "step": "#6-give-github-the-settings"
+        },
         "GCP_SERVICE_ACCOUNT": {
           "required": true,
           "pattern": "^paranoid-cleanup@[a-z][a-z0-9-]{4,28}[a-z0-9]\\.iam\\.gserviceaccount\\.com$",
           "example": "paranoid-cleanup@my-project-123.iam.gserviceaccount.com",
+          "step": "#6-give-github-the-settings"
+        },
+        "GCP_BUCKET": {
+          "required": true,
+          "pattern": "^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$",
+          "example": "my-project-123-paranoid",
           "step": "#6-give-github-the-settings"
         }
       }
     }
   },
   "variables": {
-    "GCP_PROJECT": {
-      "required": true,
-      "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
-      "example": "my-project-123",
-      "step": "#6-give-github-the-settings"
-    },
     "GCP_REGION": {
       "required": true,
       "pattern": "^[a-z]+-[a-z]+[0-9]{1,2}$",
@@ -51,17 +76,11 @@
       "example": "europe-north1-a",
       "step": "#6-give-github-the-settings"
     },
-    "GCP_BUCKET": {
-      "required": true,
-      "pattern": "^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$",
-      "example": "my-project-123-paranoid",
-      "step": "#6-give-github-the-settings"
-    },
-    "GCP_WORKLOAD_IDENTITY_PROVIDER": {
-      "required": true,
-      "pattern": "^projects/[0-9]{1,20}/locations/global/workloadIdentityPools/[a-z0-9-]{4,32}/providers/[a-z0-9-]{4,32}$",
-      "example": "projects/123456789012/locations/global/workloadIdentityPools/paranoid-github/providers/github",
-      "step": "#6-give-github-the-settings"
+    "GCP_MONTHLY_BUDGET_USD": {
+      "pattern": "^[0-9]{1,4}(\\.[0-9]{1,2})?$",
+      "example": "5",
+      "environments": ["gcp"],
+      "step": "#the-spending-limits"
     }
   }
 }
