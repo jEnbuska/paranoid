@@ -206,8 +206,6 @@ The second command runs one worker per CPU core, twice Playwright's default, so 
 
 Anyone with a fork can start their own Paranoid server from GitHub Actions: [Deploying Paranoid](docs/deploy/README.md) explains how, lists what each cloud provider needs from GitHub, and links each provider's step-by-step guide.
 
-- [Hetzner Cloud](docs/deploy/hetzner.md), a German provider, in Germany or Finland.
-
 ## Continuous integration
 
 GitHub Actions workflows live in [`.github/workflows`](.github/workflows):

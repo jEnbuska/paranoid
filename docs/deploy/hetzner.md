@@ -4,26 +4,51 @@ This guide takes you from a GitHub account to your own Paranoid server in the EU
 
 You start a server from GitHub Actions for a set number of invites. It powers itself off once the last invite is finished, or when its lifetime is over, and a scheduled workflow then deletes it. Nothing runs between uses. Chats that have started keep working after the server is gone, because they're peer to peer.
 
-Hetzner's prices and rules below were checked on 2026-11-20. They can change, so check the linked pages too.
+Hetzner's prices and rules below were checked on 2026-11-20. They can change, so check the linked pages too. How deploying works on every provider, the shared settings and the other providers are in [Deploying Paranoid](README.md).
+
+## What this deployment needs
+
+Everything this deployment needs from GitHub, by name. It also reads the [shared repository variables](README.md#shared-repository-variables).
+
+### Environments
+
+| Environment       | Branches    | Required reviewers | Used by                                   |
+| ----------------- | ----------- | ------------------ | ----------------------------------------- |
+| `hetzner`         | `main` only | You                | `deploy-hetzner.yml`                      |
+| `hetzner-cleanup` | `main` only | None               | `cleanup-hetzner.yml`, `stop-hetzner.yml` |
+
+### Secrets
+
+| Secret         | Environment                  | Where its value comes from                                                                                       |
+| -------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `HCLOUD_TOKEN` | `hetzner`, `hetzner-cleanup` | A Hetzner Cloud API token with Read & Write for each, created in [step 5](#5-create-the-api-tokens-and-add-them) |
+
+### Variables
+
+| Variable              | Set in     | What it does                       | Required | Default            | Explained in                   |
+| --------------------- | ---------- | ---------------------------------- | -------- | ------------------ | ------------------------------ |
+| `HCLOUD_LOCATION`     | Repository | The location the server runs in.   | Optional | `nbg1`             | [Step 6](#6-optional-settings) |
+| `HCLOUD_SERVER_TYPES` | Repository | The server types to try, in order. | Optional | `cx23,cax11,cpx12` | [Step 6](#6-optional-settings) |
 
 ## Contents
 
-1. [Words used in this guide](#words-used-in-this-guide)
-2. [Fork the repository](#1-fork-the-repository)
-3. [Sign up for Hetzner](#2-sign-up-for-hetzner)
-4. [Create a project for Paranoid](#3-create-a-project-for-paranoid)
-5. [Create the environments in your fork](#4-create-the-environments-in-your-fork)
-6. [Create the API tokens and add them](#5-create-the-api-tokens-and-add-them)
-7. [Optional settings](#6-optional-settings)
-8. [Start a server](#7-start-a-server)
-9. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
-10. [Costs](#costs)
-11. [Checking nothing is left](#checking-nothing-is-left)
-12. [The tokens](#the-tokens)
-13. [Troubleshooting](#troubleshooting)
-14. [Removing everything](#removing-everything)
-15. [Privacy](#privacy)
-16. [What a deploy does](#what-a-deploy-does)
+1. [What this deployment needs](#what-this-deployment-needs)
+2. [Words used in this guide](#words-used-in-this-guide)
+3. [Fork the repository](#1-fork-the-repository)
+4. [Sign up for Hetzner](#2-sign-up-for-hetzner)
+5. [Create a project for Paranoid](#3-create-a-project-for-paranoid)
+6. [Create the environments in your fork](#4-create-the-environments-in-your-fork)
+7. [Create the API tokens and add them](#5-create-the-api-tokens-and-add-them)
+8. [Optional settings](#6-optional-settings)
+9. [Start a server](#7-start-a-server)
+10. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
+11. [Costs](#costs)
+12. [Checking nothing is left](#checking-nothing-is-left)
+13. [The tokens](#the-tokens)
+14. [Troubleshooting](#troubleshooting)
+15. [Removing everything](#removing-everything)
+16. [Privacy](#privacy)
+17. [What a deploy does](#what-a-deploy-does)
 
 ## Words used in this guide
 
@@ -150,22 +175,20 @@ gh secret set HCLOUD_TOKEN --env hetzner-cleanup --repo <owner>/<repo>
 
 ## 6. Optional settings
 
-Everything works with the defaults. To change one, add a variable in **Settings** → **Environments** → **hetzner** → **Environment variables**, or with `gh`, for example:
+Everything works with the defaults. The settings every provider shares, `MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT` and `MAX_DEPLOY_COST_USD`, are in the index's [shared repository variables](README.md#shared-repository-variables). With Hetzner, `MAX_DEPLOY_COST_USD` must fit every type in `HCLOUD_SERVER_TYPES`, as the deploy may get any of them (see [Costs](#costs)). Hetzner's own two:
+
+| Variable              | Default            | What it does                                                                                                                                                                                                                                     |
+| --------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HCLOUD_LOCATION`     | `nbg1`             | Location: `nbg1` (Nuremberg), `fsn1` (Falkenstein) or `hel1` (Helsinki), the locations in [`prices.json`](../../deploy/hetzner/prices.json).                                                                                                     |
+| `HCLOUD_SERVER_TYPES` | `cx23,cax11,cpx12` | Server types to try, in order, separated by commas. Hetzner sometimes has a type unavailable in a location, so the deploy tries the next. Only the types in [`prices.json`](../../deploy/hetzner/prices.json) are accepted. See [Costs](#costs). |
+
+To change one, add a repository variable in your fork under **Settings** → **Secrets and variables** → **Actions** → **Variables**, or with `gh`, for example:
 
 ```bash
-gh variable set HCLOUD_LOCATION --env hetzner --body hel1 --repo <owner>/<repo>
+gh variable set HCLOUD_LOCATION --body hel1 --repo <owner>/<repo>
 ```
 
 The **Deploy to Hetzner** workflow's inputs win over the variables, and the variables over the defaults.
-
-| Name                  | Default            | What it does                                                                                                                                                                                                                                     |
-| --------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `MAX_INVITES`         | `5`                | Invites the server creates before it powers off, from 1 to 10000. The `max_invites` input overrides it.                                                                                                                                          |
-| `LIFETIME_MINUTES`    | `60`               | Minutes until the server powers off at the latest, from 1 to 1440 (24 hours), counted from when it starts. The `lifetime_minutes` input overrides it.                                                                                            |
-| `MAX_EGRESS_MBIT`     | `2`                | Limit on all the server's outbound traffic, in Mbit/s, from 1 to 50, against abuse. At 2 Mbit/s, the app's files load in about a second.                                                                                                         |
-| `HCLOUD_LOCATION`     | `nbg1`             | Location: `nbg1` (Nuremberg), `fsn1` (Falkenstein) or `hel1` (Helsinki), the locations in [`prices.json`](../../deploy/hetzner/prices.json).                                                                                                     |
-| `HCLOUD_SERVER_TYPES` | `cx23,cax11,cpx12` | Server types to try, in order, separated by commas. Hetzner sometimes has a type unavailable in a location, so the deploy tries the next. Only the types in [`prices.json`](../../deploy/hetzner/prices.json) are accepted. See [Costs](#costs). |
-| `MAX_DEPLOY_COST_USD` | `1`                | The most one deploy may cost in the worst case, in US dollars, excluding VAT. A deploy that could cost more is refused before anything is created. Every type in `HCLOUD_SERVER_TYPES` must fit. See [Costs](#costs).                            |
 
 The only secret is `HCLOUD_TOKEN`. Never put a token or password in a variable: variables are shown in logs and to anyone with access to the repository.
 
