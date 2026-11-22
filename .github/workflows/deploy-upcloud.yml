@@ -91,8 +91,9 @@ jobs:
           UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
 
       # Before anything is deleted, so a bad input leaves a running server
-      # alone. The workflow's inputs win over the variables the preflight
-      # checked, so they're checked here.
+      # alone. Every value that reaches the server's user data or labels is
+      # checked here as well as by the preflight (#141), and the workflow's
+      # inputs, which win over the variables, only here.
       - name: Check the settings
         env:
           MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
