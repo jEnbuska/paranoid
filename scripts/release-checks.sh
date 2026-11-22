@@ -6,11 +6,13 @@
 #      (EXPECTED_SHA, if set);
 #   3. every required check in the main ruleset has passed on that commit, in
 #      the release PR's own runs;
-#   4. main is an ancestor of that commit, so pushing it is a fast-forward.
+#   4. CodeQL passed on that commit, in the release PR, with no open alert at
+#      High or above, or error;
+#   5. main is an ancestor of that commit, so pushing it is a fast-forward.
 # It stops at the first check that fails and says which one. On success it
 # writes `sha`, `pr`, `pr_url` and `commits` (the subjects since main, one per
 # line) to $GITHUB_OUTPUT when that's set. It only reads, with gh and
-# GH_TOKEN.
+# GH_TOKEN, which needs security-events: read for check 4.
 set -euo pipefail
 
 repo="${GITHUB_REPOSITORY:?is not set}"
@@ -81,14 +83,49 @@ while IFS= read -r name; do
 done < <(jq -r '.[]' <<<"$required")
 echo "Check 3 passed: every required check in the main ruleset passed on $head."
 
-# 4. A fast-forward: main is an ancestor of the commit, which is ahead of it.
+# 4. CodeQL, with the thresholds of the rulesets' "Require code scanning
+# results" rule. GitHub's docs say that rule blocks merging a PR, not a push,
+# and the release pushes, so it's checked here. The CodeQL check is GitHub
+# Advanced Security's, not a workflow's, so check 3 doesn't see it. It runs
+# only on PRs, and briefly shows as skipped while the analyses run, so only a
+# completed success counts.
+codeql=$(gh api "repos/$repo/commits/$head/check-runs?check_name=CodeQL&filter=latest" \
+  --jq '[.check_runs[] | select(.app.slug == "github-advanced-security")]')
+if [ "$(jq length <<<"$codeql")" = 0 ]; then
+  fail "Check 4 failed: the CodeQL check hasn't run on the release PR $pr_url at $head. Wait for it, then run the release again."
+fi
+bad=$(jq -r '[.[] | select(.status != "completed" or .conclusion != "success")][0] // empty | "\(.conclusion // .status) \(.html_url)"' <<<"$codeql")
+if [ -n "$bad" ]; then
+  fail "Check 4 failed: the CodeQL check isn't passing on the release PR: ${bad}"
+fi
+# The alerts list is empty for a ref that was never analysed, so first confirm
+# that CodeQL analysed this exact commit in the release PR.
+ref="refs/pull/$pr/head"
+analyses=$(gh api "repos/$repo/code-scanning/analyses?ref=$ref&sha=$head&tool_name=CodeQL&per_page=100") ||
+  fail "Check 4 failed: couldn't read the code scanning analyses of $ref. The job's token needs security-events: read."
+if [ "$(jq length <<<"$analyses")" = 0 ]; then
+  fail "Check 4 failed: CodeQL has no analysis of $head in the release PR $pr_url. Wait for it, then run the release again."
+fi
+errored=$(jq -r '[.[] | select(.error != "")][0] // empty | "\(.category): \(.error)"' <<<"$analyses")
+if [ -n "$errored" ]; then
+  fail "Check 4 failed: a CodeQL analysis of $head failed: $errored"
+fi
+alerts=$(gh api --paginate "repos/$repo/code-scanning/alerts?ref=$ref&state=open&tool_name=CodeQL&per_page=100" \
+  --jq '.[] | select(.rule.security_severity_level == "critical" or .rule.security_severity_level == "high" or .rule.severity == "error") | "\(.html_url) (\(.rule.security_severity_level // .rule.severity))"') ||
+  fail "Check 4 failed: couldn't read the code scanning alerts of $ref. The job's token needs security-events: read."
+if [ -n "$alerts" ]; then
+  fail "Check 4 failed: the release PR $pr_url has open CodeQL alerts at High or above, or error. Fix them in dev first: $(tr '\n' ' ' <<<"$alerts")"
+fi
+echo "Check 4 passed: CodeQL passed on $head, with no open alert at High or above, or error."
+
+# 5. A fast-forward: main is an ancestor of the commit, which is ahead of it.
 compare=$(gh api "repos/$repo/compare/main...$head")
 case "$(jq -r .status <<<"$compare")" in
   ahead) ;;
-  identical) fail "Check 4 failed: main is already at $head, so there's nothing to release." ;;
-  *) fail "Check 4 failed: main isn't an ancestor of $head, so pushing it wouldn't be a fast-forward. main has commits that dev doesn't: see CONTRIBUTING.md's \"Releases\"." ;;
+  identical) fail "Check 5 failed: main is already at $head, so there's nothing to release." ;;
+  *) fail "Check 5 failed: main isn't an ancestor of $head, so pushing it wouldn't be a fast-forward. main has commits that dev doesn't: see CONTRIBUTING.md's \"Releases\"." ;;
 esac
-echo "Check 4 passed: main is $(jq -r .ahead_by <<<"$compare") commits behind $head, and none ahead."
+echo "Check 5 passed: main is $(jq -r .ahead_by <<<"$compare") commits behind $head, and none ahead."
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   {

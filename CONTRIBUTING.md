@@ -153,7 +153,8 @@ The Release workflow ([`release.yml`](.github/workflows/release.yml)) only runs 
 1. there's an open release PR from `dev` into `main`, and it isn't a draft;
 2. its head is `dev`'s current commit, so nothing landed on `dev` after the checks ran;
 3. every check the `main` ruleset requires has passed on that commit, in the release PR's own runs, including the full dependency audit;
-4. `main` is an ancestor of that commit, so the push is a fast-forward.
+4. the release PR's `CodeQL` check has passed on that commit, CodeQL analysed it, and it has no open code scanning alert at High or above, or error. These are the thresholds of the rulesets' "Require code scanning results" rule, which GitHub's docs say blocks merging a PR but not a push, so the workflow checks them itself. A `CodeQL` check that shows as skipped, as it briefly does while the analyses run, doesn't count;
+5. `main` is an ancestor of that commit, so the push is a fast-forward.
 
 If a check fails, it stops and says which one. Otherwise it pushes that exact commit, `git push origin <sha>:refs/heads/main`, never a branch name and never with `--force`, and GitHub marks the release PR as merged. A push made with the workflow's own token doesn't start workflows, so the workflow then starts CI on `main` itself. The run's summary links the released commit, the release PR and that CI run.
 

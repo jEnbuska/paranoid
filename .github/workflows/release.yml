@@ -1,7 +1,8 @@
 # The Release button: Actions → Release → Run workflow, from dev. It
 # fast-forwards main to dev, like the manual `git push origin
 # origin/dev:refs/heads/main` in CONTRIBUTING.md's "Releases", but only after
-# scripts/release-checks.sh has confirmed that the release PR is green.
+# scripts/release-checks.sh has confirmed that the release PR is green,
+# CodeQL included.
 #
 # Only the repository owner can release, enforced twice: every job fails
 # unless the owner started the run, and the job that pushes uses the `release`
@@ -41,6 +42,8 @@ jobs:
       pull-requests: read
       checks: read
       statuses: read
+      # The release PR's CodeQL analyses and alerts
+      security-events: read
     outputs:
       sha: ${{ steps.checks.outputs.sha }}
       pr: ${{ steps.checks.outputs.pr }}
@@ -134,11 +137,13 @@ jobs:
     timeout-minutes: 10
     environment: release
     permissions:
-      # Push to main, read the checks again, and start CI on main
+      # Push to main, read the checks and CodeQL alerts again, and start CI
+      # on main
       contents: write
       pull-requests: read
       checks: read
       statuses: read
+      security-events: read
       actions: write
 
     steps:
