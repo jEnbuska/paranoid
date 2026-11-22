@@ -68,7 +68,7 @@
       "required": true,
       "pattern": "^[a-z]+-[a-z]+[0-9]{1,2}$",
       "example": "europe-north1",
-      "step": "#4-run-the-one-time-setup"
+      "step": "#5-connect-your-fork"
     },
     "GCP_ZONE": {
       "required": true,
