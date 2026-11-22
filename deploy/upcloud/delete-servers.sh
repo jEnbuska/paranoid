@@ -23,11 +23,20 @@
 # Something else deleting a server first counts as done, so cleanups and a
 # stop running together don't fail each other.
 #
+# Deleting a server deletes its storage too (--delete-storages), and UpCloud
+# releases its IP addresses. In case a failed create or delete leaves a disk
+# behind, every mode then also deletes the disks named paranoid-<run id>-OS,
+# upctl's title for a server's disk, that are attached to no server, online
+# (not still being cloned) and whose server doesn't exist. A deploy's disk is
+# never one of them: its server exists from the moment it's created. Disks
+# have no labels, because upctl's `server create` labels only the server.
+#
 # Nothing upctl returns is printed: a server's details can hold passwords.
 set -euo pipefail
 
 mode=${1:-}
 hostname_pattern='^paranoid-[0-9]+$'
+disk_pattern='^paranoid-[0-9]+-OS$'
 case "$mode" in
   all | finished) ;;
   run)
@@ -36,6 +45,7 @@ case "$mode" in
       exit 2
     }
     hostname_pattern="^paranoid-$2\$"
+    disk_pattern="^paranoid-$2-OS\$"
     ;;
   *)
     echo "Usage: $0 all | finished | run <run-id>" >&2
@@ -43,11 +53,11 @@ case "$mode" in
     ;;
 esac
 
-candidates=$(upctl server list --output json |
-  jq -r --arg pattern "$hostname_pattern" '
-    (.servers.server? // .servers // [])[]
-    | select(.hostname | test($pattern))
-    | "\(.uuid) \(.hostname)"')
+servers=$(upctl server list --output json)
+candidates=$(jq -r --arg pattern "$hostname_pattern" '
+  (.servers.server? // .servers // [])[]
+  | select(.hostname | test($pattern))
+  | "\(.uuid) \(.hostname)"' <<<"$servers")
 
 now=$(date +%s)
 failed=0
@@ -91,4 +101,37 @@ while read -r uuid hostname; do
 done <<<"$candidates"
 
 echo "Deleted $deleted server(s)."
+
+# Disks left without their server. The server list is read again, after the
+# deletes above.
+hostnames=$(upctl server list --output json |
+  jq -r '(.servers.server? // .servers // [])[] | .hostname')
+disks=$(upctl storage list --private --normal --output json |
+  jq -r --arg pattern "$disk_pattern" '
+    (.storages.storage? // .storages // [])[]
+    | select(.title | test($pattern))
+    | "\(.uuid) \(.title)"')
+orphans=0
+while read -r uuid title; do
+  [ -n "$uuid" ] || continue
+  if grep -qxF "${title%-OS}" <<<"$hostnames"; then
+    continue # Its server exists, and is handled above or still running
+  fi
+  if ! details=$(upctl storage show "$uuid" --output json 2>/dev/null); then
+    continue # Something else may have deleted it first
+  fi
+  read -r state attached < <(jq -r '
+    "\(.state) \((.servers.server? // .servers // []) | length)"' <<<"$details")
+  if [ "$state" != online ] || [ "$attached" != 0 ]; then
+    continue
+  fi
+  echo "Deleting $title, a disk left without its server"
+  if upctl storage delete "$uuid" --backups delete >/dev/null; then
+    orphans=$((orphans + 1))
+  elif upctl storage show "$uuid" >/dev/null 2>&1; then
+    echo "::error::Couldn't delete $title"
+    failed=1
+  fi
+done <<<"$disks"
+echo "Deleted $orphans disk(s) left without a server."
 exit "$failed"
