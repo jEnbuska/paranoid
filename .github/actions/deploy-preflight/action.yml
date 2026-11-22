@@ -1,0 +1,64 @@
+name: Deploy preflight
+description: >-
+  Checks, before any cloud step, that someone with admin permission started
+  the run, and that the provider's environments, variables and secrets in
+  deploy/<provider>/requirements.json and the shared variables in
+  deploy/requirements.json are set up. It lists everything that's missing or
+  wrong, with the guide step that fixes each, and fails. See README.md here.
+
+inputs:
+  provider:
+    description: The provider, whose list is deploy/<provider>/requirements.json, such as upcloud.
+    required: true
+  environment:
+    description: The environment the workflow's job uses, such as upcloud or upcloud-cleanup.
+    required: true
+  in-environment:
+    description: >-
+      "true" when the job runs in that environment, so its own variables and
+      secrets are checked too. "false" for a job before it, without the
+      environment.
+    required: false
+    default: "true"
+  owner-only:
+    description: >-
+      "true" to fail a run started or re-run by anyone without admin
+      permission on the repository. "false" for cleanup, which a scheduled
+      run starts as github-actions[bot].
+    required: false
+    default: "true"
+  vars:
+    description: >-
+      The job's variables as JSON, always toJSON(vars) in an expression. A
+      composite action can't read the vars context itself.
+    required: true
+  token:
+    description: >-
+      Reads the environments' settings and the actors' permission. With the
+      default, the job's token, the job needs the permission actions read.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: .nvmrc
+
+    # The secrets come from the calling step's env, under their own names,
+    # and the CLI only tests them. It never prints them.
+    - name: Check who started it and what's set up
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        PREFLIGHT_VARS: ${{ inputs.vars }}
+        PROVIDER: ${{ inputs.provider }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        IN_ENVIRONMENT: ${{ inputs.in-environment }}
+        OWNER_ONLY: ${{ inputs.owner-only }}
+      run: |
+        node packages/deploy/src/preflight-cli.ts --provider "$PROVIDER" \
+          --environment "$ENVIRONMENT" --in-environment "$IN_ENVIRONMENT" \
+          --owner-only "$OWNER_ONLY"
