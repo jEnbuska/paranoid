@@ -258,6 +258,40 @@ describe("deploy/azure/requirements.json", () => {
     ]).toEqual(["AZURE_REGION", "AZURE_VM_SIZE", "AZURE_IMAGE"]);
   });
 
+  it("links the guide step that sets each value", () => {
+    // In PR #93's guide, step 5 creates the environments and sets their
+    // variables and the repository variable AZURE_REGION. Size and image
+    // are optional settings, step 6.
+    const steps = Object.fromEntries([
+      ...[...azure.environments].flatMap(
+        ([environment, { step, variables }]) => [
+          [environment, step],
+          ...[...variables].map(([name, rule]) => [
+            `${environment} ${name}`,
+            rule.step,
+          ]),
+        ],
+      ),
+      ...[...azure.variables].map(([name, rule]) => [name, rule.step]),
+    ]);
+    const connect = "#5-connect-your-fork-to-azure";
+    expect(steps).toEqual({
+      azure: connect,
+      "azure AZURE_CLIENT_ID": connect,
+      "azure AZURE_TENANT_ID": connect,
+      "azure AZURE_SUBSCRIPTION_ID": connect,
+      "azure AZURE_RESOURCE_GROUP": connect,
+      "azure-cleanup": connect,
+      "azure-cleanup AZURE_CLIENT_ID": connect,
+      "azure-cleanup AZURE_TENANT_ID": connect,
+      "azure-cleanup AZURE_SUBSCRIPTION_ID": connect,
+      "azure-cleanup AZURE_RESOURCE_GROUP": connect,
+      AZURE_REGION: connect,
+      AZURE_VM_SIZE: "#6-optional-settings",
+      AZURE_IMAGE: "#6-optional-settings",
+    });
+  });
+
   for (const environment of azure.environments.keys()) {
     const job = { environment, inEnvironment: "true", ownerOnly: "true" };
 
@@ -280,6 +314,11 @@ describe("deploy/azure/requirements.json", () => {
           `::error::The variable ${name}${where} is ${JSON.stringify(WRONG[name])}, which doesn't match `,
         );
         expect(lines[0]).toContain(` Fix: ${guide}${rule.step}`);
+        if (rule.example) {
+          expect(lines[0]).toContain(
+            `For example: ${JSON.stringify(rule.example)}.`,
+          );
+        }
       });
     }
   }

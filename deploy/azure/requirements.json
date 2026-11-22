@@ -9,16 +9,19 @@
         "AZURE_CLIENT_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "example": "00000000-0000-0000-0000-000000000000",
           "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_TENANT_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "example": "00000000-0000-0000-0000-000000000000",
           "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_SUBSCRIPTION_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "example": "00000000-0000-0000-0000-000000000000",
           "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_RESOURCE_GROUP": {
@@ -35,16 +38,19 @@
         "AZURE_CLIENT_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "example": "00000000-0000-0000-0000-000000000000",
           "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_TENANT_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "example": "00000000-0000-0000-0000-000000000000",
           "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_SUBSCRIPTION_ID": {
           "required": true,
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "example": "00000000-0000-0000-0000-000000000000",
           "step": "#5-connect-your-fork-to-azure"
         },
         "AZURE_RESOURCE_GROUP": {
@@ -60,7 +66,7 @@
       "pattern": "^[a-z][a-z0-9]{2,30}$",
       "example": "swedencentral",
       "environments": ["azure"],
-      "step": "#6-optional-settings"
+      "step": "#5-connect-your-fork-to-azure"
     },
     "AZURE_VM_SIZE": {
       "pattern": "^Standard_[A-Za-z0-9_]{1,40}$",
