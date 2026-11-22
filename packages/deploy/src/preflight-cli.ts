@@ -160,6 +160,7 @@ const actors = options.ownerOnly
 let variables: Record<string, string>;
 try {
   variables = JSON.parse(env("PREFLIGHT_VARS")) as Record<string, string>;
+  if (typeof variables !== "object" || variables === null) throw new Error();
 } catch {
   fail(
     `PREFLIGHT_VARS isn't JSON. Pass \${{ toJSON(vars) }}. See ${ACTION_README}.`,
