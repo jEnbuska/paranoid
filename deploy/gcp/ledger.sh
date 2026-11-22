@@ -11,6 +11,17 @@
 set -euo pipefail
 
 command=$1
+# Both go into the gcloud command lines below. Checked here, although the
+# preflight checked the bucket too, because stop and cleanup call this
+# without settings.sh (#141).
+[[ ${GCP_BUCKET:-} =~ ^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$ ]] || {
+  echo "::error::GCP_BUCKET must be the bucket that bootstrap.sh created, not '${GCP_BUCKET:-}'." >&2
+  exit 1
+}
+[[ ${MONTH:-} =~ ^[0-9]{4}-[0-9]{2}$ ]] || {
+  echo "::error::The ledger's month isn't YYYY-MM: '${MONTH:-}'." >&2
+  exit 1
+}
 url="gs://$GCP_BUCKET/ledger/$MONTH.json"
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT

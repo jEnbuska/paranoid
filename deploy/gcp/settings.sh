@@ -11,9 +11,10 @@
 # the invites, lifetime and outbound limit, the region and zone, and the
 # run's ID. So are the inputs, which win over the variables the preflight
 # saw, and what no pattern can say: that the zone is in the region and that
-# deploy/gcp/prices.json has prices for it. Values that never reach the VM,
-# the project, the bucket and the cost limits, are left to the preflight,
-# and the cost check and ledger read them as numbers.
+# deploy/gcp/prices.json has prices for it. So are the project and bucket,
+# which go into every gcloud command, and the cost limits, which go into the
+# cost check's and the ledger's command lines. Nothing the preflight checks
+# is left to it alone.
 #
 # Only checked values reach GITHUB_ENV and the VM, so an input can't add
 # lines or commands to either.
@@ -31,6 +32,10 @@ whole() {
   fi
 }
 
+[[ $GCP_PROJECT =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] ||
+  fail "GCP_PROJECT must be a Google Cloud project ID, not '$GCP_PROJECT'."
+[[ $GCP_BUCKET =~ ^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$ ]] ||
+  fail "GCP_BUCKET must be the bucket that bootstrap.sh created, not '$GCP_BUCKET'."
 [[ $GCP_REGION =~ ^[a-z]+-[a-z]+[0-9]{1,2}$ ]] ||
   fail "GCP_REGION must be a Google Cloud region such as europe-north1, not '$GCP_REGION'."
 [[ $GCP_ZONE =~ ^$GCP_REGION-[a-z]$ ]] ||
@@ -51,6 +56,11 @@ whole() {
 whole max_invites "$MAX_INVITES" 1 10000
 whole lifetime_minutes "$LIFETIME_MINUTES" 1 1440
 whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
+# Into the cost check's and the ledger's command lines
+[[ $MAX_DEPLOY_COST_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
+  fail "MAX_DEPLOY_COST_USD must be an amount in dollars such as 1 or 2.50, not '$MAX_DEPLOY_COST_USD'."
+[[ $GCP_MONTHLY_BUDGET_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
+  fail "GCP_MONTHLY_BUDGET_USD must be an amount in dollars such as 5 or 2.50, not '$GCP_MONTHLY_BUDGET_USD'."
 [[ $RUN_ID =~ ^[0-9]+$ && $RUN_ATTEMPT =~ ^[0-9]+$ ]] ||
   fail "The run ID and attempt aren't numbers."
 

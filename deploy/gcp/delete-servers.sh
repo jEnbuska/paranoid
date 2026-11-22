@@ -16,6 +16,13 @@
 set -euo pipefail
 
 here=$(dirname "$0")
+# The project every gcloud command below uses. Checked here, although the
+# preflight checked it too, because stop and cleanup call this without
+# settings.sh (#141).
+[[ ${CLOUDSDK_CORE_PROJECT:-} =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || {
+  echo "::error::The project, from GCP_PROJECT, must be a Google Cloud project ID, not '${CLOUDSDK_CORE_PROJECT:-}'." >&2
+  exit 1
+}
 error=$(mktemp)
 trap 'rm -f "$error"' EXIT
 filter='name ~ ^paranoid- AND labels.app=paranoid'
