@@ -15,7 +15,7 @@ This page is the index: how deploying works on every provider, the settings they
 
 ## How deploying works
 
-You start a server from your fork's **Actions** tab for a set number of invites. It powers itself off once the last invite is finished, or when its lifetime is over, whichever comes first, and the provider's cleanup workflow then deletes it. Before the deploy creates anything, it works out what the server could cost in the worst case and refuses to start if that's over your limit. Every deploy waits for you to approve it, as the required reviewer of the provider's deploy environment. Stopping and cleaning up need no approval, so the scheduled cleanup can run without anyone there. Nothing runs between uses, and chats that have started keep working after the server is gone, because they're peer to peer.
+You start a server from your fork's **Actions** tab for a set number of invites. It powers itself off once the last invite is finished, or when its lifetime is over, whichever comes first, and the provider's cleanup workflow then deletes it. Every deploy, stop and cleanup first runs a preflight, which fails a run that someone without admin permission on the fork started, and lists everything below that's missing or wrong, with the guide step that fixes it, before anything is created. Before the deploy creates anything, it works out what the server could cost in the worst case and refuses to start if that's over your limit. Every deploy waits for you to approve it, as the required reviewer of the provider's deploy environment. Stopping and cleaning up need no approval, so the scheduled cleanup can run without anyone there. Nothing runs between uses, and chats that have started keep working after the server is gone, because they're peer to peer.
 
 ## What every provider needs from GitHub
 
@@ -65,6 +65,7 @@ This part is for whoever adds a provider. Besides its workflows (`deploy-`, `sto
 1. **Its page, `docs/deploy/<provider>.md`**, with **What this deployment needs** right after the introduction, before step 1 of the guide, in the form below.
 2. **Its folder's README, `deploy/<provider>/README.md`**, two lines for people reading the code: what the folder is, and a link to `../../docs/deploy/<provider>.md`.
 3. **Its row in [Providers](#providers)**, linking its page.
+4. **Its preflight list, `deploy/<provider>/requirements.json`**: the same environments, secrets and variables as its page, with the rules each value must follow and the guide step that sets it. The deploy, stop and cleanup workflows run [the deploy preflight](../../.github/actions/deploy-preflight/README.md) first, which reads the list. The shared variables are in `deploy/requirements.json`, not in each list.
 
 A variable that every provider uses goes in the [shared table](#shared-repository-variables) instead of each page, and a shared variable must be used by every provider.
 
