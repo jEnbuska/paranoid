@@ -32,6 +32,8 @@ jobs:
     environment: azure-cleanup
     permissions:
       contents: read
+      # Reads the environments' settings, for the preflight
+      actions: read
       id-token: write
     env:
       RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'paranoid' }}
@@ -42,12 +44,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check the settings
-        env:
-          CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-          TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-          SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-        run: bash deploy/azure/check-sign-in.sh fail
+      - name: Check the requirements
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: azure
+          environment: azure-cleanup
+          vars: ${{ toJSON(vars) }}
 
       - name: Set up the Azure CLI
         uses: ./.github/actions/setup-az

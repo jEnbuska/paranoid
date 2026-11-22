@@ -36,8 +36,8 @@ jobs:
     steps:
       # Without an azure-cleanup environment or a cleanup-azure.yml on main,
       # there's nothing to clean up with. deploy-azure.yml and
-      # cleanup-azure.yml reach main together. The cleanup job itself checks
-      # the environment's settings.
+      # cleanup-azure.yml reach main together. The cleanup job checks the
+      # environment's settings with the preflight.
       - name: Start the cleanup on main
         env:
           GH_TOKEN: ${{ github.token }}
@@ -71,6 +71,8 @@ jobs:
     environment: azure-cleanup
     permissions:
       contents: read
+      # Reads the environments' settings, for the preflight
+      actions: read
       id-token: write
     # Its own group, so it never waits behind a deploy, even one waiting for
     # approval. It can run while a deploy creates its server: it only deletes
@@ -88,22 +90,20 @@ jobs:
         with:
           persist-credentials: false
 
-      # With no IDs in azure-cleanup, Azure was never set up: a notice, and
-      # the other steps skip
-      - name: Check the settings
-        id: settings
-        env:
-          CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-          TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-          SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-        run: bash deploy/azure/check-sign-in.sh skip
+      # Not owner-only: the scheduled start job runs as whoever last edited
+      # the schedule, and this run as github-actions[bot]
+      - name: Check the requirements
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: azure
+          environment: azure-cleanup
+          owner-only: "false"
+          vars: ${{ toJSON(vars) }}
 
       - name: Set up the Azure CLI
-        if: steps.settings.outputs.configured == 'true'
         uses: ./.github/actions/setup-az
 
       - name: Sign in to Azure
-        if: steps.settings.outputs.configured == 'true'
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -111,5 +111,4 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Delete the servers that are off or expired
-        if: steps.settings.outputs.configured == 'true'
         run: bash deploy/azure/delete-servers.sh finished

@@ -37,8 +37,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Before anyone is asked to approve the deploy: fails a run that someone
+  # without admin permission started, and checks the environments and the
+  # repository variables. The deploy job runs it again for the azure
+  # environment's own variables.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reads the environments' settings
+      actions: read
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the deploy's requirements
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: azure
+          environment: azure
+          in-environment: "false"
+          vars: ${{ toJSON(vars) }}
+
   deploy:
     name: Deploy to Azure
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
@@ -46,6 +74,8 @@ jobs:
       url: ${{ steps.create.outputs.url }}
     permissions:
       contents: read
+      # Reads the environments' settings, for the preflight
+      actions: read
       # Only for the OIDC token that azure/login exchanges with Azure
       id-token: write
     env:
@@ -57,13 +87,19 @@ jobs:
         with:
           persist-credentials: false
 
-      # Before anything is deleted, so a bad setting leaves a running server
-      # alone. The IDs are the azure environment's variables.
+      # The azure environment's own variables, now that the job has it. No
+      # secret exists to pass.
+      - name: Check the deploy's requirements
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: azure
+          environment: azure
+          vars: ${{ toJSON(vars) }}
+
+      # The workflow's inputs, and the settings that reach the server, before
+      # anything is deleted, so a bad one leaves a running server alone
       - name: Check the settings
         env:
-          CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-          TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-          SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
           LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
           MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}

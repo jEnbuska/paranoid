@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Checks the Azure deploy settings and passes them to the later steps of the
-# job through GITHUB_ENV. deploy-azure.yml sets each one from the workflow
-# input, then the repository variable, then the default (see
-# docs/deploy/azure.md).
+# Checks the Azure deploy's inputs, and the settings that reach the server,
+# and passes them to the later steps of the job through GITHUB_ENV.
+# deploy-azure.yml sets each one from the workflow input, then the
+# repository variable, then the default (see docs/deploy/azure.md). The
+# environments and their IDs are the deploy preflight's to check
+# (deploy/azure/requirements.json).
 #
 # Only checked values reach GITHUB_ENV, the server's custom data and its
-# tags, so an input can't add lines or commands to any of them.
+# tags, so an input can't add lines or commands to any of them. The
+# preflight checks the variables too, but an input never passes through it.
 set -euo pipefail
 
 fail() {
@@ -20,15 +23,6 @@ whole() {
   fi
 }
 
-# id <variable name> <value>: an Azure ID, which bootstrap.sh printed
-id() {
-  [[ $2 =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] ||
-    fail "The azure environment's variable $1 must be the ID that deploy/azure/bootstrap.sh printed, not '$2'. See docs/deploy/azure.md, step 5."
-}
-
-id AZURE_CLIENT_ID "$CLIENT_ID"
-id AZURE_TENANT_ID "$TENANT_ID"
-id AZURE_SUBSCRIPTION_ID "$SUBSCRIPTION_ID"
 whole max_invites "$MAX_INVITES" 1 10000
 whole lifetime_minutes "$LIFETIME_MINUTES" 1 1440
 whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
