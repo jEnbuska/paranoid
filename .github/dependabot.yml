@@ -1,14 +1,19 @@
-# Dependabot version updates for the actions our workflows use. Every action
-# is pinned to a commit SHA with its version in a comment on the same line
-# (`uses: owner/repo@<sha> # vX.Y.Z`), and Dependabot updates both together.
+# Dependabot version updates for the actions our workflows and composite
+# actions use. Every action is pinned to a commit SHA with its version in a
+# comment on the same line (`uses: owner/repo@<sha> # vX.Y.Z`), and
+# Dependabot updates both together.
 # npm dependencies aren't listed: `pnpm audit` in CI and audit.yml checks them.
 # `PR rules` lets Dependabot's PRs through without a linked issue.
 # https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
 version: 2
 updates:
   - package-ecosystem: github-actions
-    # "/" covers the workflows in .github/workflows
-    directory: /
+    # "/" covers the workflows in .github/workflows, and the glob each
+    # composite action in .github/actions, such as deploy-preflight's
+    # pinned setup-node
+    directories:
+      - /
+      - /.github/actions/*
     # PRs go into dev, like every other PR, and dev's workflows are checked
     target-branch: dev
     schedule:
