@@ -1,0 +1,236 @@
+# The Release button: Actions → Release → Run workflow, from dev. It
+# fast-forwards main to dev, like the manual `git push origin
+# origin/dev:refs/heads/main` in CONTRIBUTING.md's "Releases", but only after
+# scripts/release-checks.sh has confirmed that the release PR is green.
+#
+# Only the repository owner can release, enforced twice: every job fails
+# unless the owner started the run, and the job that pushes uses the `release`
+# environment, which only dev and main may use and whose required reviewer is
+# the owner.
+#
+# It runs from dev, the commit being released, so the release code that runs
+# is the code the release PR's checks passed on. The `check` job reads only;
+# the `release` job, the only one that can write, runs only when `dry_run` is
+# off, checks everything again (approval can come much later) and pushes the
+# exact commit it checked.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run every check and print the push, but don't push
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One release at a time, and never cancel one that's pushing.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the release PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      statuses: read
+    outputs:
+      sha: ${{ steps.checks.outputs.sha }}
+      pr: ${{ steps.checks.outputs.pr }}
+      pr_url: ${{ steps.checks.outputs.pr_url }}
+      commits: ${{ steps.checks.outputs.commits }}
+
+    steps:
+      # github.triggering_actor is whoever re-runs a run, github.actor whoever
+      # started it, so a re-run by someone else fails here too.
+      - name: Check that the owner started the run
+        env:
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
+            echo "::error::Only the repository owner, $OWNER, can release. This run was started by $TRIGGERING_ACTOR."
+            exit 1
+          fi
+
+      - name: Check the branch
+        env:
+          REF: ${{ github.ref }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ "$REF" != refs/heads/dev ]; then
+            if [ "$DRY_RUN" != true ]; then
+              echo "::error::A release runs from dev, not $REF. Pick dev under \"Use workflow from\"."
+              exit 1
+            fi
+            echo "::notice::A dry run from $REF: the checks don't compare dev with this run's commit."
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # From dev, this run's commit has to be dev's, so the release PR's checks
+      # passed on the code that's running.
+      - name: Check the release PR
+        id: checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.ref == 'refs/heads/dev' && github.sha || '' }}
+        run: bash scripts/release-checks.sh
+
+      - name: Write the summary
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          SHA: ${{ steps.checks.outputs.sha }}
+          PR_URL: ${{ steps.checks.outputs.pr_url }}
+          COMMITS: ${{ steps.checks.outputs.commits }}
+        run: |
+          if [ "$DRY_RUN" = true ]; then
+            echo "Dry run: every check passed. A release would run:"
+            echo "  git push origin $SHA:refs/heads/main"
+          fi
+          {
+            if [ "$DRY_RUN" = true ]; then
+              echo "## Dry run: nothing was pushed"
+              echo
+              echo "Every check passed. A release would push \`$SHA\` to main:"
+              echo
+              echo '```'
+              echo "git push origin $SHA:refs/heads/main"
+              echo '```'
+            else
+              echo "## Checks passed"
+              echo
+              echo "Releasing \`$SHA\` once the \`release\` environment is approved."
+            fi
+            echo
+            echo "- Release PR: $PR_URL"
+            echo
+            echo "### Commits since main"
+            echo
+            while IFS= read -r subject; do
+              printf -- '- %s\n' "$subject"
+            done <<<"$COMMITS"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Fast-forward main
+    needs: check
+    if: >-
+      !inputs.dry_run
+      && github.ref == 'refs/heads/dev'
+      && github.actor == github.repository_owner
+      && github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      # Push to main, read the checks again, and start CI on main
+      contents: write
+      pull-requests: read
+      checks: read
+      statuses: read
+      actions: write
+
+    steps:
+      - name: Check that the owner started the run
+        env:
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
+            echo "::error::Only the repository owner, $OWNER, can release. This run was started by $TRIGGERING_ACTOR."
+            exit 1
+          fi
+
+      # The commit to release, with credentials for the push. Nothing from the
+      # checkout runs except the checks script, which the release PR's checks
+      # passed on.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+
+      # Approval can come long after the check job, so check again that dev
+      # hasn't moved and the checks still pass.
+      - name: Check the release PR again
+        id: checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.check.outputs.sha }}
+        run: bash scripts/release-checks.sh
+
+      # The exact commit that was checked, never a branch name, and never
+      # --force. GitHub accepts it as the release PR's merge because the PR's
+      # head is that commit and its checks passed.
+      - name: Push to main
+        env:
+          SHA: ${{ steps.checks.outputs.sha }}
+          PR_URL: ${{ steps.checks.outputs.pr_url }}
+        run: |
+          if ! git push origin "$SHA:refs/heads/main"; then
+            message="GitHub refused the push to main, so main is unchanged. Release by hand from a clone: git fetch origin, then git push origin $SHA:refs/heads/main"
+            echo "::error::$message"
+            printf '## Not released\n\n%s\n\nRelease PR: %s\n' "$message" "$PR_URL" >>"$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          main=$(git ls-remote origin refs/heads/main | cut -f 1)
+          if [ "$main" != "$SHA" ]; then
+            echo "::error::The push went through, but main is at $main, not $SHA."
+            exit 1
+          fi
+          echo "main is at $SHA."
+
+      # Pushes made with GITHUB_TOKEN don't start workflows, but
+      # workflow_dispatch does, so CI on main is started here. The release
+      # isn't finished until it has started.
+      - name: Start CI on main
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.checks.outputs.sha }}
+        run: |
+          run_url=$(gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/dispatches" \
+            -f ref=main -F return_run_details=true --jq '.html_url // empty' || true)
+          if [ -z "$run_url" ]; then
+            # Older API versions don't return the run, so find it.
+            for _ in $(seq 1 12); do
+              sleep 5
+              run_url=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
+                --event workflow_dispatch --commit "$SHA" --limit 1 --json url --jq '.[0].url // empty')
+              [ -n "$run_url" ] && break
+            done
+          fi
+          if [ -z "$run_url" ]; then
+            echo "::error::main is released, but CI on main didn't start. Start it with: gh workflow run ci.yml --ref main"
+            exit 1
+          fi
+          echo "CI on main: $run_url"
+          echo "run_url=$run_url" >>"$GITHUB_OUTPUT"
+
+      - name: Write the summary
+        if: always() && steps.ci.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.checks.outputs.sha }}
+          PR: ${{ steps.checks.outputs.pr }}
+          PR_URL: ${{ steps.checks.outputs.pr_url }}
+          RUN_URL: ${{ steps.ci.outputs.run_url }}
+        run: |
+          state=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json state --jq .state || echo unknown)
+          {
+            echo "## Released"
+            echo
+            echo "- Commit: https://github.com/$GITHUB_REPOSITORY/commit/$SHA"
+            echo "- Release PR: $PR_URL ($state)"
+            echo "- CI on main: $RUN_URL"
+          } >>"$GITHUB_STEP_SUMMARY"
