@@ -8,6 +8,7 @@ import type { Server } from "node:http";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Rule } from "../requirements.ts";
 import requirements from "../requirements.ts";
 
 const cli = new URL("../preflight-cli.ts", import.meta.url).pathname;
@@ -148,57 +149,116 @@ function run(
   );
 }
 
-/** The variables each environment's jobs must have */
-const REQUIRED = {
-  azure: ["AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"],
+// Whether a variable is a repository variable or an environment's own is
+// read from the file, so moving one only changes the file. What each
+// environment's jobs read is fixed below, by PR #93's workflows.
+const path = join(root, "deploy/azure/requirements.json");
+const azure = requirements(path, JSON.parse(readFileSync(path, "utf8")), {
+  shared: false,
+});
+
+/** The variables each environment's jobs read in PR #93's workflows */
+const READS = {
+  azure: [
+    "AZURE_CLIENT_ID",
+    "AZURE_TENANT_ID",
+    "AZURE_SUBSCRIPTION_ID",
+    "AZURE_RESOURCE_GROUP",
+    "AZURE_REGION",
+    "AZURE_VM_SIZE",
+    "AZURE_IMAGE",
+  ],
   "azure-cleanup": [
     "AZURE_CLEANUP_CLIENT_ID",
     "AZURE_TENANT_ID",
     "AZURE_SUBSCRIPTION_ID",
+    "AZURE_RESOURCE_GROUP",
   ],
 };
 
-/** A value each patterned variable must refuse, and the jobs that read it */
-const WRONG: [string, string, string[]][] = [
-  ["AZURE_CLIENT_ID", "paranoid-deployer", ["azure"]],
-  ["AZURE_CLEANUP_CLIENT_ID", `${id(2)}x`, ["azure-cleanup"]],
-  ["AZURE_TENANT_ID", "contoso.onmicrosoft.com", ["azure", "azure-cleanup"]],
-  ["AZURE_SUBSCRIPTION_ID", "Azure subscription 1", ["azure", "azure-cleanup"]],
-  ["AZURE_RESOURCE_GROUP", "paranoid;rm -rf", ["azure", "azure-cleanup"]],
-  ["AZURE_REGION", "Sweden Central", ["azure"]],
-  ["AZURE_VM_SIZE", "B2ats_v2", ["azure"]],
-  ["AZURE_IMAGE", "Debian:debian-13", ["azure"]],
-];
+/** A value each patterned variable must refuse */
+const WRONG: Record<string, string> = {
+  AZURE_CLIENT_ID: "paranoid-deployer",
+  AZURE_CLEANUP_CLIENT_ID: `${id(2)}x`,
+  AZURE_TENANT_ID: "contoso.onmicrosoft.com",
+  AZURE_SUBSCRIPTION_ID: "Azure subscription 1",
+  AZURE_RESOURCE_GROUP: "paranoid;rm -rf",
+  AZURE_REGION: "Sweden Central",
+  AZURE_VM_SIZE: "B2ats_v2",
+  AZURE_IMAGE: "Debian:debian-13",
+};
+
+/** The variables the preflight checks in a job, and where it says each is */
+function checked(job: Job): Map<string, { rule: Rule; where: string }> {
+  const result = new Map<string, { rule: Rule; where: string }>();
+  for (const [name, rule] of azure.variables) {
+    if (!rule.environments || rule.environments.includes(job.environment)) {
+      result.set(name, { rule, where: " in the repository" });
+    }
+  }
+  if (job.inEnvironment === "true") {
+    const own = azure.environments.get(job.environment)?.variables ?? [];
+    for (const [name, rule] of own) {
+      result.set(name, {
+        rule,
+        where: ` in the environment ${job.environment}`,
+      });
+    }
+  }
+  return result;
+}
+
+const required = (job: Job) =>
+  [...checked(job)].filter(([, { rule }]) => rule.required);
 
 describe("deploy/azure/requirements.json", () => {
-  it("lists PR #93's environments and repository variables, and no secrets", () => {
-    const path = join(root, "deploy/azure/requirements.json");
-    const azure = requirements(path, JSON.parse(readFileSync(path, "utf8")), {
-      shared: false,
-    });
+  it("lists PR #93's environments and variables, and no secrets", () => {
     expect(azure.guide).toBe("docs/deploy/azure.md");
-    expect([...azure.environments]).toEqual([
-      [
-        "azure",
-        {
-          reviewers: "required",
-          step: "#4-connect-your-fork-to-azure",
-          variables: new Map(),
-          secrets: new Map(),
-        },
-      ],
-      [
-        "azure-cleanup",
-        {
-          reviewers: "none",
-          step: "#4-connect-your-fork-to-azure",
-          variables: new Map(),
-          secrets: new Map(),
-        },
-      ],
+    expect(
+      [...azure.environments].map(([name, { reviewers, step, secrets }]) => [
+        name,
+        reviewers,
+        step,
+        secrets.size,
+      ]),
+    ).toEqual([
+      ["azure", "required", "#4-connect-your-fork-to-azure", 0],
+      ["azure-cleanup", "none", "#4-connect-your-fork-to-azure", 0],
     ]);
-    expect([...azure.variables.keys()]).toEqual(Object.keys(ALL));
+    const names = [
+      ...azure.variables.keys(),
+      ...[...azure.environments.values()].flatMap(({ variables }) => [
+        ...variables.keys(),
+      ]),
+    ];
+    expect([...new Set(names)].toSorted()).toEqual(Object.keys(ALL).toSorted());
   });
+
+  for (const environment of azure.environments.keys()) {
+    const job = { environment, inEnvironment: "true", ownerOnly: "true" };
+
+    it(`checks what ${environment}'s jobs read, and nothing else`, () => {
+      expect([...checked(job).keys()].toSorted()).toEqual(
+        READS[environment as keyof typeof READS].toSorted(),
+      );
+    });
+
+    for (const [name, { rule, where }] of checked(job)) {
+      if (!rule.pattern) continue;
+      it(`fails ${environment}'s job on a wrong ${name}, naming it`, async () => {
+        expect(WRONG[name]).toBeDefined();
+        routes = setUp;
+        const result = await run(job, { ...ALL, [name]: WRONG[name] });
+        expect(result.status).toBe(1);
+        const lines = result.output.trim().split("\n");
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toContain(
+          `::error::The variable ${name}${where} is ${JSON.stringify(WRONG[name])}, which doesn't match `,
+        );
+        expect(lines[0]).toContain(` Fix: ${guide}${rule.step}`);
+      });
+    }
+  }
 
   for (const [name, job] of Object.entries(JOBS)) {
     it(`passes ${name} when everything is set`, async () => {
@@ -211,43 +271,20 @@ describe("deploy/azure/requirements.json", () => {
     it(`passes ${name} with only the required variables, so the defaults apply`, async () => {
       routes = setUp;
       const vars = Object.fromEntries(
-        REQUIRED[job.environment as keyof typeof REQUIRED].map((name) => [
-          name,
-          ALL[name],
-        ]),
+        required(job).map(([name]) => [name, ALL[name]]),
       );
       const result = await run(job, vars);
       expect(result.status).toBe(0);
     });
 
-    for (const missing of REQUIRED[job.environment as keyof typeof REQUIRED]) {
+    for (const [missing, { rule, where }] of required(job)) {
       it(`fails ${name} without ${missing}, naming it`, async () => {
         routes = setUp;
         const { [missing]: _, ...vars } = ALL;
         const result = await run(job, vars);
         expect(result.status).toBe(1);
         expect(result.output).toBe(
-          `::error::The variable ${missing} isn't set in the repository. Fix: ${guide}#4-connect-your-fork-to-azure\n`,
-        );
-      });
-    }
-  }
-
-  for (const [name, value, environments] of WRONG) {
-    for (const environment of environments) {
-      it(`fails ${environment}'s job on a wrong ${name}, naming it`, async () => {
-        routes = setUp;
-        const result = await run(
-          { environment, inEnvironment: "true", ownerOnly: "true" },
-          { ...ALL, [name]: value },
-        );
-        expect(result.status).toBe(1);
-        const lines = result.output.trim().split("\n");
-        expect(lines).toHaveLength(1);
-        expect(lines[0]).toMatch(
-          new RegExp(
-            `^::error::The variable ${name} in the repository is .*, which doesn't match `,
-          ),
+          `::error::The variable ${missing} isn't set${where}. Fix: ${guide}${rule.step}\n`,
         );
       });
     }
