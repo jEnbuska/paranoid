@@ -33,6 +33,7 @@ name="paranoid-$DEPLOYMENT"
 # digits, - and _, which these are.
 created=$(date +%s)
 expires=$((created + LIFETIME_MINUTES * 60))
+labels="app=paranoid,run=$DEPLOYMENT,created=$created,expires=$expires,paranoid-month=$MONTH"
 details=$(mktemp)
 trap 'rm -f "$details"' EXIT
 
@@ -61,7 +62,7 @@ gcloud compute instances create "$name" \
   --network-tier=STANDARD \
   --stack-type=IPV4_ONLY \
   --tags=paranoid \
-  --labels="app=paranoid,run=$DEPLOYMENT,created=$created,expires=$expires,paranoid-month=$MONTH" \
+  --labels="$labels" \
   --no-service-account \
   --no-scopes \
   --shielded-secure-boot \
@@ -76,6 +77,10 @@ gcloud compute instances create "$name" \
     echo "${metadata[*]}"
   )" \
   --format=json >"$details"
+
+# The boot disk, named like the VM, gets the same labels. gcloud can't set
+# a boot disk's labels when it creates the VM, so this sets them after.
+gcloud compute disks add-labels "$name" --zone="$GCP_ZONE" --labels="$labels" >/dev/null
 
 ip=$(jq -r '.[0].networkInterfaces[0].accessConfigs[0].natIP // empty' "$details")
 [[ $ip =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || {

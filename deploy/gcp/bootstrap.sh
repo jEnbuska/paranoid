@@ -163,7 +163,7 @@ role() {
 # Create, look at and delete VMs and their boot disks. The binding below
 # limits it to paranoid-* VMs and disks in the zone.
 role paranoidVms "Paranoid: manage paranoid-* VMs" \
-  compute.instances.create,compute.instances.delete,compute.instances.get,compute.instances.getSerialPortOutput,compute.instances.setLabels,compute.instances.setMetadata,compute.instances.setTags,compute.disks.create,compute.disks.delete
+  compute.instances.create,compute.instances.delete,compute.instances.get,compute.instances.getSerialPortOutput,compute.instances.setLabels,compute.instances.setMetadata,compute.instances.setTags,compute.disks.create,compute.disks.delete,compute.disks.setLabels
 # Only look at and delete them, for stopping and cleaning up
 role paranoidVmsDelete "Paranoid: delete paranoid-* VMs" \
   compute.instances.delete,compute.instances.get,compute.disks.delete
