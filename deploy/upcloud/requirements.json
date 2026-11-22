@@ -1,0 +1,48 @@
+{
+  "$schema": "../requirements.schema.json",
+  "guide": "docs/deploy/upcloud.md",
+  "environments": {
+    "upcloud": {
+      "reviewers": "required",
+      "step": "#4-create-the-environments-in-your-fork",
+      "secrets": {
+        "UPCLOUD_TOKEN": {
+          "required": true,
+          "pattern": "^ucat_[A-Za-z0-9]+$",
+          "step": "#5-create-the-api-tokens-and-add-them"
+        }
+      }
+    },
+    "upcloud-cleanup": {
+      "reviewers": "none",
+      "step": "#4-create-the-environments-in-your-fork",
+      "secrets": {
+        "UPCLOUD_TOKEN": {
+          "required": true,
+          "pattern": "^ucat_[A-Za-z0-9]+$",
+          "step": "#5-create-the-api-tokens-and-add-them"
+        }
+      }
+    }
+  },
+  "variables": {
+    "UPCLOUD_ZONE": {
+      "pattern": "^[a-z]{2}-[a-z]{3}[0-9]{1,2}$",
+      "example": "fi-hel1",
+      "environments": ["upcloud"],
+      "step": "#6-optional-settings"
+    },
+    "UPCLOUD_PLAN": {
+      "pattern": "^[A-Za-z0-9-]{1,40}$",
+      "example": "STARTER-1xCPU-1GB",
+      "environments": ["upcloud"],
+      "step": "#6-optional-settings"
+    },
+    "UPCLOUD_TEMPLATE": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9 ./()_-]{0,99}$",
+      "example": "Debian GNU/Linux 13 (Trixie)",
+      "environments": ["upcloud"],
+      "step": "#6-optional-settings"
+    }
+  }
+}
