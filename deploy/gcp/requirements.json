@@ -1,0 +1,86 @@
+{
+  "$schema": "../requirements.schema.json",
+  "guide": "docs/deploy/gcp.md",
+  "environments": {
+    "gcp": {
+      "reviewers": "required",
+      "step": "#5-connect-your-fork",
+      "variables": {
+        "GCP_PROJECT": {
+          "required": true,
+          "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
+          "example": "my-project-123",
+          "step": "#5-connect-your-fork"
+        },
+        "GCP_WORKLOAD_IDENTITY_PROVIDER": {
+          "required": true,
+          "pattern": "^projects/[0-9]{1,20}/locations/global/workloadIdentityPools/[a-z0-9-]{4,32}/providers/[a-z0-9-]{4,32}$",
+          "example": "projects/123456789012/locations/global/workloadIdentityPools/paranoid-github/providers/github",
+          "step": "#5-connect-your-fork"
+        },
+        "GCP_SERVICE_ACCOUNT": {
+          "required": true,
+          "pattern": "^paranoid-deploy@[a-z][a-z0-9-]{4,28}[a-z0-9]\\.iam\\.gserviceaccount\\.com$",
+          "example": "paranoid-deploy@my-project-123.iam.gserviceaccount.com",
+          "step": "#5-connect-your-fork"
+        },
+        "GCP_BUCKET": {
+          "required": true,
+          "pattern": "^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$",
+          "example": "my-project-123-paranoid",
+          "step": "#5-connect-your-fork"
+        }
+      }
+    },
+    "gcp-cleanup": {
+      "reviewers": "none",
+      "step": "#5-connect-your-fork",
+      "variables": {
+        "GCP_PROJECT": {
+          "required": true,
+          "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
+          "example": "my-project-123",
+          "step": "#5-connect-your-fork"
+        },
+        "GCP_WORKLOAD_IDENTITY_PROVIDER": {
+          "required": true,
+          "pattern": "^projects/[0-9]{1,20}/locations/global/workloadIdentityPools/[a-z0-9-]{4,32}/providers/[a-z0-9-]{4,32}$",
+          "example": "projects/123456789012/locations/global/workloadIdentityPools/paranoid-github/providers/github",
+          "step": "#5-connect-your-fork"
+        },
+        "GCP_SERVICE_ACCOUNT": {
+          "required": true,
+          "pattern": "^paranoid-cleanup@[a-z][a-z0-9-]{4,28}[a-z0-9]\\.iam\\.gserviceaccount\\.com$",
+          "example": "paranoid-cleanup@my-project-123.iam.gserviceaccount.com",
+          "step": "#5-connect-your-fork"
+        },
+        "GCP_BUCKET": {
+          "required": true,
+          "pattern": "^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$",
+          "example": "my-project-123-paranoid",
+          "step": "#5-connect-your-fork"
+        }
+      }
+    }
+  },
+  "variables": {
+    "GCP_REGION": {
+      "required": true,
+      "pattern": "^[a-z]+-[a-z]+[0-9]{1,2}$",
+      "example": "europe-north1",
+      "step": "#4-run-the-one-time-setup"
+    },
+    "GCP_ZONE": {
+      "required": true,
+      "pattern": "^[a-z]+-[a-z]+[0-9]{1,2}-[a-z]$",
+      "example": "europe-north1-a",
+      "step": "#5-connect-your-fork"
+    },
+    "GCP_MONTHLY_BUDGET_USD": {
+      "pattern": "^[0-9]{1,4}(\\.[0-9]{1,2})?$",
+      "example": "5",
+      "environments": ["gcp"],
+      "step": "#the-spending-limits"
+    }
+  }
+}
