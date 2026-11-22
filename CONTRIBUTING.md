@@ -46,31 +46,19 @@ git rebase origin/dev
 git push --force-with-lease
 ```
 
-When a rebase stops on a conflict, `git rebase --continue` opens that commit's message in your editor, which deletes a `#N` subject unless you follow [Commit messages](#commit-messages).
-
 Or press "Update branch" on the PR and pick "Update with rebase", not "Update with merge commit": PR branches stay linear, like `dev` and `main`. After GitHub rebases the branch, fetch and reset or rebase your local branch onto it before pushing again.
 
 GitHub's rebase drops empty commits, but `git rebase` keeps them. So "Update branch" on a draft PR that holds only its empty "Start" commit moves the branch to the base's tip, and GitHub then closes the PR because it has no commits. Rebase such a PR with `git rebase` instead, or don't update it until it has a real commit. If it was already closed, push a new commit to its branch and reopen it.
 
 ## Opening a pull request
 
-1. Find or open an issue, and start your branch from `dev`. Name it `<TICKET_NUMBER>-<name>`, for example `2-peers-stuck-connecting`.
+1. Find or open an issue, and start your branch from `dev`. Name it `<TICKET_NUMBER>-<name>`, for example `2-peers-stuck-connecting`. Start each commit message with the ticket number and a space, without `#`: `2 Reconnect peers that get stuck`. Git deletes lines that start with `#` as comments whenever it opens a message in your editor, such as when a rebase stops on a conflict, so a `#N` subject would be lost. Commits on a `hotfix/*` branch have no ticket number, and [Dependabot](#dependabot)'s start with `Dependabot:`. Older commits keep their `#N` subjects.
 2. Open the PR against `dev`, with `Closes #N`, `Fixes #N` or `Resolves #N` in its description. The issue has to be open. It closes when the PR merges. Title the PR with its branch name, for example `97-dependency-audit`, and add a colon and a few words when the name doesn't explain the PR: `85-deploy-hetzner: Hetzner Cloud in the EU`. A hotfix PR uses its `hotfix/<name>` branch the same way.
 3. Keep the branch up to date by rebasing, with `git rebase origin/dev` or the "Update with rebase" option on the PR (see [When a PR can merge](#when-a-pr-can-merge), including why not to use that option on a PR whose only commit is empty).
 
 When an issue is too big for one PR, split it. Pieces that can't really be built on their own, because they depend on each other or only make sense together, become [sub-issues](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-sub-issues) of the original issue (`gh issue create --parent <N>`, or `gh issue edit <N> --add-sub-issue <CHILD>` for an existing issue). Work that can be built on its own becomes a separate issue. The same goes for whatever a PR leaves undone: move it to a sub-issue or a separate issue before the PR merges.
 
 Run the checks listed in the [README](README.md#scripts) before pushing. CI runs the end-to-end tests in Chromium, Firefox and WebKit on every PR. If a browser fails on a ready PR, move the PR to draft and add a comment saying which browser and test failed.
-
-## Commit messages
-
-Start each commit message with its ticket number, for example `#6 Add the GCP workflows`. [Dependabot](#dependabot)'s commits start with `Dependabot:` instead. Whenever git opens a message in your editor (`git commit` without `-m`, `git commit --amend`, `git rebase --continue` after a conflict, `git rebase -i`), it deletes the lines that start with `#` as comments, and the subject is gone. `git commit -m` is safe. Fix it for good in your own clone by making `;` the comment character:
-
-```bash
-git config core.commentChar ';'
-```
-
-It's a local setting, so it can't be committed, and each clone needs it once. Without it, pass `-c core.commentChar=';'` to both the `git rebase` that starts a rebase and each `--continue`. If a message has already lost its first line, put it back with `git commit --amend --cleanup=verbatim -m '<message>'`, which keeps the message exactly as you give it.
 
 ## Answering review comments
 
