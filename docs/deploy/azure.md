@@ -8,24 +8,59 @@ You start a server from GitHub Actions for a set number of invites. It powers it
 
 Azure's prices and rules below were checked on 2026-11-20. They can change, so check the linked pages too.
 
+This is Azure's page of [Deploying Paranoid](README.md), which explains how deploying works on every provider, the settings they share and the cost limit.
+
+## What this deployment needs
+
+Everything this deployment needs from GitHub, by name. It also reads the [shared repository variables](README.md#shared-repository-variables).
+
+### Environments
+
+| Environment     | Branches    | Required reviewers | Used by                               |
+| --------------- | ----------- | ------------------ | ------------------------------------- |
+| `azure`         | `main` only | You                | `deploy-azure.yml`                    |
+| `azure-cleanup` | `main` only | None               | `cleanup-azure.yml`, `stop-azure.yml` |
+
+You create both in [step 4](#4-connect-your-fork-to-azure).
+
+### Secrets
+
+No secrets. GitHub Actions signs in to Azure with GitHub's OIDC token, which Azure trusts only for these two environments of your fork, so there's no password, key or token anywhere. See [Why there's no secret](#why-theres-no-secret).
+
+### Variables
+
+| Variable                  | Set in     | What it does                                                                               | Required | Default                           | Explained in                            |
+| ------------------------- | ---------- | ------------------------------------------------------------------------------------------ | -------- | --------------------------------- | --------------------------------------- |
+| `AZURE_CLIENT_ID`         | Repository | The client ID of `paranoid-deployer`, the identity deploys sign in as.                     | Required | None                              | [Step 4](#4-connect-your-fork-to-azure) |
+| `AZURE_CLEANUP_CLIENT_ID` | Repository | The client ID of `paranoid-cleaner`, the delete-only identity cleanup and stop sign in as. | Required | None                              | [Step 4](#4-connect-your-fork-to-azure) |
+| `AZURE_TENANT_ID`         | Repository | Your Microsoft Entra tenant, where both identities live.                                   | Required | None                              | [Step 4](#4-connect-your-fork-to-azure) |
+| `AZURE_SUBSCRIPTION_ID`   | Repository | The subscription the servers are billed to.                                                | Required | None                              | [Step 4](#4-connect-your-fork-to-azure) |
+| `AZURE_RESOURCE_GROUP`    | Repository | The resource group the setup made, which holds everything.                                 | Optional | `paranoid`                        | [Step 3](#3-run-the-one-time-setup)     |
+| `AZURE_REGION`            | Repository | Where the server runs. Set by the setup, and must match it.                                | Optional | `swedencentral`                   | [Step 6](#6-optional-settings)          |
+| `AZURE_VM_SIZE`           | Repository | The VM size.                                                                               | Optional | `Standard_B2ats_v2`               | [Step 6](#6-optional-settings)          |
+| `AZURE_IMAGE`             | Repository | The Debian 13 image, as `publisher:offer:sku:version`.                                     | Optional | `Debian:debian-13:13-gen2:latest` | [Step 6](#6-optional-settings)          |
+
+They're IDs and settings, not secrets, and they're repository variables, not environment variables, because the scheduled cleanup reads `AZURE_CLEANUP_CLIENT_ID` before it has an environment.
+
 ## Contents
 
+1. [What this deployment needs](#what-this-deployment-needs)
 1. [Words used in this guide](#words-used-in-this-guide)
-2. [Fork the repository](#1-fork-the-repository)
-3. [Sign up for Azure](#2-sign-up-for-azure)
-4. [Run the one-time setup](#3-run-the-one-time-setup)
-5. [Connect your fork to Azure](#4-connect-your-fork-to-azure)
-6. [Keep the logs for 1 day](#5-keep-the-logs-for-1-day)
-7. [Optional settings](#6-optional-settings)
-8. [Start a server](#7-start-a-server)
-9. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
-10. [Costs](#costs)
-11. [Checking nothing is left](#checking-nothing-is-left)
-12. [Why there's no secret](#why-theres-no-secret)
-13. [Troubleshooting](#troubleshooting)
-14. [Removing everything](#removing-everything)
-15. [Privacy](#privacy)
-16. [What a deploy does](#what-a-deploy-does)
+1. [Fork the repository](#1-fork-the-repository)
+1. [Sign up for Azure](#2-sign-up-for-azure)
+1. [Run the one-time setup](#3-run-the-one-time-setup)
+1. [Connect your fork to Azure](#4-connect-your-fork-to-azure)
+1. [Keep the logs for 1 day](#5-keep-the-logs-for-1-day)
+1. [Optional settings](#6-optional-settings)
+1. [Start a server](#7-start-a-server)
+1. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
+1. [Costs](#costs)
+1. [Checking nothing is left](#checking-nothing-is-left)
+1. [Why there's no secret](#why-theres-no-secret)
+1. [Troubleshooting](#troubleshooting)
+1. [Removing everything](#removing-everything)
+1. [Privacy](#privacy)
+1. [What a deploy does](#what-a-deploy-does)
 
 ## Words used in this guide
 
@@ -161,17 +196,13 @@ Everything works with the defaults. To change one, add a repository variable as 
 gh variable set LIFETIME_MINUTES --body 30 --repo <owner>/<repo>
 ```
 
-The **Deploy to Azure** workflow's inputs win over the variables, and the variables over the defaults.
+The **Deploy to Azure** workflow's inputs win over the variables, and the variables over the defaults. The settings every provider shares, the number of invites, the lifetime, the outbound limit and the cost limit, are in the index's [shared repository variables](README.md#shared-repository-variables). Azure's own:
 
-| Name                  | Default                           | What it does                                                                                                                                                                                |
-| --------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MAX_INVITES`         | `5`                               | Invites the server creates before it powers off, from 1 to 10000. The `max_invites` input overrides it.                                                                                     |
-| `LIFETIME_MINUTES`    | `60`                              | Minutes until the server powers off at the latest, from 1 to 1440 (24 hours), counted from when it starts. The `lifetime_minutes` input overrides it.                                       |
-| `MAX_EGRESS_MBIT`     | `2`                               | Limit on all the server's outbound traffic, in Mbit/s, from 1 to 50, against abuse and its cost. At 2 Mbit/s, the app's files load in about a second.                                       |
-| `MAX_DEPLOY_COST_USD` | `1`                               | The most one deploy may cost in the worst case, in USD. A deploy that could cost more is refused before anything starts. See [Costs](#costs).                                               |
-| `AZURE_REGION`        | `swedencentral`                   | Set by the setup. One of the regions in [Costs](#costs). To change it, run the setup again with the new `AZURE_REGION`, after [removing everything](#removing-everything).                  |
-| `AZURE_VM_SIZE`       | `Standard_B2ats_v2`               | [VM size](https://learn.microsoft.com/azure/virtual-machines/sizes/general-purpose/basv2-series). `Standard_B1s` also works. For the Arm-based `Standard_B2pts_v2`, also set `AZURE_IMAGE`. |
-| `AZURE_IMAGE`         | `Debian:debian-13:13-gen2:latest` | The Debian 13 image, as `publisher:offer:sku:version`. For an Arm size, use Debian's Arm image: `az vm image list --publisher Debian --offer debian-13 --all -o table` lists them.          |
+| Name            | Default                           | What it does                                                                                                                                                                                |
+| --------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AZURE_REGION`  | `swedencentral`                   | Set by the setup. One of the regions in [Costs](#costs). To change it, run the setup again with the new `AZURE_REGION`, after [removing everything](#removing-everything).                  |
+| `AZURE_VM_SIZE` | `Standard_B2ats_v2`               | [VM size](https://learn.microsoft.com/azure/virtual-machines/sizes/general-purpose/basv2-series). `Standard_B1s` also works. For the Arm-based `Standard_B2pts_v2`, also set `AZURE_IMAGE`. |
+| `AZURE_IMAGE`   | `Debian:debian-13:13-gen2:latest` | The Debian 13 image, as `publisher:offer:sku:version`. For an Arm size, use Debian's Arm image: `az vm image list --publisher Debian --offer debian-13 --all -o table` lists them.          |
 
 Never put a password or token in a variable: variables are shown in logs and to anyone who can read the repository. Paranoid's Azure setup needs none.
 
@@ -230,7 +261,7 @@ What a server is made of, per hour:
 - **Free:** the NSG, the network, the managed identity, the network watcher and the budget.
 - **With the free account**, the VM's hours are covered for 12 months (750 hours a month of `Standard_B2ats_v2`, `Standard_B1s` or `Standard_B2pts_v2`), and the $200 credit covers the rest in the first 30 days.
 
-**Worst case for one deploy.** Before starting anything, **Deploy to Azure** works out the most the deploy could cost: every started hour of the lifetime plus an hour for the cleanup, at the hourly price, plus outbound traffic at `MAX_EGRESS_MBIT` for the whole lifetime, without the free 100 GB. It refuses the deploy if that's above `MAX_DEPLOY_COST_USD`, $1 by default. With the defaults in `swedencentral`:
+**Worst case for one deploy.** Before starting anything, **Deploy to Azure** works out the most the deploy could cost: every started hour of the lifetime plus an hour for the cleanup, at the hourly price, plus outbound traffic at `MAX_EGRESS_MBIT` for the whole lifetime, without the free 100 GB. It refuses the deploy if that's above `MAX_DEPLOY_COST_USD`, $1 by default (see [The cost limit](README.md#the-cost-limit)). With the defaults in `swedencentral`:
 
 | Lifetime           | Worst case | Allowed with the default $1 limit                                                                       |
 | ------------------ | ---------- | ------------------------------------------------------------------------------------------------------- |
