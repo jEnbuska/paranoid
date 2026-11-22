@@ -103,9 +103,10 @@ jobs:
           environment: aws
           vars: ${{ toJSON(vars) }}
 
-      # The workflow's inputs, which override two of the variables, are the
-      # only settings the preflight doesn't see.
-      - name: Check the inputs
+      # The workflow's inputs, which override two of the variables and which
+      # the preflight doesn't see, and, again, every setting that reaches the
+      # server (#141).
+      - name: Check the settings
         env:
           MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
           LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}

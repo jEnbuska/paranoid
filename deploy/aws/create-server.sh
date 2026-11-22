@@ -21,6 +21,9 @@ fail() {
 [[ $REPOSITORY =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "Unexpected repository name: $REPOSITORY"
 [[ $COMMIT =~ ^[0-9a-f]{40}$ ]] || fail "Unexpected commit: $COMMIT"
 [[ $RUN_ID =~ ^[0-9]+$ ]] || fail "Unexpected run ID: $RUN_ID"
+# Checked here too, though the preflight checks it (#141): it goes into
+# run-instances' shorthand syntax, where a comma would add other options.
+[[ $SECURITY_GROUP_ID =~ ^sg-[0-9a-f]{8,17}$ ]] || fail "Unexpected security group ID: $SECURITY_GROUP_ID"
 
 name="paranoid-$RUN_ID"
 created=$(date +%s)
