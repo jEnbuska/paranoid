@@ -16,7 +16,7 @@ const root = new URL("../../../../", import.meta.url).pathname;
 const dir = mkdtempSync(join(tmpdir(), "gcp-preflight-"));
 const guide =
   "https://github.com/owner/paranoid/blob/abc123/docs/deploy/gcp.md";
-const settingsStep = `${guide}#6-give-github-the-settings`;
+const settingsStep = `${guide}#5-connect-your-fork`;
 
 // Where each variable goes follows the common pattern (#135): identity
 // values in each environment whose jobs read them, tuning values and limits
@@ -294,7 +294,7 @@ describe("deploy/gcp/requirements.json", () => {
         const result = await run(job, rest);
         expect(result.status).toBe(1);
         expect(result.output).toBe(
-          `::error::The variable ${missing} isn't set ${where(missing, job)}. Fix: ${missing === "GCP_REGION" ? `${guide}#5-run-the-setup-script` : settingsStep}\n`,
+          `::error::The variable ${missing} isn't set ${where(missing, job)}. Fix: ${missing === "GCP_REGION" ? `${guide}#4-run-the-one-time-setup` : settingsStep}\n`,
         );
       });
     }
