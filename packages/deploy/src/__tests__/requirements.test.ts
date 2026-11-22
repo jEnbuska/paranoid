@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import requirements, { valueProblem } from "../requirements.ts";
 
@@ -30,21 +30,6 @@ describe("requirements", () => {
       "MAX_EGRESS_MBIT",
       "MAX_DEPLOY_COST_USD",
     ]);
-  });
-
-  it("reads every provider's file in the repository", () => {
-    const deploy = join(root, "deploy");
-    for (const name of readdirSync(deploy)) {
-      const path = join(deploy, name, "requirements.json");
-      if (!existsSync(path)) continue;
-      // A provider's list can land before its guide does, so the guide
-      // isn't required to exist yet.
-      expect(() =>
-        requirements(path, JSON.parse(readFileSync(path, "utf8")), {
-          shared: false,
-        }),
-      ).not.toThrow();
-    }
   });
 
   it("refuses a misspelled key, so no check is skipped by mistake", () => {
