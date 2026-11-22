@@ -6,9 +6,38 @@ You start a server from GitHub Actions for a set number of invites. It powers it
 
 **There's no secret to keep.** GitHub Actions signs in to Google Cloud with Workload Identity Federation (explained below), so no password, key or token is stored anywhere, not even in GitHub.
 
-**There's a spending limit, $5 a month by default.** Before each deploy, the workflow works out the most the deployment could cost, and doesn't start it if that doesn't fit what's left of the month's limit.
+**There are two spending limits.** Before each deploy, the workflow works out the most the deployment could cost, and doesn't start it if that's more than $1, every provider's limit for one deploy, or more than what's left of Google Cloud's own limit for the month, $5 by default.
 
-Google's prices and rules below were checked on 2026-11-20. They can change, so check the linked pages too.
+Google's prices and rules below were checked on 2026-11-20. They can change, so check the linked pages too. How deploying works on every provider, and the settings they share, are in [Deploying Paranoid](README.md).
+
+## What this deployment needs
+
+Everything this deployment needs from GitHub, by name. It also reads the [shared repository variables](README.md#shared-repository-variables).
+
+### Environments
+
+| Environment   | Branches    | Required reviewers | Used by                           |
+| ------------- | ----------- | ------------------ | --------------------------------- |
+| `gcp`         | `main` only | You                | `deploy-gcp.yml`                  |
+| `gcp-cleanup` | `main` only | None               | `cleanup-gcp.yml`, `stop-gcp.yml` |
+
+### Secrets
+
+No secrets. GitHub Actions signs in to Google Cloud with Workload Identity Federation: Google Cloud trusts GitHub's short-lived token for your fork's `main` branch, so there's no key or token to keep anywhere.
+
+### Variables
+
+| Variable                         | Set in                               | What it does                                                                                                                   | Required | Default | Explained in                                |
+| -------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- | ------------------------------------------- |
+| `GCP_PROJECT`                    | Repository                           | The Google Cloud project's ID.                                                                                                 | Required |         | [Step 6](#6-give-github-the-settings)       |
+| `GCP_REGION`                     | Repository                           | The region the VM runs in, such as `europe-north1`. It must have prices in `deploy/gcp/prices.json`.                           | Required |         | [Step 5](#5-run-the-setup-script)           |
+| `GCP_ZONE`                       | Repository                           | The zone in that region, such as `europe-north1-a`.                                                                            | Required |         | [Step 6](#6-give-github-the-settings)       |
+| `GCP_BUCKET`                     | Repository                           | The bucket that holds the month's ledger.                                                                                      | Required |         | [Step 6](#6-give-github-the-settings)       |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Repository                           | The Workload Identity provider that trusts your fork's `main` branch.                                                          | Required |         | [Step 6](#6-give-github-the-settings)       |
+| `GCP_SERVICE_ACCOUNT`            | Environments `gcp` and `gcp-cleanup` | The service account each environment acts as: `paranoid-deploy` in `gcp`, the delete-only `paranoid-cleanup` in `gcp-cleanup`. | Required |         | [Step 6](#6-give-github-the-settings)       |
+| `GCP_MONTHLY_BUDGET_USD`         | Environment `gcp`                    | Google Cloud's own limit for the month's total, in US dollars, on top of the shared `MAX_DEPLOY_COST_USD`.                     | Optional | `5`     | [The spending limits](#the-spending-limits) |
+
+The setup script prints the commands that set all of them, in [step 5](#5-run-the-setup-script).
 
 ## Contents
 
@@ -23,7 +52,7 @@ Google's prices and rules below were checked on 2026-11-20. They can change, so 
 9. [Start a server](#8-start-a-server)
 10. [Stop it, and how it's cleaned up](#9-stop-it-and-how-its-cleaned-up)
 11. [Costs](#costs)
-12. [The spending limit](#the-spending-limit)
+12. [The spending limits](#the-spending-limits)
 13. [Checking nothing is left](#checking-nothing-is-left)
 14. [Troubleshooting](#troubleshooting)
 15. [Removing everything](#removing-everything)
@@ -164,7 +193,7 @@ In your fork:
    - Untick **Prevent self-review**.
    - Under **Deployment branches and tags**, choose **Selected branches and tags**, click **Add deployment branch or tag rule**, enter `main` and click **Add rule**.
    - Click **Save protection rules**.
-   - Under **Environment variables**, click **Add environment variable** for `GCP_SERVICE_ACCOUNT` and `MONTHLY_BUDGET_USD`, with the values the script printed for `gcp`.
+   - Under **Environment variables**, click **Add environment variable** for `GCP_SERVICE_ACCOUNT` and `GCP_MONTHLY_BUDGET_USD`, with the values the script printed for `gcp`.
 2. **Settings** → **Environments** → **New environment**, name it `gcp-cleanup`, and click **Configure environment**.
    - Leave **Required reviewers** off.
    - Under **Deployment branches and tags**, choose **Selected branches and tags** and add `main`, as above.
@@ -176,21 +205,20 @@ Either way, **Settings** → **Environments** then lists `gcp`, with **1 reviewe
 
 ## 7. Optional settings
 
-Everything works with the defaults. To change one, add a variable to the `gcp` environment, which only deploys use, for example:
+Everything works with the defaults. The settings every provider shares, the number of invites, the lifetime, the outbound limit and the cost limit for one deploy (`MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT` and `MAX_DEPLOY_COST_USD`), are repository variables explained in [the shared table](README.md#shared-repository-variables). For example:
 
 ```bash
-gh variable set LIFETIME_MINUTES --env gcp --body 120 --repo <owner>/<repo>
+gh variable set LIFETIME_MINUTES --body 120 --repo <owner>/<repo>
 ```
 
-The **Deploy to Google Cloud** workflow's inputs win over the variables, and the variables over the defaults.
+The **Deploy to Google Cloud** workflow's inputs win over the variables, and the variables over the defaults. With the defaults, `MAX_DEPLOY_COST_USD`'s $1 allows a lifetime of up to about 11 hours: at 2 Mbit/s, the worst case is about $0.09 an hour, mostly outbound traffic.
 
-| Name                 | Default | What it does                                                                                                                                                                                                    |
-| -------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MAX_INVITES`        | `5`     | Invites the server creates before it powers off, from 1 to 10000. The `max_invites` input overrides it.                                                                                                         |
-| `LIFETIME_MINUTES`   | `60`    | Minutes until Google Cloud deletes the VM at the latest, from 1 to 1440 (24 hours), counted from when it's created. The `lifetime_minutes` input overrides it.                                                  |
-| `MAX_EGRESS_MBIT`    | `2`     | Limit on all the server's outbound traffic, in Mbit/s, from 1 to 50, against abuse. At 2 Mbit/s, the app's files load in about a second. A higher limit makes each deployment's worst case more expensive.      |
-| `MONTHLY_BUDGET_USD` | `5`     | The [spending limit](#the-spending-limit), in US dollars. A deployment whose worst case doesn't fit what's left of the month's limit isn't started.                                                             |
-| `GCP_REGION`         |         | Set by the setup script. To change the region, run the setup script again with the new one and set the variables it prints: the network, the zone and the deploy permissions belong to the region and its zone. |
+Google Cloud's own settings:
+
+| Name                     | Default | What it does                                                                                                                                                                                                    |
+| ------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GCP_MONTHLY_BUDGET_USD` | `5`     | Google Cloud's [limit for the month](#the-spending-limits), in US dollars, in the `gcp` environment. A deployment whose worst case doesn't fit what's left of the month's limit isn't started.                  |
+| `GCP_REGION`             |         | Set by the setup script. To change the region, run the setup script again with the new one and set the variables it prints: the network, the zone and the deploy permissions belong to the region and its zone. |
 
 The app uses Google's STUN servers unless `VITE_ICE_SERVERS` in [`packages/client-app/.env`](../../packages/client-app/.env) says otherwise. To use your own, change it in your fork and commit it. It isn't a secret: it's built into the app that every visitor downloads.
 
@@ -240,7 +268,7 @@ What one Paranoid VM costs per hour in `europe-north1`, the default:
 | **Total, typical** (a few chats, little traffic) |                       | **about $0.015**           |
 
 - **Per deployment:** with the defaults, one hour, at most **$0.09**. With `max_invites`, it's usually deleted sooner, and costs less.
-- **Per month:** at most the [spending limit](#the-spending-limit), **$5** by default: about 58 worst-case hours of servers. Typical use costs a few cents.
+- **Per month:** at most the [spending limit](#the-spending-limits), **$5** by default: about 58 worst-case hours of servers. Typical use costs a few cents.
 - **Outbound traffic** is the biggest part of the worst case. Standard Tier is the cheaper of Google's two network tiers. Its first 200 GiB a month per billing account are free, but the limit doesn't count on that, so the real cost is usually lower than the worst case.
 - **Nothing is billed between deployments**: the network, its firewall rule, the service account, the roles and Workload Identity Federation are free. The ledger in the bucket is a few kilobytes, a fraction of a cent a month.
 - **Google bills by the second**, with a minimum of one minute.
@@ -259,11 +287,14 @@ The setup script creates a budget of $5 a month for the project, which emails yo
 
 Google can also turn billing off for a project automatically when a budget is exceeded, with a small function you set up yourself ([Google's guide](https://cloud.google.com/billing/docs/how-to/disable-billing-with-notifications)). Paranoid doesn't do this: it needs billing administrator rights for a program, and Google warns that it stops all services in the project and that resources may be deleted.
 
-## The spending limit
+## The spending limits
 
-Google Cloud has no hard cap on spending. So the deploy workflow keeps its own limit, `MONTHLY_BUDGET_USD`, $5 by default:
+Google Cloud has no hard cap on spending, and no prepaid balance. So the deploy workflow checks two limits before it creates a VM:
 
-1. **Before it creates a VM**, it works out the worst case for the deployment: the VM, its address and its disk for the whole lifetime, outbound traffic at `MAX_EGRESS_MBIT` for all of it, and the disk for two more hours, in case the VM powers off at the end and waits for the cleanup. Google Cloud deletes the VM at the end of its lifetime, and the VM can't send faster than the limit, so it can't cost more than that.
+- **`MAX_DEPLOY_COST_USD`**, $1 by default, every provider's limit for one deploy, explained in [the cost limit](README.md#the-cost-limit). With Google's prices in [`deploy/gcp/prices.json`](../../deploy/gcp/prices.json), a deploy whose worst case is higher isn't started, and the run says the longest lifetime that fits. This check runs before the workflow even signs in to Google Cloud.
+- **`GCP_MONTHLY_BUDGET_USD`**, $5 by default, Google Cloud's own limit for the month's total, which keeps many cheap deploys from adding up. It works like this:
+
+1. **Before it creates a VM**, it works out the same worst case for the deployment: the VM, its address and its disk for the whole lifetime, outbound traffic at `MAX_EGRESS_MBIT` for all of it, and the disk for two more hours, in case the VM powers off at the end and waits for the cleanup. Google Cloud deletes the VM at the end of its lifetime, and the VM can't send faster than the limit, so it can't cost more than that.
 2. It reads the month's ledger in the bucket: every deployment this month, with its worst case or, once its VM is gone, what it cost.
 3. If the worst case doesn't fit what's left, **it doesn't deploy**, and says what lifetime would fit.
 4. Otherwise it records the worst case in the ledger and deploys.
@@ -271,7 +302,7 @@ Google Cloud has no hard cap on spending. So the deploy workflow keeps its own l
 
 If anything goes wrong, a deployment keeps its full worst case counted, so the ledger can only say too much, never too little. The month is the calendar month in UTC, and a deployment counts in the month it started.
 
-At the limit, no new deployments start until next month, unless you raise `MONTHLY_BUDGET_USD`.
+At the monthly limit, no new deployments start until next month, unless you raise `GCP_MONTHLY_BUDGET_USD`.
 
 **What the limit rests on:**
 
@@ -305,7 +336,8 @@ The run's log says which step failed and why. There's no SSH, so you can't log i
 | "Sign in to Google Cloud" fails with `unauthorized_client` or "The given credential is rejected by the attribute condition" | Google Cloud only accepts runs of your fork's `main` branch in the `gcp` and `gcp-cleanup` environments. Start it on `main`, and check each environment's `GCP_SERVICE_ACCOUNT`. If you renamed or re-created the fork, run the setup script again with the new `<owner>/<repo>`. |
 | A permission error such as 403 on `iam.serviceAccounts.getAccessToken`                                                      | The service account can't be used by the run. Run the setup script again, wait a minute, and retry: new permissions can take a few minutes to apply.                                                                                                                              |
 | A permission error such as 403 on `compute.instances.create` or another `compute` permission                                | The zone or region variable doesn't match the setup. Run the setup script again and set the variables it prints. If it persists, the role may lack a permission: open an issue with the error.                                                                                    |
-| "This deployment could cost up to ..., but only ... is left"                                                                | The month's [spending limit](#the-spending-limit) is used up. Use a shorter lifetime, as the message says, wait until next month, or raise `MONTHLY_BUDGET_USD`.                                                                                                                  |
+| "The worst case, ..., is more than the limit"                                                                               | One deploy could cost more than `MAX_DEPLOY_COST_USD`, $1 by default. Use a lifetime up to the one the message says, a lower `MAX_EGRESS_MBIT`, or raise `MAX_DEPLOY_COST_USD` ([shared variables](README.md#shared-repository-variables)).                                       |
+| "This deployment could cost up to ..., but only ... is left"                                                                | The month's [spending limit](#the-spending-limits) is used up. Use a shorter lifetime, as the message says, wait until next month, or raise `GCP_MONTHLY_BUDGET_USD`.                                                                                                             |
 | "deploy/gcp/prices.json has no prices for ..."                                                                              | Your region isn't in the price file. Use one of the regions it has, or add yours from Google's pricing pages.                                                                                                                                                                     |
 | "Compute Engine API has not been used in project ... or it is disabled"                                                     | Run the setup script, which turns it on, and wait a few minutes.                                                                                                                                                                                                                  |
 | "billing account ... is disabled", or "The billing account is closed"                                                       | Link the project to a working billing account, as in [step 3](#3-create-a-project). A free trial that's over needs **Activate** in the console.                                                                                                                                   |
@@ -375,7 +407,7 @@ It doesn't get `iam.serviceAccounts.actAs`, because the VM has no service accoun
 1. Waits for your approval, in the `gcp` environment.
 2. Checks the settings, before it changes anything.
 3. Signs in to Google Cloud with Workload Identity Federation, as `paranoid-deploy`.
-4. Checks the [spending limit](#the-spending-limit), and records the deployment's worst case in the ledger.
+4. Checks the [spending limit](#the-spending-limits), and records the deployment's worst case in the ledger.
 5. Deletes any existing Paranoid VM, running or off, with its disk.
 6. Creates an `e2-micro` VM named `paranoid-<run id>-<attempt>` from Google's Debian 13 image, with:
    - a 10 GB standard disk that's deleted with it;

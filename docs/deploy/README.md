@@ -55,8 +55,9 @@ A provider is listed here only once its pull request has merged, with its page, 
 
 <!-- One row per provider, in alphabetical order, added by the pull request that adds its workflows. scripts/check-deploy-docs.mts checks it. -->
 
-| Provider | Where it runs | Needs a secret | Deployed for real |
-| -------- | ------------- | -------------- | ----------------- |
+| Provider               | Where it runs                                                        | Needs a secret                   | Deployed for real |
+| ---------------------- | -------------------------------------------------------------------- | -------------------------------- | ----------------- |
+| [Google Cloud](gcp.md) | Finland (`europe-north1`) by default, or another Google Cloud region | No: Workload Identity Federation | Not yet           |
 
 ## Adding a provider
 
