@@ -19,17 +19,17 @@ Everything this deployment needs from GitHub, by name. It also reads the [shared
 
 ### Secrets
 
-| Secret          | Environment                  | Where its value comes from                                                                                                      |
-| --------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `UPCLOUD_TOKEN` | `upcloud`, `upcloud-cleanup` | An UpCloud API token for each, from the account GitHub Actions uses, created in [step 5](#5-create-the-api-tokens-and-add-them) |
+| Secret          | Environment                  | Where its value comes from                                                                                                    |
+| --------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `UPCLOUD_TOKEN` | `upcloud`, `upcloud-cleanup` | An UpCloud API token for each, from the account GitHub Actions uses, created in [step 4](#create-the-api-tokens-and-add-them) |
 
 ### Variables
 
 | Variable           | Set in     | What it does                            | Required | Default                        | Explained in                   |
 | ------------------ | ---------- | --------------------------------------- | -------- | ------------------------------ | ------------------------------ |
-| `UPCLOUD_ZONE`     | Repository | The zone the server runs in.            | Optional | `fi-hel1`                      | [Step 6](#6-optional-settings) |
-| `UPCLOUD_PLAN`     | Repository | The server's plan, its size and price.  | Optional | `STARTER-1xCPU-1GB`            | [Step 6](#6-optional-settings) |
-| `UPCLOUD_TEMPLATE` | Repository | UpCloud's Debian image with cloud-init. | Optional | `Debian GNU/Linux 13 (Trixie)` | [Step 6](#6-optional-settings) |
+| `UPCLOUD_ZONE`     | Repository | The zone the server runs in.            | Optional | `fi-hel1`                      | [Step 5](#5-optional-settings) |
+| `UPCLOUD_PLAN`     | Repository | The server's plan, its size and price.  | Optional | `STARTER-1xCPU-1GB`            | [Step 5](#5-optional-settings) |
+| `UPCLOUD_TEMPLATE` | Repository | UpCloud's Debian image with cloud-init. | Optional | `Debian GNU/Linux 13 (Trixie)` | [Step 5](#5-optional-settings) |
 
 ## Contents
 
@@ -37,19 +37,18 @@ Everything this deployment needs from GitHub, by name. It also reads the [shared
 2. [Words used in this guide](#words-used-in-this-guide)
 3. [Fork the repository](#1-fork-the-repository)
 4. [Sign up for UpCloud](#2-sign-up-for-upcloud)
-5. [Create an account for GitHub Actions](#3-create-an-account-for-github-actions)
-6. [Create the environments in your fork](#4-create-the-environments-in-your-fork)
-7. [Create the API tokens and add them](#5-create-the-api-tokens-and-add-them)
-8. [Optional settings](#6-optional-settings)
-9. [Start a server](#7-start-a-server)
-10. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
-11. [Costs](#costs)
-12. [Checking nothing is left](#checking-nothing-is-left)
-13. [The tokens](#the-tokens)
-14. [Troubleshooting](#troubleshooting)
-15. [Removing everything](#removing-everything)
-16. [Privacy](#privacy)
-17. [What a deploy does](#what-a-deploy-does)
+5. [Prepare the account](#3-prepare-the-account)
+6. [Create the credentials and connect your fork](#4-create-the-credentials-and-connect-your-fork)
+7. [Optional settings](#5-optional-settings)
+8. [Start a server](#6-start-a-server)
+9. [Stop it, and how it's cleaned up](#7-stop-it-and-how-its-cleaned-up)
+10. [Costs](#costs)
+11. [Checking nothing is left](#checking-nothing-is-left)
+12. [The credentials](#the-credentials)
+13. [Troubleshooting](#troubleshooting)
+14. [Removing everything](#removing-everything)
+15. [Privacy](#privacy)
+16. [What a deploy does](#what-a-deploy-does)
 
 ## Words used in this guide
 
@@ -87,7 +86,7 @@ You should now see your balance in the Control Panel.
 
 **About the free trial:** UpCloud offers 7 days with €10 of credit, but starting it needs a credit card for a €0 or €1 check. During the trial, UpCloud locks the server firewall to its own rules, so the deploy may fail when it sets the firewall. Paying the €10 above upgrades the account to a full one, so you don't need the trial. See [UpCloud's free trial](https://upcloud.com/docs/getting-started/free-trial/).
 
-## 3. Create an account for GitHub Actions
+## 3. Prepare the account
 
 GitHub Actions gets its own login inside your UpCloud account, with access to servers and storage only: no billing, no other people and no other kinds of resources. Its two tokens are the only secrets you'll add to GitHub.
 
@@ -119,9 +118,13 @@ See [UpCloud's sub-accounts](https://upcloud.com/docs/getting-started/accounts/s
    - leave **Allow Basic Auth API connections** off. API tokens don't need it, and it would let the sub-account's password use the API;
    - give it access to **all servers** and **all storages**, and nothing else.
 
-## 4. Create the environments in your fork
+## 4. Create the credentials and connect your fork
 
-The tokens go into two GitHub **environments**, which only the `main` branch may use:
+The credentials are two UpCloud API tokens, one for each of two GitHub **environments** in your fork. UpCloud shows a token only once, so you create the environments first and paste each token into its environment as soon as UpCloud shows it.
+
+### Create the environments
+
+Only the `main` branch may use either of them:
 
 - `upcloud` is for **Deploy to UpCloud**. You're its required reviewer, so every deploy waits until you approve it. Only you and people you give write access to your fork can start a workflow, and even when one of them starts a deploy, it doesn't run until you approve it.
 - `upcloud-cleanup` is for **Stop UpCloud** and **Clean up UpCloud**. It has no reviewers, because the hourly cleanup has to run without anyone there to approve it. Both workflows only delete servers.
@@ -130,7 +133,7 @@ The workflows only run when you start them or on their schedule, never from a pu
 
 This needs a public repository, which a fork of this one is: see [what every provider needs from GitHub](README.md#what-every-provider-needs-from-github). A private copy on GitHub Free can't have environments, so it can't hold the tokens and isn't supported, and in one on Pro or Team deploys no longer wait for your approval (see GitHub's [deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)). Don't put the tokens in repository secrets instead: every branch and workflow could use them.
 
-### In GitHub's website
+#### In GitHub's website
 
 1. In your fork, go to **Settings** → **Environments** → **New environment**, name it `upcloud` and click **Configure environment**.
 2. Tick **Required reviewers**, enter your own GitHub username and select it.
@@ -140,7 +143,7 @@ This needs a public repository, which a fork of this one is: see [what every pro
 6. Go back to **Settings** → **Environments**, click **New environment** again, name it `upcloud-cleanup` and click **Configure environment**.
 7. Leave **Required reviewers** unticked. Under **Deployment branches and tags**, choose **Selected branches and tags** and add the rule `main`, as for `upcloud`, then click **Save protection rules**.
 
-### Or with the GitHub CLI
+#### Or with the GitHub CLI
 
 With [`gh`](https://cli.github.com) signed in to your GitHub account, create `upcloud` with you as its reviewer, limited to `main`:
 
@@ -166,16 +169,7 @@ gh api --method POST repos/<owner>/<repo>/environments/upcloud-cleanup/deploymen
 
 Either way, **Settings** → **Environments** now lists `upcloud`, with you as its reviewer and the branch rule `main`, and `upcloud-cleanup`, with only the branch rule `main`.
 
-### Keep the workflow logs for 1 day
-
-Your fork is public, so anyone signed in to GitHub can read its workflow runs and their logs. The workflows print nothing secret: GitHub hides the tokens' values, and the scripts never print what UpCloud returns. The logs still show your server's address and when it ran, so keep them only as long as you need them:
-
-1. In your fork, go to **Settings** → **Actions** → **General**.
-2. Under **Check, workflow run, status, artifact and log retention**, enter `1`, and click **Save**.
-
-GitHub then deletes each run, with its logs, a day after it ran. The setting applies only to runs after you save it. To remove an earlier run's logs, or a run's logs at once, open the run in the **Actions** tab, click **…** (**Show workflow options**) in the top right corner, then **Delete all logs**.
-
-## 5. Create the API tokens and add them
+### Create the API tokens and add them
 
 The account from step 3 gets two tokens: `paranoid-github-deploy` for `upcloud`, and `paranoid-github-cleanup` for `upcloud-cleanup`. Both can do the same things. UpCloud's permissions decide which servers and storages an account can reach, not what it may do with them, so a token that can delete servers can also create them. So the cleanup token could create servers too, but only the code on your fork's `main` ever gets it, and that code only deletes. A token for each environment still lets you revoke one without the other.
 
@@ -185,7 +179,7 @@ Create the first token:
 2. Go to **Workspace settings** → **API tokens** (A), or **Account** → **API tokens** (B), and click **Add new API token**.
 3. Fill in:
    - **Name:** `paranoid-github-deploy`.
-   - **Expiration:** 90 days is a good choice. 365 days is the most UpCloud allows. Put a reminder in your calendar a week before, to [replace the tokens](#the-tokens).
+   - **Expiration:** 90 days is a good choice. 365 days is the most UpCloud allows. Put a reminder in your calendar a week before, to [replace the tokens](#the-credentials).
    - **Allow token to create tokens:** off.
    - **Allowed IP ranges:** tick **Allow access from all IP addresses**. GitHub's runners have different addresses every time, so an IP limit would make every deploy fail.
 4. Click **Create API token**. **UpCloud shows the token only once.** It starts with `ucat_`. Keep this page open and add it to GitHub right away. Don't save the token in a file, a note, a password manager entry you'll forget, a chat or an email.
@@ -209,7 +203,16 @@ gh secret set UPCLOUD_TOKEN --env upcloud-cleanup --repo <owner>/<repo>
 
 For B, once both tokens are in GitHub, you can go back to your own login and turn **Allow access to Control Panel** off for the sub-account. The tokens keep the sub-account's server and storage permissions.
 
-## 6. Optional settings
+### Keep the workflow logs for 1 day
+
+Your fork is public, so anyone signed in to GitHub can read its workflow runs and their logs. The workflows print nothing secret: GitHub hides the tokens' values, and the scripts never print what UpCloud returns. The logs still show your server's address and when it ran, so keep them only as long as you need them:
+
+1. In your fork, go to **Settings** → **Actions** → **General**.
+2. Under **Check, workflow run, status, artifact and log retention**, enter `1`, and click **Save**.
+
+GitHub then deletes each run, with its logs, a day after it ran. The setting applies only to runs after you save it. To remove an earlier run's logs, or a run's logs at once, open the run in the **Actions** tab, click **…** (**Show workflow options**) in the top right corner, then **Delete all logs**.
+
+## 5. Optional settings
 
 Everything works with the defaults. The settings every provider shares, `MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT` and `MAX_DEPLOY_COST_USD`, are in [Deploying Paranoid's shared variables](README.md#shared-repository-variables). The **Deploy to UpCloud** workflow's inputs win over the variables, and the variables over the defaults.
 
@@ -231,7 +234,7 @@ The only secrets are the two `UPCLOUD_TOKEN`s. Never put a token or password in 
 
 The app uses Google's STUN servers unless `VITE_ICE_SERVERS` in [`packages/client-app/.env`](../../packages/client-app/.env) says otherwise. To use your own, change it in your fork and commit it. It isn't a secret: it's built into the app that every visitor downloads.
 
-## 7. Start a server
+## 6. Start a server
 
 1. In your fork, go to **Actions** → **Deploy to UpCloud** → **Run workflow**.
 2. Keep **Use workflow from** on `main`. Optionally fill in the number of invites and the lifetime. Click **Run workflow**.
@@ -245,13 +248,13 @@ Or with `gh`:
 gh workflow run deploy-upcloud.yml --ref main --repo <owner>/<repo> -f max_invites=5 -f lifetime_minutes=60
 ```
 
-Then approve it on the run's page, as in step 3. A deploy that's waiting for approval can wait up to 30 days. To drop it, click **Reject** instead, or **Cancel workflow**.
+Then approve it on the run's page, as above. A deploy that's waiting for approval can wait up to 30 days. To drop it, click **Reject** instead, or **Cancel workflow**.
 
 Open the URL, create an invite and open it in a second browser or on another device. The chat starts once both are connected.
 
 Anyone who has the URL can create invites, which use up `max_invites`. In a public fork, anyone signed in to GitHub can read the run summary until the run is deleted (see [Keep the workflow logs for 1 day](#keep-the-workflow-logs-for-1-day)).
 
-## 8. Stop it, and how it's cleaned up
+## 7. Stop it, and how it's cleaned up
 
 - **Stop it now:** **Actions** → **Stop UpCloud** → **Run workflow** on `main` deletes every Paranoid server and its storage right away, with no approval needed. It also cancels a deploy that's running or waiting for approval. Chats that have started keep working. Or: `gh workflow run stop-upcloud.yml --ref main --repo <owner>/<repo>`.
 - **On its own:** the server powers off once the last invite is finished, or at the end of its lifetime. A powered-off server is still billed, so the **Clean up UpCloud** workflow runs every hour and deletes every Paranoid server that's off or past its lifetime, with its storage. You can also run it by hand from the Actions tab.
@@ -272,7 +275,7 @@ Checked on 2026-11-20 on [UpCloud's pricing page](https://upcloud.com/pricing/) 
 
 - **Hourly, with a monthly cap.** UpCloud bills by the starting hour, and never more than 672 hours (28 days) a month. The hourly price is the monthly price divided by 672.
 - **Starter and Premium plans include the disk and one IPv4 address**, and are billed the same whether the server is on or off, until it's deleted. These three are the only plans a deploy accepts: other plans bill their disk and IPv4 address separately, which the cost check doesn't cover.
-- **Prices are the same in every zone**, and the deploy only accepts the EU zones listed in [Optional settings](#6-optional-settings).
+- **Prices are the same in every zone**, and the deploy only accepts the EU zones listed in [Optional settings](#5-optional-settings).
 - **The worst case for one deploy**, which **Deploy to UpCloud** checks before it creates anything: every started hour of the lifetime, plus 2 hours until Clean up UpCloud deletes the server, at the plan's price. Outbound traffic is free. The check works in US dollars, so [`prices.json`](../../deploy/upcloud/prices.json) holds UpCloud's euro prices converted at the European Central Bank's rate for 2026-11-20, 1.0990 dollars to the euro. With the default plan and `MAX_DEPLOY_COST_USD` of 1:
   - 60 minutes, the default: $0.0148;
   - 24 hours, the most: $0.1276, so every lifetime fits.
@@ -308,7 +311,7 @@ In the Control Panel, check that:
 
 If something is left, run **Stop UpCloud**, or delete it in the Control Panel: stop the server, then delete it together with its storage.
 
-## The tokens
+## The credentials
 
 The two `UPCLOUD_TOKEN` secrets are the only secrets, and they're never in the repository:
 
@@ -317,7 +320,7 @@ The two `UPCLOUD_TOKEN` secrets are the only secrets, and they're never in the r
 - Only the steps that call UpCloud's command-line tool, `upctl`, get it. Nothing writes it to disk or prints it, and GitHub hides it in logs.
 - The server never gets it. It isn't in the server's setup data, its labels or the run summary. The server doesn't use UpCloud's API: it only powers itself off, and GitHub Actions deletes it.
 
-**When they expire,** deploys, stops and cleanups fail with an authentication error. Create new tokens as in [step 5](#5-create-the-api-tokens-and-add-them), then replace each secret: in **Settings** → **Environments** → **upcloud**, and then **upcloud-cleanup**, click the pencil next to `UPCLOUD_TOKEN`, or run `gh secret set UPCLOUD_TOKEN --env upcloud --repo <owner>/<repo>` and `gh secret set UPCLOUD_TOKEN --env upcloud-cleanup --repo <owner>/<repo>` again. Then delete the old tokens in UpCloud.
+**When they expire,** deploys, stops and cleanups fail with an authentication error. Create new tokens as in [step 4](#create-the-api-tokens-and-add-them), then replace each secret: in **Settings** → **Environments** → **upcloud**, and then **upcloud-cleanup**, click the pencil next to `UPCLOUD_TOKEN`, or run `gh secret set UPCLOUD_TOKEN --env upcloud --repo <owner>/<repo>` and `gh secret set UPCLOUD_TOKEN --env upcloud-cleanup --repo <owner>/<repo>` again. Then delete the old tokens in UpCloud.
 
 **If it may have leaked,** for example it was pasted somewhere or committed:
 
@@ -333,7 +336,7 @@ The run's log says which step failed and why. There's no SSH, so you can't log i
 
 | What you see                                                                                | What to do                                                                                                                                                                                                                                                    |
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "The upcloud environment has no UPCLOUD_TOKEN secret", or the same for upcloud-cleanup      | Add the secret as in [step 5](#5-create-the-api-tokens-and-add-them). Check the name, `UPCLOUD_TOKEN`, and that it's an **environment** secret of the environment the message names, not a repository secret.                                                 |
+| "The upcloud environment has no UPCLOUD_TOKEN secret", or the same for upcloud-cleanup      | Add the secret as in [step 4](#create-the-api-tokens-and-add-them). Check the name, `UPCLOUD_TOKEN`, and that it's an **environment** secret of the environment the message names, not a repository secret.                                                   |
 | An authentication error from `upctl`, such as 401                                           | The token is wrong, expired or deleted. Create a new one and replace the secret.                                                                                                                                                                              |
 | A deploy waits, and its page asks for a review                                              | It waits for your approval: click **Review deployments**, tick `upcloud` and click **Approve and deploy**. If you can't approve it, check that you're the environment's required reviewer and that **Prevent self-review** is off.                            |
 | "Branch is not allowed to deploy to upcloud", or the same for upcloud-cleanup               | You started the workflow on another branch. Start it on `main`. Check the environment's deployment branch rule says `main`.                                                                                                                                   |

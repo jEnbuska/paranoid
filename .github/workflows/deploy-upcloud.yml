@@ -40,13 +40,14 @@ jobs:
   deploy:
     name: Deploy to UpCloud
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     environment:
       name: upcloud
       url: ${{ steps.create.outputs.url }}
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -128,6 +129,7 @@ jobs:
             echo
             echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
             echo "- It's a $PLAN server in $ZONE. The Clean up UpCloud workflow deletes it within about an hour of shutting down, and Stop UpCloud deletes it right away."
+            echo "- The most it can cost is \$$WORST_CASE_USD, before VAT."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Also when the run is cancelled, for example by stop-upcloud.yml

@@ -25,11 +25,12 @@ jobs:
   stop:
     name: Delete the servers
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: upcloud-cleanup
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -42,7 +43,8 @@ jobs:
             exit 1
           fi
 
-      - uses: ./.github/actions/setup-upctl
+      - name: Set up upctl
+        uses: ./.github/actions/setup-upctl
 
       - name: Delete every server
         env:
