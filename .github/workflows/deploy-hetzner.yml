@@ -110,13 +110,9 @@ jobs:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
         run: bash deploy/hetzner/delete-servers.sh all
 
-      - name: Set up the firewall
-        env:
-          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
-        run: bash deploy/hetzner/setup-firewall.sh
-
       # The server fetches this exact commit of this repository, which is
-      # public, so it needs no credentials.
+      # public, so it needs no credentials. The same step creates its
+      # firewall, which only lets in TCP 80 and 443.
       - name: Create the server
         id: create
         env:

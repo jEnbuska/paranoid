@@ -260,9 +260,8 @@ In the Hetzner Console, open the `paranoid` project and check that:
 
 - **Servers** lists no server named `paranoid-<number>`;
 - **Primary IPs** lists no address that belonged to one. A server's addresses are released when it's deleted;
+- **Firewalls** lists no firewall named `paranoid-<number>`. Each server has its own, deleted with it;
 - **Security** → **SSH keys** lists no key named `paranoid-<number>`. Each deploy deletes its own, and Clean up Hetzner deletes one a deploy left behind.
-
-The firewall `paranoid` stays between deploys. It costs nothing, and the next deploy reuses it.
 
 If a server is left, run **Stop Hetzner**, or delete it in the Console.
 
@@ -309,11 +308,10 @@ The run's log says which step failed and why. There's no SSH, so you can't log i
 ## Removing everything
 
 1. Run **Stop Hetzner**, then [check nothing is left](#checking-nothing-is-left).
-2. In the Console, delete the firewall `paranoid` under **Firewalls**.
-3. Delete both tokens: **Security** → **API tokens**.
-4. Delete the `paranoid` project itself, in its settings.
-5. In your fork, delete both environments: **Settings** → **Environments** → **hetzner** → **Delete environment**, then the same for **hetzner-cleanup**. That deletes their secrets too.
-6. If you want to close your Hetzner account, do it from your Hetzner account, or ask Hetzner's support. The last invoice still covers what ran that month.
+2. Delete both tokens: **Security** → **API tokens**.
+3. Delete the `paranoid` project itself, in its settings.
+4. In your fork, delete both environments: **Settings** → **Environments** → **hetzner** → **Delete environment**, then the same for **hetzner-cleanup**. That deletes their secrets too.
+5. If you want to close your Hetzner account, do it from your Hetzner account, or ask Hetzner's support. The last invoice still covers what ran that month.
 
 ## Privacy
 
@@ -332,8 +330,8 @@ The server keeps no access logs. Its own logs hold only connections and errors, 
 2. Works out the worst-case cost of every type in `HCLOUD_SERVER_TYPES` from [`prices.json`](../../deploy/hetzner/prices.json), with the shared [`packages/deploy`](../../packages/deploy/src/cli.ts), and stops if one is above `MAX_DEPLOY_COST_USD`, or if the location or a type isn't in the price file.
 3. Installs `hcloud` 1.70.2, Hetzner's command-line tool, from its release, after checking its checksum.
 4. Deletes any existing Paranoid server, running or off.
-5. Creates the firewall `paranoid` if it's missing, and sets its rules ([`firewall-rules.json`](../../deploy/hetzner/firewall-rules.json)): only TCP 80 and 443 get in. Everything else, port 22 included, is dropped.
-6. Creates a Debian 13 server named `paranoid-<run id>`, trying each type in turn, with the labels `app=paranoid`, `run`, `created` and `expires` (the Unix times it was created and its lifetime ends), behind that firewall, and [`deploy/server/cloud-init.yaml`](../../deploy/server/cloud-init.yaml) as its setup data. Its login is a throwaway SSH key whose private half is deleted at once, so Hetzner sets and sends no root password.
+5. Creates a firewall of its own, `paranoid-<run id>` ([`firewall-rules.json`](../../deploy/hetzner/firewall-rules.json)): only TCP 80 and 443 get in. Everything else, port 22 included, is dropped.
+6. Creates a Debian 13 server named `paranoid-<run id>`, trying each type in turn, behind that firewall from its first boot, and [`deploy/server/cloud-init.yaml`](../../deploy/server/cloud-init.yaml) as its setup data. Its login is a throwaway SSH key whose private half is deleted at once, so Hetzner sets and sends no root password. The key, the firewall and the server all get the labels `app=paranoid`, `run`, `created` and `expires` (the Unix times they were created and the lifetime ends), so the workflows find each of them, and Stop and Clean up Hetzner delete the firewall and key with the server.
 7. Waits up to 10 minutes for `https://<host>/healthz` and a socket.io handshake. If they don't come up, it deletes the server and fails, with the reason from the last attempt.
 
 On the server, cloud-init turns off SSH, locks root's password and sets a timer that powers off at the end of the lifetime. It then fetches exactly the deployed commit from the public repository with `git`, which checks every file against its hash, so the server needs no credentials. [`deploy/server/setup.sh`](../../deploy/server/setup.sh) from that commit does the rest:

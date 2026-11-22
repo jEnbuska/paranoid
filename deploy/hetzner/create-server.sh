@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Creates the Paranoid server on Hetzner Cloud, running
-# deploy/server/cloud-init.yaml, and writes its host, URL and expiry time to
-# GITHUB_OUTPUT.
+# deploy/server/cloud-init.yaml, behind a firewall of its own, and writes its
+# host, URL and expiry time to GITHUB_OUTPUT. The SSH key, the firewall and
+# the server all get the labels app=paranoid, run, created and expires, so
+# delete-servers.sh can find and delete each of them.
 #
 # Reads REPOSITORY and COMMIT (what the server fetches), RUN_ID, and the
 # settings settings.sh checked. hcloud reads HCLOUD_TOKEN from the
@@ -14,6 +16,8 @@ name="paranoid-$RUN_ID"
 created=$(date +%s)
 expires=$((created + LIFETIME_MINUTES * 60))
 work=$(mktemp -d)
+
+labels=(--label app=paranoid --label "run=$RUN_ID" --label "created=$created" --label "expires=$expires")
 
 cleanup() {
   # The server keeps the key it was created with, and needs no key resource
@@ -47,7 +51,13 @@ envsubst '$REPOSITORY $COMMIT $MAX_INVITES $LIFETIME_MINUTES $MAX_EGRESS_MBIT $P
 ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$work/key"
 rm -f "$work/key"
 hcloud ssh-key create --name "$name" --public-key-from-file "$work/key.pub" \
-  --label app=paranoid --label "run=$RUN_ID" --label "created=$created" >/dev/null
+  "${labels[@]}" >/dev/null
+
+# Only TCP 80 and 443 get in. Inbound traffic no rule allows is dropped, so
+# port 22 is closed. The firewall is applied when the server is created, so
+# the server is never reachable without it. Firewalls cost nothing.
+hcloud firewall create --name "$name" --rules-file "$here/firewall-rules.json" \
+  "${labels[@]}" >/dev/null
 
 # Tries each type in turn, as Hetzner sometimes has a type unavailable in a
 # location. The name is unique in the project, so there's never more than one.
@@ -56,10 +66,8 @@ type_created=
 for type in "${types[@]}"; do
   echo "Creating $name, a $type in $LOCATION"
   if hcloud server create --name "$name" --type "$type" --image debian-13 \
-    --location "$LOCATION" --ssh-key "$name" --firewall paranoid \
-    --user-data-from-file "$work/user-data.yaml" \
-    --label app=paranoid --label "run=$RUN_ID" \
-    --label "created=$created" --label "expires=$expires" \
+    --location "$LOCATION" --ssh-key "$name" --firewall "$name" \
+    --user-data-from-file "$work/user-data.yaml" "${labels[@]}" \
     --output json >"$work/created.json"; then
     type_created=$type
     break
