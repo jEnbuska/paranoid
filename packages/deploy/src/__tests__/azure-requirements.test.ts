@@ -260,8 +260,8 @@ describe("deploy/azure/requirements.json", () => {
 
   it("links the guide step that sets each value", () => {
     // In PR #93's guide, step 5 creates the environments and sets their
-    // variables and the repository variable AZURE_REGION. Size and image
-    // are optional settings, step 6.
+    // variables. Region, size and image are explained with the optional
+    // settings, step 6, as the guide's own table links them.
     const steps = Object.fromEntries([
       ...[...azure.environments].flatMap(
         ([environment, { step, variables }]) => [
@@ -286,7 +286,7 @@ describe("deploy/azure/requirements.json", () => {
       "azure-cleanup AZURE_TENANT_ID": connect,
       "azure-cleanup AZURE_SUBSCRIPTION_ID": connect,
       "azure-cleanup AZURE_RESOURCE_GROUP": connect,
-      AZURE_REGION: connect,
+      AZURE_REGION: "#6-optional-settings",
       AZURE_VM_SIZE: "#6-optional-settings",
       AZURE_IMAGE: "#6-optional-settings",
     });
