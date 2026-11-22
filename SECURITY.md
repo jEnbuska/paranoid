@@ -41,3 +41,11 @@ The fix is made privately, in the advisory's temporary private fork, and release
 ## Supported versions
 
 Only the latest `main` is supported. Fixes aren't backported to older commits.
+
+## How the repository is checked
+
+- **Dependencies: `pnpm audit`.** This is the real check for the npm dependencies. CI runs it on every PR into `dev` that changes a `package.json` or `pnpm-lock.yaml`, and on every PR into `main` and push to `main`, where a finding of high severity or worse blocks the release. [`audit.yml`](.github/workflows/audit.yml) also audits the whole tree weekly and opens an issue on a finding.
+- **Actions: Dependabot.** It only keeps the GitHub Actions current: every action is pinned to a commit SHA, and Dependabot opens one grouped PR into `dev` a week that updates them. Dependabot alerts are on, but GitHub raises none for pnpm 12's lockfile or for actions pinned to a SHA. Dependabot security updates are off.
+- **Secrets: secret scanning and gitleaks.** GitHub's secret scanning is on, with push protection. CI also runs [gitleaks](https://github.com/gitleaks/gitleaks) over the commits of every PR and push, with the token rules in [`.gitleaks.toml`](.gitleaks.toml) for providers GitHub doesn't know.
+
+The details are in the README's ["Continuous integration"](README.md#continuous-integration) section and CONTRIBUTING.md's ["Dependabot"](CONTRIBUTING.md#dependabot) section.
