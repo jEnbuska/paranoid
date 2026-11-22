@@ -56,6 +56,7 @@ jobs:
           GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
           MAX_INVITES: \${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
           ACME_PLAN: \${{ vars.ACME_PLAN || 'small' }}
+          ACME_ROLE_ARN: \${{ vars.ACME_ROLE_ARN }}
         run: echo "vars.NOT_AN_EXPRESSION"
 `;
 
@@ -68,8 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: acme-cleanup
     steps:
-      - env:
+      - name: Delete finished servers
+        env:
           ACME_TOKEN: \${{ secrets.ACME_TOKEN }}
+          ACME_ROLE_ARN: \${{ vars.ACME_ROLE_ARN }}
         run: true
 `;
 
@@ -100,8 +103,41 @@ It also reads the [shared repository variables](README.md#shared-repository-vari
 | --- | --- | --- | --- | --- | --- |
 | \`ACME_ZONE\` | Repository | The zone. | Optional | | Step 4 |
 | \`ACME_PLAN\` | Repository | The plan. | Optional | \`small\` | Step 4 |
+| \`ACME_ROLE_ARN\` | \`acme\`, \`acme-cleanup\` | The role each signs in as. | Required | | Step 4 |
+
+## Contents
+
+## Words used in this guide
 
 ## 1. Fork the repository
+
+## 2. Sign up for Acme
+
+## 3. Prepare the account
+
+## 4. Create the credentials and connect your fork
+
+## 5. Optional settings
+
+## 6. Start a server
+
+## 7. Stop it, and how it's cleaned up
+
+## Costs
+
+## Acme's extras
+
+## Checking nothing is left
+
+## The credentials
+
+## Troubleshooting
+
+## Removing everything
+
+## Privacy
+
+## What a deploy does
 `;
 
 /** A repository whose docs match its one provider, Acme. */
@@ -150,6 +186,7 @@ describe("usage", () => {
     // Not the comment, the plain string or GITHUB_TOKEN
     assert.deepEqual([...use.variables.keys()].sort(), [
       "ACME_PLAN",
+      "ACME_ROLE_ARN",
       "ACME_ZONE",
       "MAX_INVITES",
     ]);
@@ -380,6 +417,201 @@ describe("checkDeployDocs", () => {
         files,
         /^docs\/deploy\/zeta\.md: there's no .*deploy-zeta\.yml/,
       );
+    });
+  });
+
+  describe("where settings live", () => {
+    const ROLE_ROW =
+      "| `ACME_ROLE_ARN` | `acme`, `acme-cleanup` | The role each signs in as. | Required | | Step 4 |";
+
+    it("fails on an identity value that's a repository variable", () => {
+      const files = edit(
+        acme(),
+        "docs/deploy/acme.md",
+        ROLE_ROW,
+        "| `ACME_ROLE_ARN` | Repository | The role. | Required | | Step 4 |",
+      );
+      expectError(
+        files,
+        /`ACME_ROLE_ARN` is a repository variable, but it's an identity value/,
+      );
+    });
+
+    it("fails on a tuning value that's an environment variable", () => {
+      const files = edit(
+        acme(),
+        "docs/deploy/acme.md",
+        "| `ACME_PLAN` | Repository |",
+        "| `ACME_PLAN` | `acme` |",
+      );
+      expectError(files, /`ACME_PLAN` is in `acme`, but it's a tuning value/);
+    });
+
+    it("fails on an environment variable listed in the wrong environments", () => {
+      const files = edit(
+        acme(),
+        "docs/deploy/acme.md",
+        ROLE_ROW,
+        ROLE_ROW.replace("`acme`, `acme-cleanup`", "`acme`"),
+      );
+      expectError(
+        files,
+        /`ACME_ROLE_ARN` is in `acme`, but the workflows read it in `acme`, `acme-cleanup`/,
+      );
+    });
+
+    it("fails on a Set in that's neither Repository nor environments", () => {
+      const files = edit(
+        acme(),
+        "docs/deploy/acme.md",
+        "| `ACME_PLAN` | Repository |",
+        "| `ACME_PLAN` | Anywhere |",
+      );
+      expectError(files, /`ACME_PLAN` is set in "Anywhere"/);
+    });
+
+    it("fails on an environment variable read in a job without it", () => {
+      const files = edit(
+        acme(),
+        ".github/workflows/cleanup-acme.yml",
+        "jobs:\n",
+        "jobs:\n  start:\n    if: vars.ACME_ROLE_ARN != ''\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n",
+      );
+      expectError(
+        files,
+        /`cleanup-acme\.yml` reads vars\.ACME_ROLE_ARN outside an environment/,
+      );
+    });
+
+    it("counts a job's own if: as outside its environment", () => {
+      const files = edit(
+        acme(),
+        ".github/workflows/cleanup-acme.yml",
+        "    environment: acme-cleanup\n",
+        "    environment: acme-cleanup\n    if: vars.ACME_ROLE_ARN != ''\n",
+      );
+      expectError(files, /reads vars\.ACME_ROLE_ARN outside an environment/);
+    });
+
+    it("fails on a secret read outside an environment", () => {
+      const files = edit(
+        acme(),
+        ".github/workflows/cleanup-acme.yml",
+        "jobs:\n",
+        "env:\n  ACME_TOKEN: ${{ secrets.ACME_TOKEN }}\njobs:\n",
+      );
+      expectError(
+        files,
+        /`cleanup-acme\.yml` reads secrets\.ACME_TOKEN outside an environment/,
+      );
+    });
+
+    it("fails on a second name for the cleanup's role", () => {
+      const files = acme();
+      for (const path of [
+        ".github/workflows/cleanup-acme.yml",
+        "docs/deploy/acme.md",
+      ]) {
+        files.set(
+          path,
+          (files.get(path) ?? "").replaceAll(
+            "ACME_ROLE_ARN",
+            "ACME_CLEANUP_ROLE_ARN",
+          ),
+        );
+      }
+      files.set(
+        "docs/deploy/acme.md",
+        (files.get("docs/deploy/acme.md") ?? "").replace(
+          "| `ACME_CLEANUP_ROLE_ARN` | `acme`, `acme-cleanup` |",
+          "| `ACME_ROLE_ARN` | `acme` | The role. | Required | | Step 4 |\n| `ACME_CLEANUP_ROLE_ARN` | `acme-cleanup` |",
+        ),
+      );
+      const errors = checkDeployDocs(files);
+      assert.deepEqual(
+        errors.filter((error) => !/second name/.test(error)),
+        [],
+      );
+      expectError(
+        files,
+        /`ACME_CLEANUP_ROLE_ARN` is a second name for one role/,
+      );
+    });
+
+    it("fails on a token in a variable", () => {
+      const files = edit(
+        acme(),
+        ".github/workflows/deploy-acme.yml",
+        "secrets.ACME_TOKEN",
+        "vars.ACME_TOKEN",
+      );
+      expectError(files, /reads the token vars\.ACME_TOKEN/);
+    });
+  });
+
+  describe("the guide's headings", () => {
+    it("passes with steps folded together", () => {
+      const files = acme();
+      const page = (files.get("docs/deploy/acme.md") ?? "")
+        .replace("## 3. Prepare the account\n\n", "")
+        .replace("## 4. Create", "## 3. Create")
+        .replace("## 5. Optional", "## 4. Optional")
+        .replace("## 6. Start", "## 5. Start")
+        .replace("## 7. Stop", "## 6. Stop");
+      files.set("docs/deploy/acme.md", page);
+      assert.deepEqual(checkDeployDocs(files), []);
+    });
+
+    it("fails on a missing section", () => {
+      const files = edit(
+        acme(),
+        "docs/deploy/acme.md",
+        "## The credentials\n",
+        "## No secrets\n",
+      );
+      expectError(files, /has no "## The credentials" section/);
+    });
+
+    it("fails on sections out of order", () => {
+      const files = edit(
+        acme(),
+        "docs/deploy/acme.md",
+        "## Privacy\n\n## What a deploy does\n",
+        "## What a deploy does\n\n## Privacy\n",
+      );
+      expectError(files, /"What a deploy does" comes before "Privacy"/);
+    });
+
+    it("fails on a section before the last step", () => {
+      const files = edit(acme(), "docs/deploy/acme.md", "## Costs\n", "");
+      files.set(
+        "docs/deploy/acme.md",
+        (files.get("docs/deploy/acme.md") ?? "").replace(
+          "## 6. Start",
+          "## Costs\n\n## 6. Start",
+        ),
+      );
+      expectError(files, /"Costs" comes before the last step/);
+    });
+
+    it("fails on steps that aren't numbered in order", () => {
+      const files = edit(
+        acme(),
+        "docs/deploy/acme.md",
+        "## 3. Prepare",
+        "## 4. Prepare",
+      );
+      expectError(files, /the step "4\. Prepare the account" is number 3/);
+    });
+
+    it("fails on a step with another title", () => {
+      const files = edit(
+        acme(),
+        "docs/deploy/acme.md",
+        "## 7. Stop it, and how it's cleaned up",
+        "## 7. Delete the server",
+      );
+      expectError(files, /"7\. Delete the server" should start with "Stop it"/);
     });
   });
 

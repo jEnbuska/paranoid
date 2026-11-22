@@ -26,8 +26,8 @@ Every provider follows the same pattern:
 - **Two GitHub environments**, which only the `main` branch may use:
   - `<provider>`, for **Deploy to &lt;Provider&gt;**, with you as its required reviewer;
   - `<provider>-cleanup`, for **Stop &lt;Provider&gt;** and **Clean up &lt;Provider&gt;**, with no reviewers.
-- **Credentials**, in those environments only: an environment secret, such as an API token, or no secret at all for providers that trust GitHub's OIDC token, whose IDs go in environment variables instead.
-- **Variables**: the [shared ones](#shared-repository-variables), all optional, and the provider's own, which the setup prints or the guide explains.
+- **Identity values, in those environments only**: everything that says who signs in to the provider, or which of your account's resources a deploy uses. That's an API token, as an environment secret, or, for providers that trust GitHub's OIDC token and need no secret, the role, client, tenant, subscription, project and service account IDs, as environment variables. What the provider's one-time setup made, such as a security group, bucket or resource group, is an environment variable too. Each goes in every environment whose workflows use it, under the same name in each, even where its value differs. None is ever a repository variable, so only an approved deploy, or a stop or cleanup on `main`, can read it.
+- **Tuning values, as repository variables**: the region, zone, server size, plan and image, and every limit. They say nothing about your account, so any job can read them, as it reads the [shared ones](#shared-repository-variables). All are optional, with defaults the guide explains.
 - **A public fork**, with workflow logs kept for 1 day. Required reviewers work only in public repositories on GitHub's Free, Pro and Team plans, and anyone can read a public fork's logs, which show the server's address.
 
 ## Shared repository variables
@@ -69,13 +69,57 @@ This part is for whoever adds a provider. Besides its workflows (`deploy-`, `sto
 
 A variable that every provider uses goes in the [shared table](#shared-repository-variables) instead of each page, and a shared variable must be used by every provider.
 
-CI keeps all this true. [`scripts/check-deploy-docs.mts`](../../scripts/check-deploy-docs.mts) reads every `.github/workflows/*-<provider>.yml` and fails if a page doesn't list an environment, secret or variable that the provider's workflows use, or lists one they no longer use, or if a provider with workflows has no page, no folder README or no row here. Run it from the repository root:
+### The same deploy on every provider
+
+Every provider's deploy works the same way, so that whoever knows one knows them all, and a review finds a difference only where a provider needs one. Where a choice touches security, this takes the more secure option. A provider departs from it only where it says so below, with the reason.
+
+1. **The preflight first.** Every deploy, stop and cleanup job runs [the deploy preflight](../../.github/actions/deploy-preflight/README.md) as its first step after the checkout, with `deploy/<provider>/requirements.json`. It's the one check of the environments, variables and secrets, so the provider's scripts check only the workflow's inputs.
+2. **Where settings live**, as in [What every provider needs from GitHub](#what-every-provider-needs-from-github):
+   - Identity values are environment secrets or environment variables, in each of `<provider>` and `<provider>-cleanup` that uses them, never repository variables. Only `main`, and for a deploy only once you approve it, can read them.
+   - One name per role: a value that differs between the two environments, such as the role or client ID each one signs in as, keeps one name in both, such as `<PROVIDER>_ROLE_ARN`, never a `<PROVIDER>_CLEANUP_…` second name. The environment, not the name, says which one a job gets.
+   - Tuning values (region, zone, size, plan, image) and every limit, a provider's own included, such as `GCP_MONTHLY_BUDGET_USD`, are repository variables, like the shared ones.
+   - No job reads an identity value outside its environment, where GitHub gives it as empty. A scheduled cleanup's `start` job, which has no environment, checks only that `<provider>-cleanup` exists, and the cleanup job it starts checks the rest with the preflight.
+3. **Pinned CLIs.** The provider's CLI is installed at a pinned version with a checked checksum, like every download, never taken from the runner image, which changes it without notice. A provider that can't do this says why in its pull request.
+4. **Concurrency groups:** deploy and stop share `<provider>`, so a stop cancels a deploy in progress. Cleanup uses `<provider>-cleanup`, so it never waits behind a deploy that is waiting hours for its approval.
+5. **Scheduled cleanup**, hourly, at a different minute for each provider, so that cleanups of several providers in one fork don't all start at once: UpCloud 17, Hetzner 23, AWS 41, Google Cloud 47, Azure 5. The cost check counts the time a finished server may wait for it, `cleanupDelayMinutes: 120` in the price file, an hour between runs and an hour of margin. AWS has none, because its server terminates itself, and a terminated instance stops billing.
+6. **Timeouts:** the deploy job 30 minutes, stop and cleanup 15. The wait for the app inside the deploy stays each provider's own, since servers boot at different speeds.
+7. **Names:**
+   - Jobs: the stop job is "Delete the servers", the cleanup job "Delete finished servers".
+   - Steps: "Check the worst-case cost", "Delete the existing servers" and "Create the server" (`id: create`). Every step has a name.
+   - Scripts: `deploy/<provider>/create-server.sh`, and `deploy/<provider>/delete-servers.sh all|finished|run`. Log lines may use the provider's own word, such as AWS's "terminate", but names don't.
+8. **Labels or tags** on everything a deploy creates: `app=paranoid`, `run`, `created` and `expires`, the times in Unix seconds. Two exceptions, for what only that provider has:
+   - Google Cloud adds `paranoid-month` for its monthly ledger, and its `run` is `<run_id>-<attempt>`, because a re-run creates a server of its own.
+   - Azure keeps ISO times only if its Logic App backstop can't compare Unix seconds.
+9. **The cost check** gets the server size the deploy will actually use, from its setting. Google Cloud may pass `e2-micro` as written only while its size isn't a setting.
+10. **The deploy's summary** has the app's URL, the shutdown time, the size and region, what deletes the server (the cleanup or a backstop), and "The most it can cost is $WORST_CASE_USD". A provider's extras, such as Google Cloud's budget left for the month, come after it.
+11. **The guide's skeleton**, after "What this deployment needs", "Contents" and "Words used in this guide":
+    1. Fork the repository
+    2. Sign up
+    3. Prepare the account
+    4. Create the credentials, or run the one-time setup
+    5. Connect your fork: the environments, the credentials in them, and log retention as a `###` of its own
+    6. Optional settings
+    7. Start a server
+    8. Stop it
+
+    A provider that needs fewer steps folds two together, such as "4. Create the credentials and connect your fork", and keeps the order. Then come "Costs", the provider's own extras, "Checking nothing is left", "The credentials" (where they live, what they may do and how to replace them, or why there's no secret), "Troubleshooting", "Removing everything", "Privacy" and "What a deploy does".
+
+### What CI checks
+
+CI keeps the pages true to the workflows, and checks the parts of the pattern above that it can read. [`scripts/check-deploy-docs.mts`](../../scripts/check-deploy-docs.mts) reads every `.github/workflows/*-<provider>.yml` and fails if:
+
+- a page doesn't list an environment, secret or variable that the provider's workflows use, or lists one they no longer use, or a provider with workflows has no page, no folder README or no row here;
+- a secret, or a variable set in an environment, is read outside that environment's jobs, a job's own `if:` included, which runs before the job gets its environment;
+- a variable's **Set in** doesn't match where the workflows read it, an identity value is set in the repository or a tuning value in an environment, judged by its name's ending (`_ARN`, `_CLIENT_ID`, `_PROJECT` and the like, or `_REGION`, `_SIZE`, `_USD` and the like), a token is a variable, or an identity value has a second, `_CLEANUP_` name;
+- the guide's `##` headings aren't the skeleton's, in its order, with the steps numbered from 1, starting with "Fork" and "Sign up" and ending with "Optional settings", "Start a server" and "Stop it".
+
+The rest of the pattern, such as the CLIs, schedules, timeouts, job and step names, labels and the summary, is for review. Run the check from the repository root:
 
 ```bash
 node scripts/check-deploy-docs.mts
 ```
 
-The check reads the tables by their columns, so keep the headings and columns exactly as below. The first column holds the name in backticks. **Used by** lists the workflows that use each environment, and a secret's **Environment** lists each environment it's in, each in backticks too. A provider with no secrets writes "No secrets" and a line on why, instead of the secrets table.
+The check reads the tables by their columns, so keep the headings and columns exactly as below. The first column holds the name in backticks. **Used by** lists the workflows that use each environment, and a secret's **Environment** lists each environment it's in, each in backticks too. A variable's **Set in** is `Repository`, or the environments it's in, in backticks, such as `` `<provider>` and `<provider>-cleanup` ``. A provider with no secrets writes "No secrets" and a line on why, instead of the secrets table.
 
 ```markdown
 ## What this deployment needs
@@ -97,7 +141,8 @@ Everything this deployment needs from GitHub, by name. It also reads the [shared
 
 ### Variables
 
-| Variable            | Set in     | What it does           | Required | Default   | Explained in                   |
-| ------------------- | ---------- | ---------------------- | -------- | --------- | ------------------------------ |
-| `<PROVIDER>_REGION` | Repository | Where the server runs. | Optional | `<value>` | [Step 6](#6-optional-settings) |
+| Variable              | Set in                             | What it does                                 | Required | Default   | Explained in                   |
+| --------------------- | ---------------------------------- | -------------------------------------------- | -------- | --------- | ------------------------------ |
+| `<PROVIDER>_ROLE_ARN` | `<provider>`, `<provider>-cleanup` | The role each environment's jobs sign in as. | Required | None      | [Step 5](#5-…)                 |
+| `<PROVIDER>_REGION`   | Repository                         | Where the server runs.                       | Optional | `<value>` | [Step 6](#6-optional-settings) |
 ```

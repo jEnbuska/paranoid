@@ -8,8 +8,10 @@
  * every `.github/workflows/*-<provider>.yml`. Each `environment`, `vars.NAME`
  * and `secrets.NAME` they use must be in the index's shared table
  * (`docs/deploy/README.md`) or in the provider's "What this deployment needs"
- * section (`docs/deploy/<provider>.md`). "Adding a provider" in the index
- * describes the tables this reads.
+ * section (`docs/deploy/<provider>.md`). It also checks the parts of the
+ * index's common pattern that it can read: that identity values stay in their
+ * environments and tuning values in the repository, and the guide's headings.
+ * "Adding a provider" in the index describes the tables this reads.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -42,8 +44,53 @@ export const COLUMNS = {
   ],
 } as const;
 
-/** Where a name is used: in which workflows, and under which environments. */
-type Use = { workflows: Set<string>; environments: Set<string> };
+/**
+ * The guide's `##` headings, in order, around its numbered steps. A step
+ * heading starts with its number, such as "1. Fork the repository", and the
+ * steps between the first and last ones here are each provider's own.
+ */
+const GUIDE = {
+  before: [
+    "What this deployment needs",
+    "Contents",
+    "Words used in this guide",
+  ],
+  firstSteps: ["Fork", "Sign up"],
+  lastSteps: ["Optional settings", "Start a server", "Stop it"],
+  after: [
+    "Costs",
+    "Checking nothing is left",
+    "The credentials",
+    "Troubleshooting",
+    "Removing everything",
+    "Privacy",
+    "What a deploy does",
+  ],
+} as const;
+
+/**
+ * Names of identity values, which say who signs in or which of the account's
+ * resources a deploy uses: environment secrets or variables, never repository
+ * variables. A name that matches neither this nor TUNING is left to review.
+ */
+const IDENTITY =
+  /_(TOKEN|ARN|CLIENT_ID|TENANT_ID|SUBSCRIPTION_ID|ACCOUNT_ID|PROJECT|PROJECT_ID|SERVICE_ACCOUNT|WORKLOAD_IDENTITY_PROVIDER|SECURITY_GROUP_ID|BUCKET|RESOURCE_GROUP)$/;
+
+/** Names of tuning values and limits: repository variables. */
+const TUNING =
+  /_(REGION|ZONE|LOCATION|SIZE|PLAN|IMAGE|TEMPLATE|INSTANCE_TYPE|SERVER_TYPES?|USD|MINUTES|MBIT)$/;
+
+const PATTERN = `"The same deploy on every provider" in ${INDEX}`;
+
+/**
+ * Where a name is used: in which workflows, under which environments, and
+ * which workflows read it outside any environment.
+ */
+type Use = {
+  workflows: Set<string>;
+  environments: Set<string>;
+  outside: Set<string>;
+};
 
 type Usage = {
   workflows: string[];
@@ -105,11 +152,12 @@ function addUse(
 ): void {
   let use = map.get(name);
   if (!use) {
-    use = { workflows: new Set(), environments: new Set() };
+    use = { workflows: new Set(), environments: new Set(), outside: new Set() };
     map.set(name, use);
   }
   use.workflows.add(workflow);
   if (environment) use.environments.add(environment);
+  else use.outside.add(workflow);
 }
 
 /** What one provider's workflows use from GitHub. */
@@ -144,7 +192,11 @@ export function usage(files: Files, provider: string): Usage {
         users.add(workflow);
         result.environments.set(environment, users);
       }
-      parts.push([job, environment]);
+      // A job's own `if:` is decided before the job gets its environment,
+      // so it can't read the environment's variables
+      const { if: condition, ...rest } = (job ?? {}) as { if?: unknown };
+      if (condition !== undefined) parts.push([{ if: condition }, undefined]);
+      parts.push([rest, environment]);
     }
     for (const [value, environment] of parts) {
       const found: Array<["vars" | "secrets", string]> = [];
@@ -403,21 +455,14 @@ function checkProvider(
     errors.push(`${pagePath}: doesn't link back to the index, README.md.`);
   }
 
+  checkGuide(errors, pagePath, lines);
+
   const needs = section(lines, 2, "What this deployment needs");
   if (!needs) {
     errors.push(
       `${pagePath}: has no "## What this deployment needs" section. See "Adding a provider" in ${INDEX}.`,
     );
     return;
-  }
-  const needsAt = lines.findIndex((line) =>
-    /^##\s+What this deployment needs\s*$/i.test(line),
-  );
-  const firstStep = lines.findIndex((line) => /^##\s+\d/.test(line));
-  if (firstStep >= 0 && firstStep < needsAt) {
-    errors.push(
-      `${pagePath}: "What this deployment needs" comes after the first step. Put it before the step-by-step guide.`,
-    );
   }
   if (
     !/\]\((\.\/)?README\.md#shared-repository-variables\)/.test(
@@ -515,6 +560,30 @@ function checkProvider(
     }
   }
 
+  // An environment's secrets and variables exist only in its own jobs
+  for (const [context, names] of [
+    ["secrets", use.secrets],
+    ["vars", use.variables],
+  ] as const) {
+    for (const [name, used] of names) {
+      if (context === "secrets" && used.outside.size > 0) {
+        errors.push(
+          `${pagePath}: ${list(used.outside)} read${used.outside.size > 1 ? "" : "s"} secrets.${name} outside an environment, where it's empty. Read it only in the jobs of the environments it's in.`,
+        );
+      }
+      if (IDENTITY.test(name) && /_CLEANUP_/.test(name)) {
+        errors.push(
+          `${pagePath}: \`${name}\` is a second name for one role. Use the same name in \`${provider}\` and \`${provider}-cleanup\`, each with its own value. See ${PATTERN}.`,
+        );
+      }
+      if (context === "vars" && /_TOKEN$/.test(name)) {
+        errors.push(
+          `${pagePath}: ${list(used.workflows)} read${used.workflows.size > 1 ? "" : "s"} the token vars.${name}. A token is an environment secret.`,
+        );
+      }
+    }
+  }
+
   // Variables, except the shared ones, which the index lists
   const own = [...use.variables].filter(([name]) => !shared.has(name));
   const variableLines = section(needs, 3, "Variables");
@@ -527,7 +596,9 @@ function checkProvider(
     COLUMNS.variables,
   );
   if (!variables) return;
-  const listed = new Set(variables.rows.map((r) => codeSpans(r[0])[0] ?? r[0]));
+  const listed = new Map(
+    variables.rows.map((r) => [codeSpans(r[0])[0] ?? r[0], r] as const),
+  );
   for (const [name, used] of own) {
     if (!listed.has(name)) {
       errors.push(
@@ -535,7 +606,13 @@ function checkProvider(
       );
     }
   }
-  for (const name of listed) {
+  for (const [name, row] of listed) {
+    const used = use.variables.get(name);
+    if (used && !shared.has(name)) {
+      checkPlacement(errors, pagePath, name, row[1] ?? "", used);
+    }
+  }
+  for (const name of listed.keys()) {
     if (shared.has(name)) {
       errors.push(
         `${pagePath}: ${where("Variables")} lists \`${name}\`, which is shared. Link the index's shared table instead of repeating it.`,
@@ -545,6 +622,134 @@ function checkProvider(
         `${pagePath}: ${where("Variables")} lists \`${name}\`, which no workflow of ${provider} uses any more.`,
       );
     }
+  }
+}
+
+/**
+ * A variable's "Set in": `Repository` for tuning values and limits, or the
+ * environments it's in, each in backticks, for identity values, which only
+ * those environments' jobs may read.
+ */
+function checkPlacement(
+  errors: string[],
+  pagePath: string,
+  name: string,
+  setIn: string,
+  used: Use,
+): void {
+  const where = `"What this deployment needs" → "Variables"`;
+  const environments = codeSpans(setIn);
+  if (environments.length === 0) {
+    if (!/^Repository$/i.test(setIn)) {
+      errors.push(
+        `${pagePath}: ${where} says \`${name}\` is set in "${setIn}". Write "Repository", or the environments it's in, each in backticks.`,
+      );
+    } else if (IDENTITY.test(name)) {
+      errors.push(
+        `${pagePath}: ${where} says \`${name}\` is a repository variable, but it's an identity value, which any job could read. Make it an environment variable in each environment whose workflows use it. See ${PATTERN}.`,
+      );
+    }
+    return;
+  }
+  if (TUNING.test(name)) {
+    errors.push(
+      `${pagePath}: ${where} says \`${name}\` is in ${list(environments)}, but it's a tuning value or a limit, which is a repository variable. See ${PATTERN}.`,
+    );
+  }
+  if (used.outside.size > 0) {
+    errors.push(
+      `${pagePath}: ${list(used.outside)} read${used.outside.size > 1 ? "" : "s"} vars.${name} outside an environment, where it's empty. Read it only in the jobs of the environments it's in.`,
+    );
+  }
+  if (!sameSet(environments, used.environments)) {
+    errors.push(
+      `${pagePath}: ${where} says \`${name}\` is in ${list(environments)}, but the workflows read it in ${list(used.environments)}.`,
+    );
+  }
+}
+
+/** The `##` headings, without their `## `. Code blocks are skipped. */
+function headings(lines: readonly string[]): string[] {
+  const found: string[] = [];
+  let fenced = false;
+  for (const line of lines) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    const heading = fenced ? null : /^##\s+(.*?)\s*#*\s*$/.exec(line);
+    if (heading) found.push(heading[1]);
+  }
+  return found;
+}
+
+/** The guide's headings and their order, as in GUIDE. */
+function checkGuide(
+  errors: string[],
+  pagePath: string,
+  lines: readonly string[],
+): void {
+  const found = headings(lines);
+  const steps = found.flatMap((title, at) => {
+    const step = /^(\d+)\.\s+(.*)$/.exec(title);
+    return step ? [{ at, number: Number(step[1]), title: step[2] }] : [];
+  });
+
+  const misnumbered = steps.findIndex((step, i) => step.number !== i + 1);
+  if (misnumbered >= 0) {
+    const step = steps[misnumbered];
+    errors.push(
+      `${pagePath}: the step "${step.number}. ${step.title}" is number ${misnumbered + 1} of the guide. Number the steps 1, 2, 3 and on.`,
+    );
+  }
+  const { firstSteps, lastSteps } = GUIDE;
+  if (steps.length < firstSteps.length + lastSteps.length) {
+    errors.push(
+      `${pagePath}: has ${steps.length} numbered steps, fewer than the guide's ${firstSteps.length + lastSteps.length} that can't be folded together: ${[...firstSteps, ...lastSteps].map((t) => `"${t}"`).join(", ")}. See ${PATTERN}.`,
+    );
+  } else {
+    const expected = [
+      ...firstSteps.map((title, i) => [steps[i], title] as const),
+      ...lastSteps.map(
+        (title, i) =>
+          [steps[steps.length - lastSteps.length + i], title] as const,
+      ),
+    ];
+    for (const [step, title] of expected) {
+      if (!step.title.toLowerCase().startsWith(title.toLowerCase())) {
+        errors.push(
+          `${pagePath}: the step "${step.number}. ${step.title}" should start with "${title}". See ${PATTERN}.`,
+        );
+      }
+    }
+  }
+
+  const firstStep = steps[0]?.at ?? -1;
+  const lastStep = steps.at(-1)?.at ?? -1;
+  let previous: { at: number; title: string } | undefined;
+  for (const title of [...GUIDE.before, ...GUIDE.after]) {
+    const at = found.findIndex((h) => h.toLowerCase() === title.toLowerCase());
+    if (at < 0) {
+      // A page without it gets its own message
+      if (title !== "What this deployment needs") {
+        errors.push(
+          `${pagePath}: has no "## ${title}" section. See ${PATTERN}.`,
+        );
+      }
+      continue;
+    }
+    const before = (GUIDE.before as readonly string[]).includes(title);
+    if (before && firstStep >= 0 && at > firstStep) {
+      errors.push(
+        `${pagePath}: "${title}" comes after the first step. Put it before the step-by-step guide.`,
+      );
+    } else if (!before && lastStep >= 0 && at < lastStep) {
+      errors.push(
+        `${pagePath}: "${title}" comes before the last step. Put it after the step-by-step guide.`,
+      );
+    } else if (previous && at < previous.at) {
+      errors.push(
+        `${pagePath}: "${title}" comes before "${previous.title}". See ${PATTERN} for the order.`,
+      );
+    }
+    previous = { at, title };
   }
 }
 
