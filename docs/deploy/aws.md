@@ -6,26 +6,57 @@ You start a server from GitHub Actions for a set number of invites. It powers it
 
 There's no password, key or token to copy anywhere. GitHub Actions proves to AWS which repository and branch it's running for, and gets permissions that last for one run.
 
+This page is AWS's part of [Deploying Paranoid](README.md), which explains how deploying works on every provider, the shared settings and the cost limit.
+
 AWS's prices and rules below were checked on 2026-11-20. They can change, so check the linked pages too.
+
+## What this deployment needs
+
+Everything this deployment needs from GitHub, by name. It also reads the [shared repository variables](README.md#shared-repository-variables).
+
+### Environments
+
+| Environment   | Branches    | Required reviewers | Used by                           |
+| ------------- | ----------- | ------------------ | --------------------------------- |
+| `aws`         | `main` only | You                | `deploy-aws.yml`                  |
+| `aws-cleanup` | `main` only | None               | `cleanup-aws.yml`, `stop-aws.yml` |
+
+### Secrets
+
+No secrets. The workflows sign in to AWS with GitHub's OIDC token, which AWS trusts only for these two environments, so there's no access key or token to store anywhere.
+
+### Variables
+
+| Variable                 | Set in     | What it does                                                                                  | Required | Default      | Explained in                        |
+| ------------------------ | ---------- | --------------------------------------------------------------------------------------------- | -------- | ------------ | ----------------------------------- |
+| `AWS_ROLE_ARN`           | Repository | The `paranoid-deploy` role that **Deploy to AWS** signs in as.                                | Yes      | None         | [Step 4](#4-run-the-one-time-setup) |
+| `AWS_CLEANUP_ROLE_ARN`   | Repository | The `paranoid-cleanup` role that **Stop AWS** and **Clean up AWS** sign in as.                | Yes      | None         | [Step 4](#4-run-the-one-time-setup) |
+| `AWS_SCHEDULER_ROLE_ARN` | Repository | The `paranoid-scheduler` role the backstop schedule uses to terminate a server at its expiry. | Yes      | None         | [Step 4](#4-run-the-one-time-setup) |
+| `AWS_SECURITY_GROUP_ID`  | Repository | The `paranoid` security group, which lets in only TCP 80 and 443.                             | Yes      | None         | [Step 4](#4-run-the-one-time-setup) |
+| `AWS_REGION`             | Repository | The region the server runs in: `eu-north-1`, `eu-central-1` or `eu-west-1`.                   | Optional | `eu-north-1` | [Step 6](#6-optional-settings)      |
+| `AWS_INSTANCE_TYPE`      | Repository | The server's size: `t4g.micro`, `t4g.small`, `t3.micro` or `t3.small`.                        | Optional | `t4g.micro`  | [Step 6](#6-optional-settings)      |
+
+None of them is a secret. The setup script in [step 4](#4-run-the-one-time-setup) prints the commands that set the first five.
 
 ## Contents
 
-1. [Words used in this guide](#words-used-in-this-guide)
-2. [Fork the repository](#1-fork-the-repository)
-3. [Sign up for AWS](#2-sign-up-for-aws)
-4. [Protect the account's login](#3-protect-the-accounts-login)
-5. [Run the one-time setup](#4-run-the-one-time-setup)
-6. [Connect your fork to AWS](#5-connect-your-fork-to-aws)
-7. [Optional settings](#6-optional-settings)
-8. [Start a server](#7-start-a-server)
-9. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
-10. [Costs](#costs)
-11. [Checking nothing is left](#checking-nothing-is-left)
-12. [No secrets](#no-secrets)
-13. [Troubleshooting](#troubleshooting)
-14. [Removing everything](#removing-everything)
-15. [Privacy](#privacy)
-16. [What a deploy does](#what-a-deploy-does)
+1. [What this deployment needs](#what-this-deployment-needs)
+2. [Words used in this guide](#words-used-in-this-guide)
+3. [Fork the repository](#1-fork-the-repository)
+4. [Sign up for AWS](#2-sign-up-for-aws)
+5. [Protect the account's login](#3-protect-the-accounts-login)
+6. [Run the one-time setup](#4-run-the-one-time-setup)
+7. [Connect your fork to AWS](#5-connect-your-fork-to-aws)
+8. [Optional settings](#6-optional-settings)
+9. [Start a server](#7-start-a-server)
+10. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
+11. [Costs](#costs)
+12. [Checking nothing is left](#checking-nothing-is-left)
+13. [No secrets](#no-secrets)
+14. [Troubleshooting](#troubleshooting)
+15. [Removing everything](#removing-everything)
+16. [Privacy](#privacy)
+17. [What a deploy does](#what-a-deploy-does)
 
 ## Words used in this guide
 
@@ -152,22 +183,20 @@ There are no secrets to add.
 
 ## 6. Optional settings
 
-Everything works with the defaults. To change one, add a repository variable in **Settings** → **Secrets and variables** → **Actions** → **Variables**, or with `gh`, for example:
+Everything works with the defaults. The number of invites, the lifetime, the outbound limit and the cost limit are the [shared repository variables](README.md#shared-repository-variables), the same for every provider. AWS outbound traffic costs money, so a higher `MAX_EGRESS_MBIT` makes each deploy's worst case more expensive; see [Costs](#costs).
+
+AWS's own two, set the same way, in **Settings** → **Secrets and variables** → **Actions** → **Variables**, or with `gh`, for example:
 
 ```bash
-gh variable set LIFETIME_MINUTES --body 30 --repo <owner>/<repo>
+gh variable set AWS_INSTANCE_TYPE --body t4g.small --repo <owner>/<repo>
 ```
 
-The **Deploy to AWS** workflow's inputs win over the variables, and the variables over the defaults.
+| Name                | Default      | What it does                                                                                                                          |
+| ------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `AWS_INSTANCE_TYPE` | `t4g.micro`  | Instance type: `t4g.micro` or `t4g.small` (Arm), `t3.micro` or `t3.small` (Intel). `t4g.nano` has too little memory to build the app. |
+| `AWS_REGION`        | `eu-north-1` | Set by the setup script. To change it, run the script again with the new `AWS_REGION`, and set the variable to the same region.       |
 
-| Name                  | Default      | What it does                                                                                                                                                                             |
-| --------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MAX_INVITES`         | `5`          | Invites the server creates before it powers off, from 1 to 10000. The `max_invites` input overrides it.                                                                                  |
-| `LIFETIME_MINUTES`    | `60`         | Minutes until the server powers off at the latest, from 1 to 1440 (24 hours), counted from when it starts. The `lifetime_minutes` input overrides it.                                    |
-| `MAX_EGRESS_MBIT`     | `2`          | Limit on all the server's outbound traffic, in Mbit/s, from 1 to 50. AWS charges for outbound traffic, so this limits the cost too. At 2 Mbit/s, the app's files load in about a second. |
-| `MAX_DEPLOY_COST_USD` | `1`          | The deploy refuses to start a server whose worst case costs more, in US dollars. See [Costs](#costs).                                                                                    |
-| `AWS_INSTANCE_TYPE`   | `t4g.micro`  | Instance type: `t4g.micro` or `t4g.small` (Arm), `t3.micro` or `t3.small` (Intel). `t4g.nano` has too little memory to build the app.                                                    |
-| `AWS_REGION`          | `eu-north-1` | Set by the setup script. To change it, run the script again with the new `AWS_REGION`, and set the variable to the same region.                                                          |
+The **Deploy to AWS** workflow's inputs win over the variables, and the variables over the defaults.
 
 Never put a password, key or token in a variable: variables are shown in logs and to anyone with access to the repository. The workflows need none.
 
