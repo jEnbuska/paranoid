@@ -50,8 +50,10 @@ fi
 whole max_invites "$MAX_INVITES" 1 10000
 whole lifetime_minutes "$LIFETIME_MINUTES" 1 1440
 whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
-[[ $MONTHLY_BUDGET_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
-  fail "MONTHLY_BUDGET_USD must be an amount in dollars such as 5 or 2.50, not '$MONTHLY_BUDGET_USD'."
+[[ $MAX_DEPLOY_COST_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
+  fail "MAX_DEPLOY_COST_USD must be an amount in dollars such as 1 or 2.50, not '$MAX_DEPLOY_COST_USD'."
+[[ $GCP_MONTHLY_BUDGET_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
+  fail "GCP_MONTHLY_BUDGET_USD must be an amount in dollars such as 5 or 2.50, not '$GCP_MONTHLY_BUDGET_USD'."
 [[ $RUN_ID =~ ^[0-9]+$ && $RUN_ATTEMPT =~ ^[0-9]+$ ]] ||
   fail "The run ID and attempt aren't numbers."
 
@@ -59,7 +61,8 @@ whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
   echo "MAX_INVITES=$((10#$MAX_INVITES))"
   echo "LIFETIME_MINUTES=$((10#$LIFETIME_MINUTES))"
   echo "MAX_EGRESS_MBIT=$((10#$MAX_EGRESS_MBIT))"
-  echo "MONTHLY_BUDGET_USD=$MONTHLY_BUDGET_USD"
+  echo "MAX_DEPLOY_COST_USD=$MAX_DEPLOY_COST_USD"
+  echo "GCP_MONTHLY_BUDGET_USD=$GCP_MONTHLY_BUDGET_USD"
   # The deployment's ID in the ledger, its VM's name and labels. A re-run
   # gets a new attempt number, so a new VM and reservation.
   echo "DEPLOYMENT=$RUN_ID-$RUN_ATTEMPT"
@@ -75,4 +78,4 @@ disk_gib=$(jq -er --arg region "$GCP_REGION" \
   fail "deploy/gcp/prices.json has no prices for $GCP_REGION, so its cost can't be limited."
 [[ $disk_gib =~ ^[1-9][0-9]{0,3}$ ]] || fail "The disk size in deploy/gcp/prices.json isn't a whole number of GiB."
 echo "DISK_GIB=$disk_gib" >>"$GITHUB_ENV"
-echo "Invites: $MAX_INVITES, lifetime: $LIFETIME_MINUTES min, outbound limit: $MAX_EGRESS_MBIT Mbit/s, monthly limit: \$$MONTHLY_BUDGET_USD, zone: $GCP_ZONE"
+echo "Invites: $MAX_INVITES, lifetime: $LIFETIME_MINUTES min, outbound limit: $MAX_EGRESS_MBIT Mbit/s, limit per deploy: \$$MAX_DEPLOY_COST_USD, per month: \$$GCP_MONTHLY_BUDGET_USD, zone: $GCP_ZONE"

@@ -8,7 +8,7 @@
 #   region: default europe-north1 (Finland). It must have prices in
 #     deploy/gcp/prices.json.
 #   monthly-limit-usd: default 5, for the Cloud Billing budget's alerts. The
-#     deploy workflow's own limit is the MONTHLY_BUDGET_USD variable.
+#     deploy workflow's own limit is the GCP_MONTHLY_BUDGET_USD variable.
 #
 # Needs gcloud, signed in (`gcloud auth login`) as an owner of the project,
 # which must have billing enabled, and gh, signed in, to look up the
@@ -313,5 +313,5 @@ gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$repo" --body "$pool_name
 # Which service account each environment acts as, and the monthly limit
 gh variable set GCP_SERVICE_ACCOUNT --repo "$repo" --env gcp --body "$deploy_sa"
 gh variable set GCP_SERVICE_ACCOUNT --repo "$repo" --env gcp-cleanup --body "$cleanup_sa"
-gh variable set MONTHLY_BUDGET_USD --repo "$repo" --env gcp --body "$limit"
+gh variable set GCP_MONTHLY_BUDGET_USD --repo "$repo" --env gcp --body "$limit"
 EOF

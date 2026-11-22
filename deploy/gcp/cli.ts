@@ -5,7 +5,7 @@
 // node deploy/gcp/cli.ts reserve <file>
 //   Fails, without changing the file, if the deployment doesn't fit.
 //   Environment: MONTH, DEPLOYMENT, REGION, LIFETIME_MINUTES,
-//   MAX_EGRESS_MBIT, MONTHLY_BUDGET_USD
+//   MAX_EGRESS_MBIT, GCP_MONTHLY_BUDGET_USD
 // node deploy/gcp/cli.ts settle <file>
 //   Environment: MONTH, DEPLOYMENT, CREATED, STOPPED (empty if it didn't
 //   power off), DELETED
@@ -75,7 +75,7 @@ if (ledger.month !== month) {
 const id = env("DEPLOYMENT");
 
 if (command === "reserve") {
-  const budgetUsd = number("MONTHLY_BUDGET_USD");
+  const budgetUsd = number("GCP_MONTHLY_BUDGET_USD");
   const lifetimeMinutes = number("LIFETIME_MINUTES");
   const prices = deploymentPrices(
     JSON.parse(
@@ -98,7 +98,7 @@ if (command === "reserve") {
     const fitting =
       decision.fittingMinutes > 0
         ? `A lifetime of up to ${decision.fittingMinutes} minutes would fit.`
-        : "No deployment fits until next month, unless MONTHLY_BUDGET_USD is raised.";
+        : "No deployment fits until next month, unless GCP_MONTHLY_BUDGET_USD is raised.";
     console.log(
       `::error::This deployment could cost up to ${usd(decision.costUsd)}, but only ${usd(decision.remainingUsd)} of this month's ${usd(budgetUsd)} limit is left, so it wasn't started. ${fitting}`,
     );
