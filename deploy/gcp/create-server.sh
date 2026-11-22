@@ -10,7 +10,8 @@
 # - It's on the paranoid network, whose only firewall rule lets in TCP 80
 #   and 443 to VMs tagged paranoid. Nothing opens SSH, and startup.sh masks
 #   it anyway.
-# - Its metadata holds only checked values: settings.sh checked the numbers,
+# - Its metadata holds only checked values: the preflight and settings.sh
+#   checked the numbers,
 #   and the repository and commit come from GitHub.
 #
 # Environment: DEPLOYMENT, MONTH, GCP_ZONE, DISK_GIB, LIFETIME_MINUTES,

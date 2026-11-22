@@ -69,6 +69,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      # The preflight reads the environments' settings
+      actions: read
     environment: gcp-cleanup
     # Its own group, so it never waits behind a deploy that's waiting for
     # approval. It only deletes VMs that are powered off (TERMINATED) or past
@@ -85,41 +87,33 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check the settings
-        id: settings
-        env:
-          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          GCP_ZONE: ${{ vars.GCP_ZONE }}
-          GCP_BUCKET: ${{ vars.GCP_BUCKET }}
-        run: |
-          if [ -z "$GCP_PROJECT" ]; then
-            echo "::notice::There's no GCP_PROJECT variable, so there's nothing to clean up."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          bash deploy/gcp/settings.sh manage
-          echo "configured=true" >> "$GITHUB_OUTPUT"
+      # The environment's variables, the repository variables and the shared
+      # ones, against deploy/gcp/requirements.json, before any cloud step. A
+      # scheduled cleanup runs as github-actions[bot], so it doesn't check
+      # who started it.
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: gcp
+          environment: gcp-cleanup
+          owner-only: "false"
+          vars: ${{ toJSON(vars) }}
 
       # deploy/gcp/cli.ts runs with Node's type stripping and imports
       # packages/deploy, so pnpm links that workspace package. --prod skips
       # every dev dependency, so nothing else is downloaded.
       - name: Set up pnpm
-        if: steps.settings.outputs.configured == 'true'
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node.js
-        if: steps.settings.outputs.configured == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
       - name: Install the ledger's dependencies
-        if: steps.settings.outputs.configured == 'true'
         run: pnpm install --frozen-lockfile --prod --filter deploy-gcp
 
       - name: Sign in to Google Cloud
-        if: steps.settings.outputs.configured == 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           project_id: ${{ vars.GCP_PROJECT }}
@@ -128,9 +122,10 @@ jobs:
 
       # Pinned and checked, not the runner image's gcloud
       - name: Set up gcloud
-        if: steps.settings.outputs.configured == 'true'
         uses: ./.github/actions/setup-gcloud
 
       - name: Delete the servers that are off or expired
-        if: steps.settings.outputs.configured == 'true'
+        env:
+          GCP_BUCKET: ${{ vars.GCP_BUCKET }}
+          CLOUDSDK_CORE_PROJECT: ${{ vars.GCP_PROJECT }}
         run: bash deploy/gcp/delete-servers.sh finished

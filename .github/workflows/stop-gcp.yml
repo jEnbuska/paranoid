@@ -32,6 +32,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      # The preflight reads the environments' settings
+      actions: read
     environment: gcp-cleanup
 
     steps:
@@ -40,13 +42,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check the settings
-        env:
-          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          GCP_ZONE: ${{ vars.GCP_ZONE }}
-          GCP_BUCKET: ${{ vars.GCP_BUCKET }}
-        run: bash deploy/gcp/settings.sh manage
+      # The environment's variables, the repository variables and the shared
+      # ones, against deploy/gcp/requirements.json, before any cloud step
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: gcp
+          environment: gcp-cleanup
+          vars: ${{ toJSON(vars) }}
 
       # deploy/gcp/cli.ts runs with Node's type stripping and imports
       # packages/deploy, so pnpm links that workspace package. --prod skips
@@ -74,4 +77,7 @@ jobs:
         uses: ./.github/actions/setup-gcloud
 
       - name: Delete every server
+        env:
+          GCP_BUCKET: ${{ vars.GCP_BUCKET }}
+          CLOUDSDK_CORE_PROJECT: ${{ vars.GCP_PROJECT }}
         run: bash deploy/gcp/delete-servers.sh all

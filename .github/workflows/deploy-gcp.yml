@@ -41,14 +41,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Before the deploy job waits for approval: fails a run that someone
+  # without admin permission started, or one whose repository variables are
+  # wrong, before anyone is asked to approve it. The environment's own
+  # variables are checked again inside the deploy job, where they can be
+  # read.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reads the environments' settings
+      actions: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: gcp
+          environment: gcp
+          in-environment: "false"
+          vars: ${{ toJSON(vars) }}
+
   deploy:
     name: Deploy to Google Cloud
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
       # For the OIDC token that Workload Identity Federation exchanges
       id-token: write
+      # The preflight reads the environments' settings
+      actions: read
     environment:
       name: gcp
       url: ${{ steps.create.outputs.url }}
@@ -59,8 +89,17 @@ jobs:
         with:
           persist-credentials: false
 
-      # Before anything is deleted, so a bad setting leaves a running VM
-      # alone
+      # The environment's variables, the repository variables and the shared
+      # ones, against deploy/gcp/requirements.json, before any cloud step
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: gcp
+          environment: gcp
+          vars: ${{ toJSON(vars) }}
+
+      # The inputs, and what the preflight can't check, before anything is
+      # deleted, so a bad setting leaves a running VM alone
       - name: Check the settings
         env:
           MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
@@ -74,7 +113,7 @@ jobs:
           GCP_BUCKET: ${{ vars.GCP_BUCKET }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: bash deploy/gcp/settings.sh deploy
+        run: bash deploy/gcp/settings.sh
 
       # deploy/gcp/cli.ts runs with Node's type stripping and imports
       # packages/deploy, so pnpm links that workspace package. --prod skips

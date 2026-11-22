@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# Checks the Google Cloud deploy settings and passes them to the later steps
-# of the job through GITHUB_ENV. The workflows set each one from the workflow
-# input, then the variable, then the default (see docs/deploy/gcp.md).
-# Identity values (project, bucket, Workload Identity provider, service
-# account) are variables of the job's environment; tuning and limits are
-# repository variables. bootstrap.sh prints the commands that set them.
+# Passes the Google Cloud deploy's settings to the later steps of the job
+# through GITHUB_ENV, after the checks only this script can do. Only
+# deploy-gcp.yml runs it: stop and cleanup take the two values they need
+# straight from the variables, which the preflight checked. The deploy preflight
+# (.github/actions/deploy-preflight, with deploy/gcp/requirements.json)
+# already checked every variable's name, pattern and range in the step before,
+# so they aren't checked again here. See docs/deploy/gcp.md.
+#
+# What's left for this script:
+# - the deploy workflow's inputs, max_invites and lifetime_minutes, which win
+#   over the variables the preflight checked;
+# - that the zone is in the region, and that deploy/gcp/prices.json has
+#   prices for the region, which the preflight's patterns can't say.
 #
 # Only checked values reach GITHUB_ENV and the VM's metadata, so an input
 # can't add lines or commands to either.
-#
-# Usage: settings.sh deploy|manage
-#   deploy checks everything; manage (stop and cleanup) only what they need.
 set -euo pipefail
 
 fail() {
@@ -25,14 +29,8 @@ whole() {
   fi
 }
 
-[[ $GCP_PROJECT =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] ||
-  fail "GCP_PROJECT must be a Google Cloud project ID, not '$GCP_PROJECT'."
-[[ $GCP_REGION =~ ^[a-z]+-[a-z]+[0-9]{1,2}$ ]] ||
-  fail "GCP_REGION must be a Google Cloud region such as europe-north1, not '$GCP_REGION'."
-[[ $GCP_ZONE =~ ^$GCP_REGION-[a-z]$ ]] ||
-  fail "GCP_ZONE must be a zone in $GCP_REGION, such as $GCP_REGION-a, not '$GCP_ZONE'."
-[[ $GCP_BUCKET =~ ^[a-z0-9][a-z0-9_-]{1,61}[a-z0-9]$ ]] ||
-  fail "GCP_BUCKET must be the bucket that bootstrap.sh created, not '$GCP_BUCKET'."
+[[ $GCP_ZONE == "$GCP_REGION"-? ]] ||
+  fail "GCP_ZONE must be a zone in GCP_REGION ($GCP_REGION), such as $GCP_REGION-a, not '$GCP_ZONE'."
 
 {
   echo "GCP_PROJECT=$GCP_PROJECT"
@@ -44,17 +42,9 @@ whole() {
   echo "CLOUDSDK_CORE_DISABLE_PROMPTS=1"
 } >>"$GITHUB_ENV"
 
-if [ "$1" = manage ]; then
-  exit 0
-fi
-
+# The inputs, which the preflight doesn't see
 whole max_invites "$MAX_INVITES" 1 10000
 whole lifetime_minutes "$LIFETIME_MINUTES" 1 1440
-whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
-[[ $MAX_DEPLOY_COST_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
-  fail "MAX_DEPLOY_COST_USD must be an amount in dollars such as 1 or 2.50, not '$MAX_DEPLOY_COST_USD'."
-[[ $GCP_MONTHLY_BUDGET_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
-  fail "GCP_MONTHLY_BUDGET_USD must be an amount in dollars such as 5 or 2.50, not '$GCP_MONTHLY_BUDGET_USD'."
 [[ $RUN_ID =~ ^[0-9]+$ && $RUN_ATTEMPT =~ ^[0-9]+$ ]] ||
   fail "The run ID and attempt aren't numbers."
 
