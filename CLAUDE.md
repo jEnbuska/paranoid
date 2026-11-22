@@ -43,7 +43,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 
 ## CI and pull requests
 
-- CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm knip`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job, one per browser (Chromium, Firefox and WebKit). Pushes to `main` and `dev` run everything. On a PR, a `changes` job decides from the changed files what runs, and a PR with no changed files skips both jobs. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
+- CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm knip`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job, one per browser (Chromium, Firefox and WebKit). Pushes to `main` and `dev` run everything, and so does a manual run (`workflow_dispatch`), which the Release workflow uses to start CI on `main`. On a PR, a `changes` job decides from the changed files what runs, and a PR with no changed files skips both jobs. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
   - Docs (`**/*.md`, `LICENSE`) run no checks and no end-to-end tests, except the format check for Markdown, because oxfmt formats it.
   - Every PR with changed files, docs included, and every push runs the secret scan (gitleaks) over the commits it adds, in the checks job, so no new required check is needed.
   - A PR into `dev` that changes a `package.json` or `pnpm-lock.yaml` runs a dependency check, a step in the checks job: `pnpm audit` on the PR and on its base, failing only on a known vulnerability of high severity or worse that the PR adds, with the package, advisory and fixed version in the log and job summary (`scripts/audit-report.mts`). Fix it in the same PR, by updating to the fixed version. GitHub's dependency review can't read pnpm 12's two-document lockfile, so it isn't used.
@@ -78,6 +78,7 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 - A PR's title is its branch name, for example `97-dependency-audit`, so the PR list matches the branch list. When the branch name doesn't explain the PR, add a colon and a few words: `85-deploy-hetzner: Hetzner Cloud in the EU`. Hotfix PRs use their `hotfix/<name>` branch the same way. The release PR from `dev` into `main` has no branch of its own, so it's titled `Release <date>`.
 - Session titles start with the ticket number, for example `#85 Deploy to Hetzner Cloud in the EU`, because that's what the sidebar shows. A session working on a ticket with a different title renames itself when it starts.
 - Only the user merges. A session never merges a PR or turns on auto-merge unless the user tells it to for that specific PR, and approval for one PR doesn't carry over to another. Sessions use the user's GitHub login, so GitHub can't enforce this for them.
+- Sessions never run the Release workflow (`release.yml`), the same as never merging: releasing is the user's, from Actions → Release. A session may start a `dry_run` run, which pushes nothing, only when the user asks for one.
 - Workflows declare top-level `permissions: contents: read` and grant write scopes only on the job that needs them. Pass PR data (body, title, branch names) to scripts through `env:`, never as `${{ }}` inside `run:`. Pin actions to a commit SHA with the version in a comment.
 
 ## Tooling
@@ -112,7 +113,7 @@ Anyone with a fork can start a Paranoid server from GitHub Actions. Each provide
 - Deploy workflows run only on `workflow_dispatch` and `schedule`, never `pull_request` or `pull_request_target`, and use their provider's environment, which only `main` may use.
 - User data and labels hold only values the scripts have checked, so an input can't inject commands.
 - Pin every download (provider CLIs, Node.js, Caddy, gitleaks) to a version and check its checksum. Update the version and checksum together.
-- `shellcheck` checks `deploy/**/*.sh` in CI. Keep the deploy scripts there.
+- `shellcheck` checks `deploy/**/*.sh` and `scripts/*.sh` in CI. Keep the deploy scripts there.
 
 ## End-to-end tests
 

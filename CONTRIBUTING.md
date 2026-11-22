@@ -116,32 +116,57 @@ A hotfix is a `hotfix/*` branch into `dev` that doesn't need an issue. It's rele
 
 ## Releases
 
-1. Open a PR from `dev` into `main`, titled `Release <date>`.
-2. When every check has passed, fast-forward `main`:
+1. Open a PR from `dev` into `main`, titled `Release <date>`:
 
    ```bash
-   git fetch origin
+   gh pr create --base main --head dev --title "Release $(date -u +%F)"
    ```
 
-   ```bash
-   git push origin origin/dev:refs/heads/main
-   ```
+2. When every check has passed, release with the Release button: **Actions → Release → Run workflow**, with `dev` under "Use workflow from", then approve the `release` environment when the run asks for it.
 
-   GitHub accepts this push only because a PR with passing checks has that exact commit, and it marks the PR as merged.
+The Release workflow ([`release.yml`](.github/workflows/release.yml)) only runs for the repository owner. Anyone else's run fails at its first step. Before it pushes anything, it checks ([`scripts/release-checks.sh`](scripts/release-checks.sh)) that:
 
-**Don't press the merge button on a release PR.** GitHub's "Rebase and merge" always creates new commit hashes, so `main` would have commits that `dev` doesn't, and the next release PR would be behind `main`. It couldn't be updated either, because that would mean pushing to `dev`. With a fast-forward, `main` and `dev` are the same commit.
+1. there's an open release PR from `dev` into `main`, and it isn't a draft;
+2. its head is `dev`'s current commit, so nothing landed on `dev` after the checks ran;
+3. every check the `main` ruleset requires has passed on that commit, in the release PR's own runs, including the full dependency audit;
+4. `main` is an ancestor of that commit, so the push is a fast-forward.
+
+If a check fails, it stops and says which one. Otherwise it pushes that exact commit, `git push origin <sha>:refs/heads/main`, never a branch name and never with `--force`, and GitHub marks the release PR as merged. A push made with the workflow's own token doesn't start workflows, so the workflow then starts CI on `main` itself. The run's summary links the released commit, the release PR and that CI run.
+
+Tick `dry_run` to run every check and print the push without pushing. A dry run doesn't need the environment's approval.
+
+The `release` environment is the second lock: only `dev` and `main` may use it, and the owner is its required reviewer. Set it up once under **Settings → Environments** before the first release, as the PR that added the workflow describes ([#112](https://github.com/jEnbuska/paranoid/pull/112)). A run creates a missing environment without any protection.
+
+### Releasing by hand
+
+If the workflow can't push, the same fast-forward works from a clone:
+
+```bash
+git fetch origin
+```
+
+```bash
+git push origin origin/dev:refs/heads/main
+```
+
+GitHub accepts this push only because a PR with passing checks has that exact commit, and it marks the PR as merged. A push from your own login starts CI on `main` by itself.
+
+### Never press the merge button on a release PR
+
+GitHub's "Rebase and merge" always creates new commit hashes, so `main` would have commits that `dev` doesn't, and the next release PR would be behind `main`. It couldn't be updated either, because that would mean pushing to `dev`. With a fast-forward, `main` and `dev` are the same commit.
 
 If it does get pressed, the maintainer turns off the `main` ruleset, force-pushes `dev` to `main` and turns the ruleset back on.
 
 ## Where the rules are enforced
 
-| Rule                                     | Defined in                                                     | Enforced by                                |
-| ---------------------------------------- | -------------------------------------------------------------- | ------------------------------------------ |
-| PRs only, no force-push or deletion      | The `main` and `dev` rulesets, under repository settings       | GitHub, with no bypass for admins          |
-| Checks pass, branch up to date           | The same rulesets, as required checks                          | GitHub, with no bypass for admins          |
-| Rebase only, no merge commits            | Repository merge settings and the same rulesets                | GitHub                                     |
-| Allowed source, open issue, no empty PRs | [`pr-rules.yml`](.github/workflows/pr-rules.yml)               | GitHub, as the required `PR rules` check   |
-| Only the maintainer merges               | The repository's collaborators: the maintainer is the only one | GitHub, as anyone else has no write access |
+| Rule                                     | Defined in                                                                   | Enforced by                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| PRs only, no force-push or deletion      | The `main` and `dev` rulesets, under repository settings                     | GitHub, with no bypass for admins                                   |
+| Checks pass, branch up to date           | The same rulesets, as required checks                                        | GitHub, with no bypass for admins                                   |
+| Rebase only, no merge commits            | Repository merge settings and the same rulesets                              | GitHub                                                              |
+| Allowed source, open issue, no empty PRs | [`pr-rules.yml`](.github/workflows/pr-rules.yml)                             | GitHub, as the required `PR rules` check                            |
+| Only the maintainer merges               | The repository's collaborators: the maintainer is the only one               | GitHub, as anyone else has no write access                          |
+| Only the owner releases                  | [`release.yml`](.github/workflows/release.yml) and the `release` environment | The workflow's owner check, and the environment's required reviewer |
 
 `PR rules` uses `pull_request_target`, so its code comes from the default branch and a PR can't change the check that judges it. It reads the PR's details and never runs the PR's code.
 
