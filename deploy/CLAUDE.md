@@ -1,0 +1,27 @@
+# Deployment
+
+Rules for deploying Paranoid, on top of the root [CLAUDE.md](../CLAUDE.md), whose "Secrets" section covers the providers' credentials too. They apply to everything a deploy uses: `deploy/`, the deploy workflows in `.github/workflows`, `.github/actions/deploy-preflight`, `docs/deploy/` and `packages/deploy`. Paths below are relative to the repository root.
+
+Anyone with a fork can start a Paranoid server from GitHub Actions. Each provider has its own guide in `docs/deploy/<provider>.md`, its own workflows named after it (for example `deploy-<provider>.yml`), its own GitHub environments (`<provider>` and `<provider>-cleanup`), and its own scripts in `deploy/<provider>`.
+
+## Docs and settings
+
+- The deployment docs are one folder. `docs/deploy/README.md` is the index, which the README's "Deploy your own" links: how deploying works, the shared repository variables, the cost limit and the providers table. Each `docs/deploy/<provider>.md` starts with "What this deployment needs", before step 1: its environments, secrets and variables, by name only, never values. Each `deploy/<provider>/README.md` is two lines linking that page. "Adding a provider" in the index has the section's template.
+- A deploy PR keeps its provider's page, its folder README and its index row current. `pnpm check:deploy-docs` (`scripts/check-deploy-docs.mts`), in CI's checks job, enforces it: every `environment`, `vars.NAME` and `secrets.NAME` in a provider's `*-<provider>.yml` workflows is in the index's shared table or on the provider's page, nothing listed there is unused, and a provider with workflows has its page, folder README and index row.
+- Shared variables (`MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT`, `MAX_DEPLOY_COST_USD`) have no prefix, and every provider uses all of them. Every other name starts with its provider's prefix. `MAX_DEPLOY_COST_USD` is every provider's per-deploy cost limit; a provider may add another limit with its own prefixed name, but not instead of it.
+
+## Scripts and workflows
+
+- `deploy/server` (cloud-init, `setup.sh`, systemd units, Caddyfile) is provider-neutral: no cloud provider's API, metadata or CLI. `deploy/ci` holds provider-neutral scripts the workflows run. A new provider gets its own scripts and workflows and reuses `deploy/server` and `deploy/ci`.
+- A provider that needs `PARANOID_HOST` (a server behind NAT that only sees a private address) checks it before filling it into `cloud-init.yaml`, and every provider adds it to its `envsubst` list, empty if unused.
+- `packages/deploy` holds the worst-case cost check. A deploy workflow that uses it runs it with its provider's price file, `deploy/<provider>/prices.json`, before it creates anything.
+- Every deploy, stop and cleanup workflow runs the deploy preflight (`.github/actions/deploy-preflight`) first, before any cloud step. A provider's `deploy/<provider>/requirements.json` is the list of what it needs from GitHub: its environments, their variables and secrets, and its repository variables, by name and rule, never a value (format: `deploy/requirements.schema.json`). `deploy/requirements.json` lists the shared repository variables, the same ones as the index's shared table. A workflow that reads a new variable or secret adds it to the list in the same PR, as well as to the provider's "What this deployment needs". The action's README has the calling pattern: a deploy runs it in a job without the environment and again as the environment job's first step, cleanup passes `owner-only: "false"`, and each listed secret is passed through `env:` under its own name.
+- A provider's credentials reach only the steps that need them, through `env:`. Never put them in a file, an input, a variable, user data, a label or a summary, and never echo them. The server never gets them.
+- Deploy workflows run only on `workflow_dispatch` and `schedule`, never `pull_request` or `pull_request_target`, and use their provider's environment, which only `main` may use.
+- User data and labels hold only values the scripts have checked, so an input can't inject commands.
+- Pin every download (provider CLIs, Node.js, Caddy, gitleaks) to a version and check its checksum. Update the version and checksum together.
+- `shellcheck` checks `deploy/**/*.sh` and `scripts/*.sh` in CI. Keep the deploy scripts there.
+
+## Providers
+
+Each provider's own rules go here, one bullet each, linking its guide (`../docs/deploy/<provider>.md`, relative to this file).

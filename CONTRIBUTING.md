@@ -68,7 +68,7 @@ The maintainer reviews PRs on GitHub. Answer every comment on your PR, whether i
 - Answer questions right away.
 - For a requested change, reply once a solution is found. If it changed code, push it and reply with what changed and the commit link. If it didn't, reply with the resolution.
 
-Claude Code sessions follow the same rule, with the `gh` commands in [CLAUDE.md](CLAUDE.md). A session turns on PR monitoring for its PR if its environment has it (in the Claude desktop app, the PR's Auto-fix switch), so it's woken by new comments, CI failures and merge conflicts. Otherwise it checks its PR's comments whenever it's resumed and before marking the PR ready. It fixes a CI failure its own change caused, but reports one in something the PR didn't touch, such as a flaky test or the CI setup, on the PR and to you first.
+Claude Code sessions follow the same rule, with the `gh` commands in the [`pull-requests` skill](.claude/skills/pull-requests/SKILL.md). A session turns on PR monitoring for its PR if its environment has it (in the Claude desktop app, the PR's Auto-fix switch), so it's woken by new comments, CI failures and merge conflicts. Otherwise it checks its PR's comments whenever it's resumed and before marking the PR ready. It fixes a CI failure its own change caused, but reports one in something the PR didn't touch, such as a flaky test or the CI setup, on the PR and to you first.
 
 ## Rebasing PRs after a merge
 
