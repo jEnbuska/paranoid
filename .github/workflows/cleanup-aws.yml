@@ -61,7 +61,7 @@ jobs:
           fi
 
   cleanup:
-    name: Terminate finished servers
+    name: Delete finished servers
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -80,18 +80,19 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Check the settings
         id: settings
         env:
-          ROLE_ARN: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
+          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
         run: |
           if ! [[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-cleanup$ ]]; then
-            echo "::notice::AWS_CLEANUP_ROLE_ARN isn't set, so there's nothing to clean up with. See docs/deploy/aws.md."
+            echo "::notice::The aws-cleanup environment's AWS_ROLE_ARN isn't set, so there's nothing to clean up with. See docs/deploy/aws.md."
             echo "configured=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -102,14 +103,18 @@ jobs:
           echo "REGION=$REGION" >> "$GITHUB_ENV"
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
+      - name: Set up the AWS CLI
+        if: steps.settings.outputs.configured == 'true'
+        uses: ./.github/actions/setup-aws-cli
+
       - name: Sign in to AWS
         if: steps.settings.outputs.configured == 'true'
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           role-session-name: paranoid-cleanup-${{ github.run_id }}
           aws-region: ${{ env.REGION }}
 
-      - name: Terminate the servers that are stopped or expired
+      - name: Delete the servers that are stopped or expired
         if: steps.settings.outputs.configured == 'true'
-        run: bash deploy/aws/terminate.sh expired
+        run: bash deploy/aws/delete-servers.sh expired

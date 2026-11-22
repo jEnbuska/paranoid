@@ -383,24 +383,29 @@ echo "  alerts to $email at 80% of the actual cost and 100% of the forecast"
 
 cat <<EOF
 
-Done. None of these values is a secret. Set them as variables of your fork
-with the GitHub CLI (or in Settings > Secrets and variables > Actions >
-Variables):
+Done. None of these values is a secret. Run these commands with the GitHub
+CLI, signed in to your GitHub account, in this order.
 
-gh variable set AWS_ROLE_ARN --repo $repository --body $deploy_role_arn
-gh variable set AWS_CLEANUP_ROLE_ARN --repo $repository --body $cleanup_role_arn
-gh variable set AWS_SCHEDULER_ROLE_ARN --repo $repository --body $scheduler_role_arn
-gh variable set AWS_SECURITY_GROUP_ID --repo $repository --body $sg
-gh variable set AWS_REGION --repo $repository --body $region
-
-Then create the two environments, both limited to main. Deploys wait for
-your approval (you're the required reviewer, and may approve your own runs);
+First the two environments, both limited to main. Deploys wait for your
+approval (you're the required reviewer, and may approve your own runs);
 Stop and Clean up don't wait:
 
 printf '{"prevent_self_review":false,"reviewers":[{"type":"User","id":%s}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' "\$(gh api user --jq .id)" | gh api --method PUT repos/$repository/environments/$ENVIRONMENT --input -
 gh api --method POST repos/$repository/environments/$ENVIRONMENT/deployment-branch-policies -f name=main -f type=branch
 gh api --method PUT repos/$repository/environments/$CLEANUP_ENVIRONMENT -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
 gh api --method POST repos/$repository/environments/$CLEANUP_ENVIRONMENT/deployment-branch-policies -f name=main -f type=branch
+
+Then the IDs, in the environments that use them. AWS_ROLE_ARN is the deploy
+role in $ENVIRONMENT and the cleanup role in $CLEANUP_ENVIRONMENT:
+
+gh variable set AWS_ROLE_ARN --env $ENVIRONMENT --repo $repository --body $deploy_role_arn
+gh variable set AWS_SCHEDULER_ROLE_ARN --env $ENVIRONMENT --repo $repository --body $scheduler_role_arn
+gh variable set AWS_SECURITY_GROUP_ID --env $ENVIRONMENT --repo $repository --body $sg
+gh variable set AWS_ROLE_ARN --env $CLEANUP_ENVIRONMENT --repo $repository --body $cleanup_role_arn
+
+The region, as a repository variable, which every workflow reads:
+
+gh variable set AWS_REGION --repo $repository --body $region
 
 And keep the public run logs for 1 day only:
 

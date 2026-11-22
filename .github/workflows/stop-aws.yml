@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   stop:
-    name: Terminate the servers
+    name: Delete the servers
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: aws-cleanup
@@ -35,17 +35,18 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Check the settings
         env:
-          ROLE_ARN: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
+          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
         run: |
           if ! [[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-cleanup$ ]]; then
-            echo "::error::AWS_CLEANUP_ROLE_ARN isn't set to the cleanup role. Run deploy/aws/bootstrap.sh and set the variables it prints (docs/deploy/aws.md)."
+            echo "::error::The aws-cleanup environment's AWS_ROLE_ARN isn't set to the cleanup role. Run deploy/aws/bootstrap.sh and set the variables it prints (docs/deploy/aws.md)."
             exit 1
           fi
           [[ $REGION =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]] || {
@@ -54,12 +55,15 @@ jobs:
           }
           echo "REGION=$REGION" >> "$GITHUB_ENV"
 
+      - name: Set up the AWS CLI
+        uses: ./.github/actions/setup-aws-cli
+
       - name: Sign in to AWS
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ vars.AWS_CLEANUP_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           role-session-name: paranoid-stop-${{ github.run_id }}
           aws-region: ${{ env.REGION }}
 
-      - name: Terminate every server
-        run: bash deploy/aws/terminate.sh all
+      - name: Delete every server
+        run: bash deploy/aws/delete-servers.sh all

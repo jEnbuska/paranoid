@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Terminates Paranoid instances in REGION, which deletes their disks and
 # releases their public IP addresses, and deletes their backstop schedules.
-# The aws CLI has the deploy role's short-lived credentials.
+# The aws CLI has the deploy or cleanup role's short-lived credentials.
 #
 # Usage:
-#   terminate.sh all          every instance that isn't terminated yet
-#   terminate.sh expired      instances past their expiry time, or stopped.
-#                             An instance that's pending, running or stopping
-#                             with an expiry in the future is left alone, so
-#                             this never removes a deploy's new instance.
-#   terminate.sh run <id>     the instance of one deploy run
+#   delete-servers.sh all          every instance that isn't terminated yet
+#   delete-servers.sh finished     instances past their expiry time, or
+#                                  stopped. One that's pending, running or
+#                                  stopping with an expiry in the future is
+#                                  left alone, so this never removes a
+#                                  deploy's new instance.
+#   delete-servers.sh run <id>     the instance of one deploy run
 #
 # A Paranoid instance is one tagged app=paranoid. The deploy role can't
 # terminate any other.
@@ -22,7 +23,7 @@ here=$(dirname "$0")
 filters=("Name=tag:$TAG_KEY,Values=$TAG_VALUE" "Name=instance-state-name,Values=pending,running,stopping,stopped")
 mode=${1:-}
 case "$mode" in
-  all | expired) ;;
+  all | finished) ;;
   run)
     [[ ${2:-} =~ ^[0-9]+$ ]] || {
       echo "Usage: $0 run <run-id>" >&2
@@ -31,7 +32,7 @@ case "$mode" in
     filters+=("Name=tag:run,Values=$2")
     ;;
   *)
-    echo "Usage: $0 all | expired | run <run-id>" >&2
+    echo "Usage: $0 all | finished | run <run-id>" >&2
     exit 2
     ;;
 esac
@@ -43,7 +44,7 @@ ids=()
 while read -r id state expires; do
   [[ $id =~ ^i-[0-9a-f]+$ ]] || continue
   [[ $expires =~ ^[0-9]+$ ]] || expires=0
-  if [ "$mode" = expired ] && [ "$state" != stopped ] && ((expires > now)); then
+  if [ "$mode" = finished ] && [ "$state" != stopped ] && ((expires > now)); then
     continue
   fi
   echo "Terminating $id ($state)"

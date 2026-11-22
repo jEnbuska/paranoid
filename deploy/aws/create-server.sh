@@ -22,7 +22,8 @@ fail() {
 [[ $RUN_ID =~ ^[0-9]+$ ]] || fail "Unexpected run ID: $RUN_ID"
 
 name="paranoid-$RUN_ID"
-expires=$(($(date +%s) + LIFETIME_MINUTES * 60))
+created=$(date +%s)
+expires=$((created + LIFETIME_MINUTES * 60))
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -47,7 +48,9 @@ subnets=$(aws ec2 describe-subnets --filters Name=default-for-az,Values=true \
   --query 'Subnets[].SubnetId' --output text)
 [ -n "$subnets" ] || fail "$REGION's default VPC has no default subnets."
 
-tags="{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Name,Value=$name},{Key=run,Value=$RUN_ID},{Key=expires,Value=$expires}"
+# app=paranoid, run, created and expires, the times in Unix seconds, as on
+# every provider. Name is what the EC2 console shows.
+tags="{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Name,Value=$name},{Key=run,Value=$RUN_ID},{Key=created,Value=$created},{Key=expires,Value=$expires}"
 id=
 for subnet in $subnets; do
   echo "Starting $name, a $INSTANCE_TYPE instance from $image_name, in $subnet"

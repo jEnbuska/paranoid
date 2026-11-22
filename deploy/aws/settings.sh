@@ -36,14 +36,14 @@ types=$(jq -r --arg r "$REGION" '.regions[$r].servers | keys | join(", ")' "$her
 jq -e --arg r "$REGION" --arg t "$INSTANCE_TYPE" '.regions[$r].servers | has($t)' "$here/prices.json" >/dev/null ||
   fail "AWS_INSTANCE_TYPE must be one of $types, not '$INSTANCE_TYPE'"
 
-# The repository variables that bootstrap.sh printed
+# The aws environment's variables, which bootstrap.sh printed
 setup="Run deploy/aws/bootstrap.sh and set the variables it prints (docs/deploy/aws.md)."
 [[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-deploy$ ]] ||
-  fail "AWS_ROLE_ARN isn't set to the deploy role. $setup"
+  fail "The aws environment's AWS_ROLE_ARN isn't set to the deploy role. $setup"
 [[ $SCHEDULER_ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-scheduler$ ]] ||
-  fail "AWS_SCHEDULER_ROLE_ARN isn't set to the scheduler role. $setup"
+  fail "The aws environment's AWS_SCHEDULER_ROLE_ARN isn't set to the scheduler role. $setup"
 [[ $SECURITY_GROUP_ID =~ ^sg-[0-9a-f]{8,17}$ ]] ||
-  fail "AWS_SECURITY_GROUP_ID isn't set to a security group ID. $setup"
+  fail "The aws environment's AWS_SECURITY_GROUP_ID isn't set to a security group ID. $setup"
 
 {
   echo "SCHEDULER_ROLE_ARN=$SCHEDULER_ROLE_ARN"

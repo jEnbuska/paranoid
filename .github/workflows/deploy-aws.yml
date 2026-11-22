@@ -43,17 +43,18 @@ jobs:
   deploy:
     name: Deploy to AWS
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     environment:
       name: aws
-      url: ${{ steps.launch.outputs.url }}
+      url: ${{ steps.create.outputs.url }}
     permissions:
       contents: read
       # For the OIDC token that the deploy role trusts
       id-token: write
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -90,6 +91,9 @@ jobs:
             --extra-running-minutes "$BACKSTOP_GRACE_MINUTES" \
             --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
 
+      - name: Set up the AWS CLI
+        uses: ./.github/actions/setup-aws-cli
+
       - name: Sign in to AWS
         id: aws
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
@@ -99,30 +103,30 @@ jobs:
           aws-region: ${{ env.REGION }}
 
       # So there's only ever one server
-      - name: Terminate the existing servers
-        run: bash deploy/aws/terminate.sh all
+      - name: Delete the existing servers
+        run: bash deploy/aws/delete-servers.sh all
 
       # The server fetches this exact commit of this repository, which is
       # public, so it needs no credentials.
-      - name: Start the server
-        id: launch
+      - name: Create the server
+        id: create
         env:
           REPOSITORY: ${{ github.repository }}
           COMMIT: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
-        run: bash deploy/aws/launch.sh
+        run: bash deploy/aws/create-server.sh
 
       # The server installs and builds the app first, which takes a few
       # minutes.
       - name: Wait for the app
         env:
-          HOST: ${{ steps.launch.outputs.host }}
+          HOST: ${{ steps.create.outputs.host }}
         run: bash deploy/ci/wait-for-app.sh "$HOST" 600
 
       - name: Write the summary
         env:
-          URL: ${{ steps.launch.outputs.url }}
-          EXPIRES: ${{ steps.launch.outputs.expires }}
+          URL: ${{ steps.create.outputs.url }}
+          EXPIRES: ${{ steps.create.outputs.expires }}
         run: |
           shutdown=$(date -u -d "@$EXPIRES" '+%Y-%m-%d %H:%M UTC')
           {
@@ -132,12 +136,13 @@ jobs:
             echo
             echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
             echo "- It's a $INSTANCE_TYPE instance in $REGION. Shutting down terminates it, and so does the Stop AWS workflow, right away."
+            echo "- If it doesn't shut itself down, its backstop schedule terminates it a few minutes after that, and Clean up AWS within the hour."
             echo "- The most it can cost is \$$WORST_CASE_USD."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Also when the run is cancelled, for example by stop-aws.yml
-      - name: Terminate the server after a failed deploy
+      - name: Delete the server after a failed deploy
         if: (failure() || cancelled()) && steps.aws.outcome == 'success'
         env:
           RUN_ID: ${{ github.run_id }}
-        run: bash deploy/aws/terminate.sh run "$RUN_ID"
+        run: bash deploy/aws/delete-servers.sh run "$RUN_ID"

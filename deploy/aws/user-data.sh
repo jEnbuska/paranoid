@@ -4,7 +4,7 @@
 # a MIME multipart message, which cloud-init reads part by part.
 #
 # Reads REPOSITORY, COMMIT, MAX_INVITES, LIFETIME_MINUTES and MAX_EGRESS_MBIT.
-# settings.sh and launch.sh check them first; they're checked again here, so
+# settings.sh and create-server.sh check them first; they're checked again here, so
 # nothing unchecked can reach the user data. PARANOID_HOST is left empty:
 # the instance's public address isn't known yet, and public-host.yaml fills
 # it in on the instance.
