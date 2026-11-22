@@ -64,7 +64,7 @@ Run the checks listed in the [README](README.md#scripts) before pushing. CI runs
 
 ## Commit messages
 
-Start each commit message with its ticket number, for example `#6 Add the GCP workflows`. Whenever git opens a message in your editor (`git commit` without `-m`, `git commit --amend`, `git rebase --continue` after a conflict, `git rebase -i`), it deletes the lines that start with `#` as comments, and the subject is gone. `git commit -m` is safe. Fix it for good in your own clone by making `;` the comment character:
+Start each commit message with its ticket number, for example `#6 Add the GCP workflows`. [Dependabot](#dependabot)'s commits start with `Dependabot:` instead. Whenever git opens a message in your editor (`git commit` without `-m`, `git commit --amend`, `git rebase --continue` after a conflict, `git rebase -i`), it deletes the lines that start with `#` as comments, and the subject is gone. `git commit -m` is safe. Fix it for good in your own clone by making `;` the comment character:
 
 ```bash
 git config core.commentChar ';'
