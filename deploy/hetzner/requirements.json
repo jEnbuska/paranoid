@@ -4,23 +4,23 @@
   "environments": {
     "hetzner": {
       "reviewers": "required",
-      "step": "#4-create-the-environments-in-your-fork",
+      "step": "#create-the-environments",
       "secrets": {
         "HCLOUD_TOKEN": {
           "required": true,
           "pattern": "^[A-Za-z0-9]{64}$",
-          "step": "#5-create-the-api-tokens-and-add-them"
+          "step": "#create-the-tokens-and-add-them"
         }
       }
     },
     "hetzner-cleanup": {
       "reviewers": "none",
-      "step": "#4-create-the-environments-in-your-fork",
+      "step": "#create-the-environments",
       "secrets": {
         "HCLOUD_TOKEN": {
           "required": true,
           "pattern": "^[A-Za-z0-9]{64}$",
-          "step": "#5-create-the-api-tokens-and-add-them"
+          "step": "#create-the-tokens-and-add-them"
         }
       }
     }
@@ -30,13 +30,13 @@
       "pattern": "^(nbg1|fsn1|hel1)$",
       "example": "nbg1",
       "environments": ["hetzner"],
-      "step": "#6-optional-settings"
+      "step": "#5-optional-settings"
     },
     "HCLOUD_SERVER_TYPES": {
       "pattern": "^[a-z0-9]{1,20}(,[a-z0-9]{1,20}){0,9}$",
       "example": "cx23,cax11,cpx12",
       "environments": ["hetzner"],
-      "step": "#6-optional-settings"
+      "step": "#5-optional-settings"
     }
   }
 }
