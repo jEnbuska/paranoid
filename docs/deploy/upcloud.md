@@ -128,7 +128,7 @@ The tokens go into two GitHub **environments**, which only the `main` branch may
 
 The workflows only run when you start them or on their schedule, never from a pull request, so nobody else's code can reach the tokens.
 
-This needs a public repository, which a fork of this one is. On GitHub's Free, Pro and Team plans, required reviewers work only in public repositories, and on GitHub Free, so do environments and their secrets (see GitHub's [deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)). In a private copy on Pro or Team, the `main` limit still protects the tokens, but deploys no longer wait for your approval. A private copy on GitHub Free can't hold the tokens at all, so it isn't supported. Don't put them in repository secrets instead: every branch and workflow could use them.
+This needs a public repository, which a fork of this one is: see [what every provider needs from GitHub](README.md#what-every-provider-needs-from-github). A private copy on GitHub Free can't have environments, so it can't hold the tokens and isn't supported, and in one on Pro or Team deploys no longer wait for your approval (see GitHub's [deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)). Don't put the tokens in repository secrets instead: every branch and workflow could use them.
 
 ### In GitHub's website
 
