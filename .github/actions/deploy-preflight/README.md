@@ -89,33 +89,34 @@ A composite action can't read the `secrets` context, so the step passes each sec
   "environments": {
     "<provider>": {
       "reviewers": "required",
-      "step": "#4-create-the-environments-in-your-fork",
+      "step": "#5-connect-your-fork",
       "secrets": {
         "<PROVIDER>_TOKEN": {
           "required": true,
           "pattern": "^<token pattern>$",
-          "step": "#4-create-the-environments-in-your-fork"
+          "step": "#5-connect-your-fork"
         }
       },
       "variables": {
-        "<PROVIDER>_ZONE": {
-          "pattern": "^[a-z]{2}-[a-z]{3}[0-9]{1,2}$",
-          "example": "fi-hel1",
-          "step": "#6-optional-settings"
+        "<PROVIDER>_PROJECT": {
+          "required": true,
+          "pattern": "^<pattern>$",
+          "example": "<example>",
+          "step": "#5-connect-your-fork"
         }
       }
     },
     "<provider>-cleanup": {
       "reviewers": "none",
-      "step": "#4-create-the-environments-in-your-fork"
+      "step": "#5-connect-your-fork"
     }
   },
   "variables": {
-    "<PROVIDER>_ROLE": {
-      "required": true,
-      "pattern": "^<pattern>$",
+    "<PROVIDER>_ZONE": {
+      "pattern": "^[a-z]{2}-[a-z]{3}[0-9]{1,2}$",
+      "example": "fi-hel1",
       "environments": ["<provider>"],
-      "step": "#5-connect-your-fork"
+      "step": "#6-optional-settings"
     }
   }
 }
@@ -124,7 +125,7 @@ A composite action can't read the `secrets` context, so the step passes each sec
 - The names are the ones the provider's page lists in "What this deployment needs" ([the index](../../../docs/deploy/README.md#adding-a-provider) has its template). Keep the two the same.
 - `environments.<name>.variables` are the environment's own variables, and `variables` at the top are repository variables. A repository variable's `environments` says which environments' jobs read it, so a cleanup isn't failed by a variable only the deploy reads. Without it, every job checks it.
 - Each rule is optional unless `"required": true`, and it's checked whenever it's set. `pattern` is a whole-value regular expression, anchored with `^` and `$`. `minimum` and `maximum` make it a number in that range. `example` is shown when a variable is wrong. A secret has no example.
-- `step` is the guide step that fixes it, a link into `guide`.
+- `step` is the guide step that fixes it, a link into `guide`, by the [common guide skeleton](../../../docs/deploy/README.md#the-same-deploy-on-every-provider): the environments, the credentials in them and the identity values are set in step 5, "Connect your fork" (the credentials themselves are made in step 4), and the tuning values in step 6, "Optional settings". A provider that folds two steps together links its own heading.
 - Don't list the shared variables (`MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT`, `MAX_DEPLOY_COST_USD`). `deploy/requirements.json` has them, with the same rules as the index's [shared table](../../../docs/deploy/README.md#shared-repository-variables).
 - `pnpm --filter deploy test` reads every provider's list, so a misspelled key or a bad pattern fails CI.
 
