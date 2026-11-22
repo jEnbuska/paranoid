@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Checks the Azure deploy's inputs, and the settings that reach the server,
-# and passes them to the later steps of the job through GITHUB_ENV.
-# deploy-azure.yml sets each one from the workflow input, then the
-# repository variable, then the default (see docs/deploy/azure.md). The
-# environments and their IDs are the deploy preflight's to check
-# (deploy/azure/requirements.json).
+# Checks the Azure deploy's two workflow inputs, max_invites and
+# lifetime_minutes, and passes them and the settings to the later steps of
+# the job through GITHUB_ENV. deploy-azure.yml sets each one from the
+# workflow input, then the variable, then the default (see
+# docs/deploy/azure.md).
 #
+# The variables are the deploy preflight's to check, with the rules in
+# deploy/azure/requirements.json and deploy/requirements.json, before this
+# runs. An input never passes through the preflight, so it's checked here.
 # Only checked values reach GITHUB_ENV, the server's custom data and its
-# tags, so an input can't add lines or commands to any of them. The
-# preflight checks the variables too, but an input never passes through it.
+# tags, so neither can add lines or commands to any of them.
 set -euo pipefail
 
 fail() {
@@ -25,20 +26,16 @@ whole() {
 
 whole max_invites "$MAX_INVITES" 1 10000
 whole lifetime_minutes "$LIFETIME_MINUTES" 1 1440
-whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
-[[ $REGION =~ ^[a-z][a-z0-9]{2,30}$ ]] ||
-  fail "AZURE_REGION must be an Azure region such as swedencentral or germanywestcentral, not '$REGION'"
-[[ $RESOURCE_GROUP =~ ^[A-Za-z0-9_()-]{1,90}$ ]] ||
-  fail "AZURE_RESOURCE_GROUP must be the resource group bootstrap.sh made, such as paranoid, not '$RESOURCE_GROUP'"
-[[ $VM_SIZE =~ ^Standard_[A-Za-z0-9_]{1,40}$ ]] ||
-  fail "AZURE_VM_SIZE must be a VM size such as Standard_B2ats_v2, not '$VM_SIZE'"
-[[ $IMAGE =~ ^[A-Za-z0-9._-]+:[A-Za-z0-9._-]+:[A-Za-z0-9._-]+:[A-Za-z0-9._-]+$ ]] ||
-  fail "AZURE_IMAGE must be an image URN, publisher:offer:sku:version, of Debian with cloud-init, such as Debian:debian-13:13-gen2:latest, not '$IMAGE'"
+# The preflight has checked the variables. This only makes sure none can add
+# a line to GITHUB_ENV, whatever runs before it.
+for value in "$MAX_EGRESS_MBIT" "$REGION" "$RESOURCE_GROUP" "$VM_SIZE" "$IMAGE"; do
+  [[ $value != *$'\n'* && $value != *$'\r'* ]] || fail "A setting has a line break in it. Run the deploy preflight first."
+done
 
 {
   echo "MAX_INVITES=$((10#$MAX_INVITES))"
   echo "LIFETIME_MINUTES=$((10#$LIFETIME_MINUTES))"
-  echo "MAX_EGRESS_MBIT=$((10#$MAX_EGRESS_MBIT))"
+  echo "MAX_EGRESS_MBIT=$MAX_EGRESS_MBIT"
   echo "REGION=$REGION"
   echo "RESOURCE_GROUP=$RESOURCE_GROUP"
   echo "VM_SIZE=$VM_SIZE"
