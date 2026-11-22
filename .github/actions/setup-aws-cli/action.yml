@@ -1,0 +1,57 @@
+name: Set up the AWS CLI
+description: >-
+  Installs a pinned release of the AWS CLI version 2, instead of whatever the
+  runner image has, checked against a pinned SHA-256 and against AWS's PGP
+  signature. It writes no config file and takes no credentials: the steps
+  after aws-actions/configure-aws-credentials get them through the
+  environment.
+
+# AWS publishes no checksum file, only a PGP signature for each download, so
+# the SHA-256 below was computed from the download on 2026-11-22, and the
+# signature is checked too, against AWS's public key in
+# aws-cli-public-key.asc, copied from
+# https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+# ("Verifying the integrity and authenticity of the downloaded installer
+# files"), whose fingerprint is pinned below. Update the version and the
+# SHA-256 together.
+
+runs:
+  using: composite
+  steps:
+    - name: Install the AWS CLI
+      shell: bash
+      env:
+        AWS_CLI_VERSION: 2.42.1
+        AWS_CLI_SHA256: ff2631c32c5db291b099600f404bc493454ec66c125ff4604625da90480c1f47
+        AWS_CLI_SIGNER_FINGERPRINT: FB5DB77FD5C118B80511ADA8A6310ACC4672475C
+        KEY_FILE: ${{ github.action_path }}/aws-cli-public-key.asc
+      run: |
+        set -euo pipefail
+        work="$RUNNER_TEMP/aws-cli"
+        mkdir -p "$work"
+        url="https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip"
+        curl -fsSL --retry 3 -o "$work/awscli.zip" "$url"
+        curl -fsSL --retry 3 -o "$work/awscli.zip.sig" "$url.sig"
+        echo "$AWS_CLI_SHA256  $work/awscli.zip" | sha256sum --check --strict -
+
+        # A keyring of its own with only AWS's key, whose fingerprint must be
+        # the pinned one.
+        export GNUPGHOME="$work/gnupg"
+        mkdir -m 0700 "$GNUPGHOME"
+        gpg --batch --quiet --import "$KEY_FILE"
+        keys=$(gpg --batch --with-colons --fingerprint | awk -F: '$1 == "pub"' | wc -l)
+        fingerprint=$(gpg --batch --with-colons --fingerprint | awk -F: '$1 == "pub" { primary = 1 } primary && $1 == "fpr" { print $10; exit }')
+        if [ "$keys" != 1 ] || [ "$fingerprint" != "$AWS_CLI_SIGNER_FINGERPRINT" ]; then
+          echo "::error::aws-cli-public-key.asc isn't AWS's CLI key alone: $keys key(s), primary $fingerprint"
+          exit 1
+        fi
+        gpg --batch --verify "$work/awscli.zip.sig" "$work/awscli.zip"
+
+        unzip -q "$work/awscli.zip" -d "$work"
+        "$work/aws/install" --install-dir "$work/install" --bin-dir "$work/bin"
+        echo "$work/bin" >> "$GITHUB_PATH"
+        "$work/bin/aws" --version | grep -q "^aws-cli/$AWS_CLI_VERSION " || {
+          echo "::error::The installed AWS CLI isn't version $AWS_CLI_VERSION"
+          exit 1
+        }
+        "$work/bin/aws" --version
