@@ -32,7 +32,12 @@ jobs:
     environment: aws-cleanup
     permissions:
       contents: read
+      # Reads the environments' settings
+      actions: read
       id-token: write
+    # The preflight, the job's first step, checks it if it's set.
+    env:
+      REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
 
     steps:
       - name: Check out the code
@@ -40,20 +45,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check the settings
-        env:
-          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-          REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
-        run: |
-          if ! [[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-cleanup$ ]]; then
-            echo "::error::The aws-cleanup environment's AWS_ROLE_ARN isn't set to the cleanup role. Run deploy/aws/bootstrap.sh and set the variables it prints (docs/deploy/aws.md)."
-            exit 1
-          fi
-          [[ $REGION =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]] || {
-            echo "::error::AWS_REGION isn't a region: '$REGION'"
-            exit 1
-          }
-          echo "REGION=$REGION" >> "$GITHUB_ENV"
+      # Who started it, the environment and its AWS_ROLE_ARN, before any AWS
+      # step
+      - name: Preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: aws
+          environment: aws-cleanup
+          vars: ${{ toJSON(vars) }}
 
       - name: Set up the AWS CLI
         uses: ./.github/actions/setup-aws-cli

@@ -2,8 +2,9 @@
 # Starts the Paranoid instance on EC2 and its backstop schedule, and writes
 # its ID, host, URL and expiry time to GITHUB_OUTPUT.
 #
-# Reads REPOSITORY and COMMIT (what the instance fetches), RUN_ID, and the
-# settings settings.sh checked. The aws CLI has the deploy role's short-lived
+# Reads REPOSITORY and COMMIT (what the instance fetches), RUN_ID, the
+# inputs settings.sh checked, and the variables the deploy preflight checked
+# (deploy/aws/requirements.json). The aws CLI has the deploy role's short-lived
 # credentials from the job's OIDC token. The instance gets no credentials:
 # it has no role, and its user data holds no secret.
 set -euo pipefail

@@ -68,7 +68,12 @@ jobs:
     environment: aws-cleanup
     permissions:
       contents: read
+      # Reads the environments' settings
+      actions: read
       id-token: write
+    # The preflight, the job's first step, checks it if it's set.
+    env:
+      REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
     # Its own group, not deploy-aws.yml's: a deploy waiting for its approval
     # may hold that one, and the hourly cleanup must not wait behind it. It's
     # safe beside a deploy, because it only terminates instances that are
@@ -85,30 +90,21 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check the settings
-        id: settings
-        env:
-          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-          REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
-        run: |
-          if ! [[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-cleanup$ ]]; then
-            echo "::notice::The aws-cleanup environment's AWS_ROLE_ARN isn't set, so there's nothing to clean up with. See docs/deploy/aws.md."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          [[ $REGION =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]] || {
-            echo "::error::AWS_REGION isn't a region: '$REGION'"
-            exit 1
-          }
-          echo "REGION=$REGION" >> "$GITHUB_ENV"
-          echo "configured=true" >> "$GITHUB_OUTPUT"
+      # The environment and its AWS_ROLE_ARN, before any AWS step. Not who
+      # started it: a scheduled run is started on main by the start job, as
+      # github-actions[bot].
+      - name: Preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: aws
+          environment: aws-cleanup
+          owner-only: "false"
+          vars: ${{ toJSON(vars) }}
 
       - name: Set up the AWS CLI
-        if: steps.settings.outputs.configured == 'true'
         uses: ./.github/actions/setup-aws-cli
 
       - name: Sign in to AWS
-        if: steps.settings.outputs.configured == 'true'
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -116,5 +112,4 @@ jobs:
           aws-region: ${{ env.REGION }}
 
       - name: Delete the servers that are stopped or expired
-        if: steps.settings.outputs.configured == 'true'
         run: bash deploy/aws/delete-servers.sh expired

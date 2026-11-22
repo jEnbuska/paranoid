@@ -40,17 +40,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy to AWS
+  # Without the environment, so it runs before anyone is asked to approve the
+  # deploy: a run that someone without admin permission started, or one with
+  # a wrong repository variable, fails here, and nobody approves it in vain.
+  preflight:
+    name: Preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment:
-      name: aws
-      url: ${{ steps.create.outputs.url }}
+    timeout-minutes: 5
     permissions:
       contents: read
-      # For the OIDC token that the deploy role trusts
-      id-token: write
+      # Reads the environments' settings
+      actions: read
 
     steps:
       - name: Check out the code
@@ -58,19 +58,57 @@ jobs:
         with:
           persist-credentials: false
 
-      # Before anything changes, so a bad setting leaves a running server
-      # alone.
-      - name: Check the settings
+      - name: Check who started it and the repository variables
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: aws
+          environment: aws
+          in-environment: "false"
+          vars: ${{ toJSON(vars) }}
+
+  deploy:
+    name: Deploy to AWS
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: aws
+      url: ${{ steps.create.outputs.url }}
+    permissions:
+      contents: read
+      actions: read
+      # For the OIDC token that the deploy role trusts
+      id-token: write
+    # The preflight, the job's first step, checks every variable that's set,
+    # so the later steps read them as they are.
+    env:
+      MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
+      MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
+      REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
+      INSTANCE_TYPE: ${{ vars.AWS_INSTANCE_TYPE || 't4g.micro' }}
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The environment's variables, the repository's and the shared ones,
+      # before anything changes, so a bad setting leaves a running server
+      # alone. There's no secret to pass: AWS trusts the job's OIDC token.
+      - name: Preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: aws
+          environment: aws
+          vars: ${{ toJSON(vars) }}
+
+      # The workflow's inputs, which override two of the variables, are the
+      # only settings the preflight doesn't see.
+      - name: Check the inputs
         env:
           MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
           LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
-          MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
-          MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
-          REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
-          INSTANCE_TYPE: ${{ vars.AWS_INSTANCE_TYPE || 't4g.micro' }}
-          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-          SCHEDULER_ROLE_ARN: ${{ vars.AWS_SCHEDULER_ROLE_ARN }}
-          SECURITY_GROUP_ID: ${{ vars.AWS_SECURITY_GROUP_ID }}
         run: bash deploy/aws/settings.sh
 
       - name: Set up Node.js
@@ -111,6 +149,8 @@ jobs:
       - name: Create the server
         id: create
         env:
+          SCHEDULER_ROLE_ARN: ${{ vars.AWS_SCHEDULER_ROLE_ARN }}
+          SECURITY_GROUP_ID: ${{ vars.AWS_SECURITY_GROUP_ID }}
           REPOSITORY: ${{ github.repository }}
           COMMIT: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
