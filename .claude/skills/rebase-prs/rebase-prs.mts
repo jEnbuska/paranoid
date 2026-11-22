@@ -19,6 +19,7 @@ type PullRequest = {
   isCrossRepository: boolean;
   headRefName: string;
   headRefOid: string;
+  author: { login: string } | null;
   mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
   mergeStateStatus: string;
 };
@@ -57,7 +58,7 @@ const repoPath = `repos/${owner.login}/${repo}`;
 const viewer = gh(["api", "user", "--jq", ".login"]).trim();
 
 const prFields = `
-  id number isDraft isCrossRepository headRefName headRefOid
+  id number isDraft isCrossRepository headRefName headRefOid author { login }
   mergeable mergeStateStatus
 `;
 
@@ -233,6 +234,31 @@ async function rebase(pr: PullRequest) {
   reportConflict(pr);
 }
 
+// Dependabot's version updates (.github/dependabot.yml). GraphQL names the
+// bot `dependabot`, without `[bot]`.
+function isDependabot(pr: PullRequest) {
+  return (
+    pr.author?.login === "dependabot" &&
+    pr.headRefName.startsWith("dependabot/")
+  );
+}
+
+// Dependabot stops updating a PR once someone else has pushed to its branch,
+// so it's asked to rebase its own PR instead. Its push starts CI as usual.
+function askDependabotToRebase(pr: PullRequest) {
+  if (dryRun) {
+    console.log(`#${pr.number}: Dependabot PR, would ask Dependabot to rebase`);
+    return;
+  }
+  gh([
+    "api",
+    `${repoPath}/issues/${pr.number}/comments`,
+    "-f",
+    "body=@dependabot rebase",
+  ]);
+  console.log(`#${pr.number}: Dependabot PR, asked Dependabot to rebase`);
+}
+
 let failed = 0;
 for (const listed of openPullRequests()) {
   const number = listed.number;
@@ -266,13 +292,18 @@ for (const listed of openPullRequests()) {
       continue;
     }
     if (pr.mergeable === "CONFLICTING") {
-      reportConflict(pr);
+      if (isDependabot(pr)) askDependabotToRebase(pr);
+      else reportConflict(pr);
       continue;
     }
     const behind = behindBy(pr);
     if (behind === 0) {
       console.log(`#${number}: up to date`);
       clearConflict(pr);
+      continue;
+    }
+    if (isDependabot(pr)) {
+      askDependabotToRebase(pr);
       continue;
     }
     console.log(`#${number}: ${behind} commits behind ${base}, rebasing`);
