@@ -27,6 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: hetzner-cleanup
+    # actions: read, for the preflight
+    permissions:
+      actions: read
+      contents: read
 
     steps:
       - name: Check out the repository
@@ -34,14 +38,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check for the token
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: hetzner
+          environment: hetzner-cleanup
+          vars: ${{ toJSON(vars) }}
         env:
-          HAS_TOKEN: ${{ secrets.HCLOUD_TOKEN != '' }}
-        run: |
-          if [ "$HAS_TOKEN" != true ]; then
-            echo "::error::The hetzner-cleanup environment has no HCLOUD_TOKEN secret. See docs/deploy/hetzner.md."
-            exit 1
-          fi
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
 
       - name: Set up hcloud
         uses: ./.github/actions/setup-hcloud

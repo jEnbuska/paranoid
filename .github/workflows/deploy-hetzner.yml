@@ -37,13 +37,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy to Hetzner
+  # Without the environment, so a run started by someone without admin
+  # permission on the repository, or with the hetzner environment set up
+  # wrongly, fails before anyone is asked to approve it. It can't see the
+  # environment's secret: the deploy job's first step checks that.
+  preflight:
+    name: Preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment:
-      name: hetzner
-      url: ${{ steps.create.outputs.url }}
+    timeout-minutes: 5
+    # actions: read, to read the environments' settings
+    permissions:
+      actions: read
+      contents: read
 
     steps:
       - name: Check out the repository
@@ -51,23 +56,56 @@ jobs:
         with:
           persist-credentials: false
 
-      # Before anything is deleted, so a bad setting leaves a running server
-      # alone. HAS_TOKEN is only "true" or "false".
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: hetzner
+          environment: hetzner
+          in-environment: "false"
+          vars: ${{ toJSON(vars) }}
+
+  deploy:
+    name: Deploy to Hetzner
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: hetzner
+      url: ${{ steps.create.outputs.url }}
+    # actions: read, for the preflight
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # deploy/hetzner/requirements.json: the environments, HCLOUD_TOKEN and
+      # the variables, before any Hetzner step. The preflight only tests that
+      # the token is set and has a token's shape, and never prints it.
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: hetzner
+          environment: hetzner
+          vars: ${{ toJSON(vars) }}
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+
+      # The workflow's inputs, before anything is deleted, so a bad one leaves
+      # a running server alone.
       - name: Check the settings
         env:
-          HAS_TOKEN: ${{ secrets.HCLOUD_TOKEN != '' }}
           MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
           LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
           MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
           MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
           LOCATION: ${{ vars.HCLOUD_LOCATION || 'nbg1' }}
           SERVER_TYPES: ${{ vars.HCLOUD_SERVER_TYPES || 'cx23,cax11,cpx12' }}
-        run: |
-          if [ "$HAS_TOKEN" != true ]; then
-            echo "::error::The hetzner environment has no HCLOUD_TOKEN secret. See docs/deploy/hetzner.md."
-            exit 1
-          fi
-          bash deploy/hetzner/settings.sh
+        run: bash deploy/hetzner/settings.sh
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

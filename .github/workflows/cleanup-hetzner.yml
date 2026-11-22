@@ -64,6 +64,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: hetzner-cleanup
+    # actions: read, for the preflight
+    permissions:
+      actions: read
+      contents: read
     # Not shared with deploy-hetzner.yml, which may wait hours for its approval
     # in the `hetzner` group. Running beside a deploy or a stop is safe: this
     # deletes only servers that are off or expired, never the one a deploy is
@@ -79,22 +83,24 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check for the token
-        id: token
+      # owner-only "false": the run the scheduled start job starts on main
+      # runs as github-actions[bot], not as the repository's owner. A
+      # hetzner-cleanup environment without its token now fails the run
+      # instead of passing with a notice, so a broken cleanup shows.
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: hetzner
+          environment: hetzner-cleanup
+          owner-only: "false"
+          vars: ${{ toJSON(vars) }}
         env:
-          HAS_TOKEN: ${{ secrets.HCLOUD_TOKEN != '' }}
-        run: |
-          echo "present=$HAS_TOKEN" >> "$GITHUB_OUTPUT"
-          if [ "$HAS_TOKEN" != true ]; then
-            echo "::notice::The hetzner-cleanup environment has no HCLOUD_TOKEN secret, so there's nothing to clean up."
-          fi
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
 
       - name: Set up hcloud
         uses: ./.github/actions/setup-hcloud
-        if: steps.token.outputs.present == 'true'
 
       - name: Delete the servers that are off or expired
-        if: steps.token.outputs.present == 'true'
         env:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
         run: bash deploy/hetzner/delete-servers.sh finished
