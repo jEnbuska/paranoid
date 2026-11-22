@@ -32,40 +32,31 @@ Right after opening the PR, turn on PR monitoring if the environment has it. Onl
 
 ## 3. While working
 
-- Push often, at least at every meaningful step, and keep the PR body current.
-- Commit subjects are `<N> <subject>`, with no `#`.
+- Push often and keep the PR body current, as the root says.
+- Commit subjects follow the root's commit format. If git opens a `#N` message in the editor, for example when a rebase stops on a conflict, restore its subject before saving, because git drops lines that start with `#`.
 
 ## 4. Answering comments
 
-Answer every comment a developer leaves on the PR (a review comment on a line, a review, or a plain PR comment) on GitHub, in that comment's own thread, not only in the session's chat, so the PR shows what was asked and what came of it.
+The root's rule says which comments to answer, when, and what to link. The commands:
 
-- Questions are answered right away.
-- For a requested change, reply once a solution is found. If it changed code, push it and reply with what changed and the commit link. If it didn't, reply with the resolution.
-- Answers about code link what they're about: the commit (`https://github.com/<owner>/<repo>/commit/<sha>`) or a permalink with the commit SHA and line (`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<n>`, or `#L<n>-L<m>` for a range). Never link a branch, which moves. Push the commit before linking it.
-- Reply without asking first, then say in the session's chat which comments were answered, linking each reply.
-
-Commands:
-
-- List review comments and their ids: `gh api repos/{owner}/{repo}/pulls/<PR>/comments`.
-- Reply to a review comment in its thread: `gh api repos/{owner}/{repo}/pulls/<PR>/comments/<ID>/replies -f body='...'`. `<ID>` is the thread's first comment, because GitHub doesn't take replies to replies, so for a reply use its `in_reply_to_id`.
-- Reviews and plain PR comments have no threads: `gh pr view <PR> --comments` shows them, and `gh pr comment <PR> --body '...'` answers them, quoting the comment being answered.
+1. List review comments and their ids: `gh api repos/{owner}/{repo}/pulls/<PR>/comments`.
+2. Reply to a review comment in its thread: `gh api repos/{owner}/{repo}/pulls/<PR>/comments/<ID>/replies -f body='...'`. `<ID>` is the thread's first comment, because GitHub doesn't take replies to replies, so for a reply use its `in_reply_to_id`.
+3. Reviews and plain PR comments have no threads: `gh pr view <PR> --comments` shows them, and `gh pr comment <PR> --body '...'` answers them, quoting the comment being answered.
+4. Push the commit before linking it. Link it as `https://github.com/<owner>/<repo>/commit/<sha>`, or a line as `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<n>` (`#L<n>-L<m>` for a range).
+5. List the replies in the session's chat, linking each one.
 
 ## 5. CI failures
 
-When the session is woken by a CI failure on its PR:
+What to do about each kind of failure is in the root's "Branches, commits and PRs": one the PR caused, one it didn't, end-to-end tests on a ready PR, the dependency check, the full audit and CodeQL. `.github/CLAUDE.md` says what CI runs for which changes, and what the audits and CodeQL check. The commands:
 
-- **The PR's own change caused it:** fix it, as usual.
-- **Something the PR didn't touch, such as a flaky test or the CI setup:** report it first, in a PR comment and to the developer, saying which check failed and why it isn't the PR's change. Work on it only once they say so.
-- **End-to-end tests fail in any browser on a ready PR:** run `gh pr ready --undo` and add a PR comment saying which browser and test failed and that this is why the PR is now a draft.
-- **Dependency check:** a PR into `dev` that changes a `package.json` or `pnpm-lock.yaml` fails if it adds a known vulnerability of high severity or worse. The log and job summary name the package, the advisory and the fixed version. Fix it in the same PR, by updating to the fixed version.
-- **Full audit:** a finding on a PR into `main`, or in the issue `audit.yml` opens, is fixed in `dev` first, in its own PR (which closes that issue), never in an unrelated PR. Then the release PR is updated.
-- **CodeQL:** a new alert on the PR is fixed in the PR. An alert the PR didn't cause, such as one from a query CodeQL added, is reported first, like other CI failures. Dismiss an alert only with the user's OK, as "false positive" or "won't fix", with the reason in the PR.
-
-`.github/CLAUDE.md` says what CI runs for which changes.
+- See why a run failed: `gh pr checks <PR>`, then `gh run view <run-id> --log-failed`. The dependency check's log and job summary name the package, the advisory and the fixed version.
+- Move a ready PR back to draft: `gh pr ready --undo <PR>`, then `gh pr comment <PR> --body '...'` with the browser and test that failed.
+- List the PR's open CodeQL alerts: `gh api "repos/{owner}/{repo}/code-scanning/alerts?ref=refs/pull/<PR>/merge&state=open"`.
+- Dismiss an alert, only with the user's OK: `gh api -X PATCH repos/{owner}/{repo}/code-scanning/alerts/<number> -f state=dismissed -f dismissed_reason='false positive' -f dismissed_comment='...'` (or `won't fix`), and put the reason in the PR.
 
 ## 6. Rebasing
 
-Keep the branch up to date by rebasing onto `origin/dev`:
+Keep the branch up to date by rebasing onto `origin/dev`, never merging `dev` into it:
 
 ```bash
 git fetch origin
@@ -73,23 +64,28 @@ git rebase origin/dev
 git push --force-with-lease
 ```
 
-PRs land with "Rebase and merge", and merge commits are refused, so never merge `dev` into the branch.
+The `rebase-prs` skill rewrites a ready PR's branch on GitHub under its session, so the next `git push --force-with-lease` is rejected. Never force it. Put the local commits on top of the rebased branch and push again:
 
-The `rebase-prs` skill rewrites a ready PR's branch on GitHub under its session. When a `git push --force-with-lease` is rejected after that, don't force it: run `git fetch origin`, then `git rebase origin/<branch>` to put the local commits on top of the rebased branch (or `git reset --hard origin/<branch>` if there are none), and push again.
+```bash
+git fetch origin
+git rebase origin/<branch>
+git push --force-with-lease
+```
+
+With no local commits that aren't pushed, `git reset --hard origin/<branch>` replaces the rebase.
 
 A PR that conflicts gets one comment from `rebase-prs`. Its session then rebases it itself.
 
 ## 7. Marking it ready
 
 1. Rebase onto `origin/dev` (section 6).
-2. Check that the ticket's definition of done is met, that CI passes, and, without PR monitoring, that every comment is answered.
-3. Run `gh pr ready`. Checks that can only run after merging, such as a workflow that only runs from `main`, don't block it: list them in the PR and do them after the merge.
-
-The session's work ends when its PR is ready. If the PR only resolves part of the ticket, move the remaining work to a new ticket before merging: a sub-issue of the ticket if it can't be built on its own, a separate ticket otherwise.
+2. Check what the root requires before `gh pr ready`: the ticket's definition of done, CI, and, without PR monitoring, every comment answered.
+3. Run `gh pr ready`. List the checks that can only run after merging in the PR body.
+4. Move any work the PR leaves undone to a sub-issue or a separate ticket, as the root says, before the PR merges (the sub-issue command is in the root's "Tickets and sessions").
 
 ## 8. After the user merges
 
-Only the user merges. Never merge the PR or turn on auto-merge unless the user tells you to for that specific PR.
+Only the user merges (the root's "Merging and releasing"). After they do:
 
 1. Run the `rebase-prs` skill, so the other ready PRs catch up.
 2. Check that the ticket is closed, and close it with `gh issue close <N>` if it isn't, for example when a different PR resolved it or no PR was needed.
