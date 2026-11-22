@@ -19,16 +19,16 @@ Everything this deployment needs from GitHub, by name. It also reads the [shared
 
 ### Secrets
 
-| Secret         | Environment                  | Where its value comes from                                                                                       |
-| -------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `HCLOUD_TOKEN` | `hetzner`, `hetzner-cleanup` | A Hetzner Cloud API token with Read & Write for each, created in [step 5](#5-create-the-api-tokens-and-add-them) |
+| Secret         | Environment                  | Where its value comes from                                                                                 |
+| -------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `HCLOUD_TOKEN` | `hetzner`, `hetzner-cleanup` | A Hetzner Cloud API token with Read & Write for each, created in [step 4](#create-the-tokens-and-add-them) |
 
 ### Variables
 
 | Variable              | Set in     | What it does                       | Required | Default            | Explained in                   |
 | --------------------- | ---------- | ---------------------------------- | -------- | ------------------ | ------------------------------ |
-| `HCLOUD_LOCATION`     | Repository | The location the server runs in.   | Optional | `nbg1`             | [Step 6](#6-optional-settings) |
-| `HCLOUD_SERVER_TYPES` | Repository | The server types to try, in order. | Optional | `cx23,cax11,cpx12` | [Step 6](#6-optional-settings) |
+| `HCLOUD_LOCATION`     | Repository | The location the server runs in.   | Optional | `nbg1`             | [Step 5](#5-optional-settings) |
+| `HCLOUD_SERVER_TYPES` | Repository | The server types to try, in order. | Optional | `cx23,cax11,cpx12` | [Step 5](#5-optional-settings) |
 
 ## Contents
 
@@ -36,19 +36,18 @@ Everything this deployment needs from GitHub, by name. It also reads the [shared
 2. [Words used in this guide](#words-used-in-this-guide)
 3. [Fork the repository](#1-fork-the-repository)
 4. [Sign up for Hetzner](#2-sign-up-for-hetzner)
-5. [Create a project for Paranoid](#3-create-a-project-for-paranoid)
-6. [Create the environments in your fork](#4-create-the-environments-in-your-fork)
-7. [Create the API tokens and add them](#5-create-the-api-tokens-and-add-them)
-8. [Optional settings](#6-optional-settings)
-9. [Start a server](#7-start-a-server)
-10. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
-11. [Costs](#costs)
-12. [Checking nothing is left](#checking-nothing-is-left)
-13. [The tokens](#the-tokens)
-14. [Troubleshooting](#troubleshooting)
-15. [Removing everything](#removing-everything)
-16. [Privacy](#privacy)
-17. [What a deploy does](#what-a-deploy-does)
+5. [Prepare the account](#3-prepare-the-account)
+6. [Create the credentials and connect your fork](#4-create-the-credentials-and-connect-your-fork)
+7. [Optional settings](#5-optional-settings)
+8. [Start a server](#6-start-a-server)
+9. [Stop it, and how it's cleaned up](#7-stop-it-and-how-its-cleaned-up)
+10. [Costs](#costs)
+11. [Checking nothing is left](#checking-nothing-is-left)
+12. [The credentials](#the-credentials)
+13. [Troubleshooting](#troubleshooting)
+14. [Removing everything](#removing-everything)
+15. [Privacy](#privacy)
+16. [What a deploy does](#what-a-deploy-does)
 
 ## Words used in this guide
 
@@ -80,7 +79,9 @@ The rest of this guide writes your fork as `<owner>/<repo>`, for example `alex/p
 
 Hetzner bills afterwards, from your payment method, not from a prepaid balance. See [Costs](#costs) for how much a deploy can cost at most.
 
-## 3. Create a project for Paranoid
+## 3. Prepare the account
+
+Paranoid gets a project of its own in your Hetzner account.
 
 1. In the [Hetzner Console](https://console.hetzner.com), create a new project, for example `paranoid`.
 2. Use it only for Paranoid. The API tokens you'll create belong to this project, so even a leaked token can't reach anything else you run on Hetzner.
@@ -89,7 +90,11 @@ Open the project. It should be empty: no servers, firewalls or SSH keys.
 
 New accounts can create only a limited number of servers, shown on the project's **Limits** tab. Paranoid needs one at a time.
 
-## 4. Create the environments in your fork
+## 4. Create the credentials and connect your fork
+
+Hetzner shows an API token only once, so this step creates the two GitHub environments first, then each token, which goes straight into its environment. A token is never kept anywhere else, not even for a minute.
+
+### Create the environments
 
 The tokens go into two GitHub **environments**, which only the `main` branch may use:
 
@@ -100,7 +105,7 @@ The workflows only run when you start them or on their schedule, never from a pu
 
 This needs a public repository, which a fork of this one is. On GitHub's Free, Pro and Team plans, required reviewers work only in public repositories, and on GitHub Free, so do environments and their secrets (see GitHub's [deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)). In a private copy on Pro or Team, the `main` limit still protects the tokens, but deploys no longer wait for your approval. A private copy on GitHub Free can't hold the tokens at all, so it isn't supported. Don't put them in repository secrets instead: every branch and workflow could use them.
 
-### In GitHub's website
+#### In GitHub's website
 
 1. In your fork, go to **Settings** → **Environments** → **New environment**, name it `hetzner` and click **Configure environment**.
 2. Tick **Required reviewers**, enter your own GitHub username and select it.
@@ -110,7 +115,7 @@ This needs a public repository, which a fork of this one is. On GitHub's Free, P
 6. Go back to **Settings** → **Environments**, click **New environment** again, name it `hetzner-cleanup` and click **Configure environment**.
 7. Leave **Required reviewers** unticked. Under **Deployment branches and tags**, choose **Selected branches and tags** and add the rule `main`, as for `hetzner`, then click **Save protection rules**.
 
-### Or with the GitHub CLI
+#### Or with the GitHub CLI
 
 With [`gh`](https://cli.github.com) signed in to your GitHub account, create `hetzner` with you as its reviewer, limited to `main`:
 
@@ -136,16 +141,7 @@ gh api --method POST repos/<owner>/<repo>/environments/hetzner-cleanup/deploymen
 
 Either way, **Settings** → **Environments** now lists `hetzner`, with you as its reviewer and the branch rule `main`, and `hetzner-cleanup`, with only the branch rule `main`.
 
-### Keep the workflow logs for 1 day
-
-Your fork is public, so anyone signed in to GitHub can read its workflow runs and their logs. The workflows print nothing secret: GitHub hides the tokens' values, and the scripts never print what Hetzner returns. The logs still show your server's address and when it ran, so keep them only as long as you need them:
-
-1. In your fork, go to **Settings** → **Actions** → **General**.
-2. Under **Check, workflow run, status, artifact and log retention**, enter `1`, and click **Save**.
-
-GitHub then deletes each run, with its logs, a day after it ran. The setting applies only to runs after you save it. To remove an earlier run's logs, or a run's logs at once, open the run in the **Actions** tab, click **…** (**Show workflow options**) in the top right corner, then **Delete all logs**.
-
-## 5. Create the API tokens and add them
+### Create the tokens and add them
 
 The project gets two tokens: `paranoid-github-deploy` for `hetzner`, and `paranoid-github-cleanup` for `hetzner-cleanup`. Both need **Read & Write**, and both can do the same things. Hetzner can't limit a token to deleting, so the cleanup token could create servers too, but only the code on your fork's `main` ever gets it, and that code only deletes. A token for each environment still lets you revoke one without the other.
 
@@ -173,7 +169,16 @@ gh secret set HCLOUD_TOKEN --env hetzner-cleanup --repo <owner>/<repo>
 
 **Settings** → **Environments** → each environment now shows the secret `HCLOUD_TOKEN`. GitHub never shows a secret's value again. Close the Hetzner page with the tokens. The Console's **API tokens** list now shows both, by description.
 
-## 6. Optional settings
+### Keep the workflow logs for 1 day
+
+Your fork is public, so anyone signed in to GitHub can read its workflow runs and their logs. The workflows print nothing secret: GitHub hides the tokens' values, and the scripts never print what Hetzner returns. The logs still show your server's address and when it ran, so keep them only as long as you need them:
+
+1. In your fork, go to **Settings** → **Actions** → **General**.
+2. Under **Check, workflow run, status, artifact and log retention**, enter `1`, and click **Save**.
+
+GitHub then deletes each run, with its logs, a day after it ran. The setting applies only to runs after you save it. To remove an earlier run's logs, or a run's logs at once, open the run in the **Actions** tab, click **…** (**Show workflow options**) in the top right corner, then **Delete all logs**.
+
+## 5. Optional settings
 
 Everything works with the defaults. The settings every provider shares, `MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT` and `MAX_DEPLOY_COST_USD`, are in the index's [shared repository variables](README.md#shared-repository-variables). With Hetzner, `MAX_DEPLOY_COST_USD` must fit every type in `HCLOUD_SERVER_TYPES`, as the deploy may get any of them (see [Costs](#costs)). Hetzner's own two:
 
@@ -194,13 +199,13 @@ The only secret is `HCLOUD_TOKEN`. Never put a token or password in a variable: 
 
 The app uses Google's STUN servers unless `VITE_ICE_SERVERS` in [`packages/client-app/.env`](../../packages/client-app/.env) says otherwise. To use your own, change it in your fork and commit it. It isn't a secret: it's built into the app that every visitor downloads.
 
-## 7. Start a server
+## 6. Start a server
 
 1. In your fork, go to **Actions** → **Deploy to Hetzner** → **Run workflow**.
 2. Keep **Use workflow from** on `main`. Optionally fill in the number of invites and the lifetime. Click **Run workflow**.
 3. Click the run that appears. It waits for your approval, and GitHub emails you about it. Click **Review deployments**, tick `hetzner` and click **Approve and deploy**. Nothing is created and nothing costs anything until you approve it, and the server's lifetime starts only then.
 4. Setting up the server takes a few minutes, because it installs and builds the app itself.
-5. When the run is green, its **Summary** shows the URL, `https://<ip-with-dashes>.sslip.io`, and when the server shuts down at the latest.
+5. When the run is green, its **Summary** shows the URL, `https://<ip-with-dashes>.sslip.io`, when the server shuts down at the latest, and the most it can cost.
 
 Or with `gh`:
 
@@ -208,13 +213,13 @@ Or with `gh`:
 gh workflow run deploy-hetzner.yml --ref main --repo <owner>/<repo> -f max_invites=5 -f lifetime_minutes=60
 ```
 
-Then approve it on the run's page, as in step 3. A deploy that's waiting for approval can wait up to 30 days. To drop it, click **Reject** instead, or **Cancel workflow**.
+Then approve it on the run's page, as in 3 above. A deploy that's waiting for approval can wait up to 30 days. To drop it, click **Reject** instead, or **Cancel workflow**.
 
 Open the URL, create an invite and open it in a second browser or on another device. The chat starts once both are connected. In the Hetzner Console, the project's **Servers** list shows the server, `paranoid-<number>`.
 
 Anyone who has the URL can create invites, which use up `max_invites`. In a public fork, anyone signed in to GitHub can read the run summary until the run is deleted (see [Keep the workflow logs for 1 day](#keep-the-workflow-logs-for-1-day)).
 
-## 8. Stop it, and how it's cleaned up
+## 7. Stop it, and how it's cleaned up
 
 - **Stop it now:** **Actions** → **Stop Hetzner** → **Run workflow** on `main` deletes every Paranoid server right away, with no approval needed. It also cancels a deploy that's running or waiting for approval. Chats that have started keep working. Or: `gh workflow run stop-hetzner.yml --ref main --repo <owner>/<repo>`.
 - **On its own:** the server powers off once the last invite is finished, or at the end of its lifetime. **Hetzner bills a server that's off just like one that's running**, so the **Clean up Hetzner** workflow runs every hour and deletes every Paranoid server that's off or past its lifetime. You can also run it by hand from the Actions tab.
@@ -261,7 +266,7 @@ The firewall `paranoid` stays between deploys. It costs nothing, and the next de
 
 If a server is left, run **Stop Hetzner**, or delete it in the Console.
 
-## The tokens
+## The credentials
 
 The two `HCLOUD_TOKEN` secrets are the only secrets, and they're never in the repository:
 
@@ -270,7 +275,7 @@ The two `HCLOUD_TOKEN` secrets are the only secrets, and they're never in the re
 - Only the steps that call Hetzner's command-line tool, `hcloud`, get them. Nothing writes them to disk or prints them, and GitHub hides them in logs.
 - The server never gets them. They aren't in the server's setup data, its labels or the run summary. The server doesn't use Hetzner's API: it only powers itself off, and GitHub Actions deletes it.
 
-**To replace a token,** create a new one as in [step 5](#5-create-the-api-tokens-and-add-them), then replace the secret: in **Settings** → **Environments** → **hetzner** (or **hetzner-cleanup**), click the pencil next to `HCLOUD_TOKEN`, or run the `gh secret set` command again. Then delete the old token in the Console's **API tokens** list.
+**To replace a token,** create a new one as in [step 4](#create-the-tokens-and-add-them), then replace the secret: in **Settings** → **Environments** → **hetzner** (or **hetzner-cleanup**), click the pencil next to `HCLOUD_TOKEN`, or run the `gh secret set` command again. Then delete the old token in the Console's **API tokens** list.
 
 **If it may have leaked,** for example it was pasted somewhere or committed:
 
@@ -286,7 +291,7 @@ The run's log says which step failed and why. There's no SSH, so you can't log i
 
 | What you see                                                                          | What to do                                                                                                                                                                                                                                                        |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "The hetzner environment has no HCLOUD_TOKEN secret", or the same for hetzner-cleanup | Add the secret as in [step 5](#5-create-the-api-tokens-and-add-them). Check the name, `HCLOUD_TOKEN`, and that it's an **environment** secret of the environment the message names, not a repository secret.                                                      |
+| "The hetzner environment has no HCLOUD_TOKEN secret", or the same for hetzner-cleanup | Add the secret as in [step 4](#create-the-tokens-and-add-them). Check the name, `HCLOUD_TOKEN`, and that it's an **environment** secret of the environment the message names, not a repository secret.                                                            |
 | An error from `hcloud` such as `unauthorized` or 401                                  | The token is wrong or deleted. Create a new one and replace the secret.                                                                                                                                                                                           |
 | An error from `hcloud` such as `forbidden` when creating or deleting                  | The token was created with **Read** only. Create one with **Read & Write** and replace the secret.                                                                                                                                                                |
 | A deploy waits, and its page asks for a review                                        | It waits for your approval: click **Review deployments**, tick `hetzner` and click **Approve and deploy**. If you can't approve it, check that you're the environment's required reviewer and that **Prevent self-review** is off.                                |

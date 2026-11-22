@@ -40,13 +40,14 @@ jobs:
   deploy:
     name: Deploy to Hetzner
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     environment:
       name: hetzner
       url: ${{ steps.create.outputs.url }}
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -75,19 +76,29 @@ jobs:
 
       # Before anything is deleted or created, so a deploy above the limit
       # changes nothing. Every type in HCLOUD_SERVER_TYPES is checked, since
-      # the deploy may end up with any of them. The server is billed from its
+      # the deploy may end up with any of them, and WORST_CASE_USD for the
+      # summary is the highest, as each check would replace the one before. The server is billed from its
       # creation until cleanup-hetzner.yml deletes it, at the latest the price
       # file's cleanupDelayMinutes after its lifetime, running or off. A
       # location or type that isn't in the price file is refused here too.
       - name: Check the worst-case cost
         run: |
           IFS=, read -ra types <<<"$SERVER_TYPES"
+          highest=0
           for type in "${types[@]}"; do
-            node packages/deploy/src/cli.ts --prices deploy/hetzner/prices.json \
+            one=$(mktemp)
+            GITHUB_ENV="$one" node packages/deploy/src/cli.ts \
+              --prices deploy/hetzner/prices.json \
               --region "$LOCATION" --server "$type" \
               --lifetime-minutes "$LIFETIME_MINUTES" \
               --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
+            cost=$(sed -n 's/^WORST_CASE_USD=//p' "$one")
+            rm -f "$one"
+            if awk -v a="$cost" -v b="$highest" 'BEGIN { exit !(a > b) }'; then
+              highest=$cost
+            fi
           done
+          echo "WORST_CASE_USD=$highest" >> "$GITHUB_ENV"
 
       - name: Set up hcloud
         id: hcloud
@@ -136,6 +147,7 @@ jobs:
             echo
             echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
             echo "- It's a $TYPE server in $LOCATION. The Clean up Hetzner workflow deletes it within about an hour of shutting down, and Stop Hetzner deletes it right away."
+            echo "- The most it can cost is \$$WORST_CASE_USD."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Also when the run is cancelled, for example by stop-hetzner.yml

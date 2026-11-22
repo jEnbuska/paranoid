@@ -13,7 +13,7 @@ name: Clean up Hetzner
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "23 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -62,7 +62,7 @@ jobs:
     name: Delete finished servers
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: hetzner-cleanup
     # Not shared with deploy-hetzner.yml, which may wait hours for its approval
     # in the `hetzner` group. Running beside a deploy or a stop is safe: this
@@ -74,7 +74,8 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -88,7 +89,8 @@ jobs:
             echo "::notice::The hetzner-cleanup environment has no HCLOUD_TOKEN secret, so there's nothing to clean up."
           fi
 
-      - uses: ./.github/actions/setup-hcloud
+      - name: Set up hcloud
+        uses: ./.github/actions/setup-hcloud
         if: steps.token.outputs.present == 'true'
 
       - name: Delete the servers that are off or expired
