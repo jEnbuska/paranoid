@@ -44,18 +44,19 @@ pnpm workspace (`pnpm-workspace.yaml`) with five packages: `packages/client-app`
 ## Commands (from the root)
 
 - `pnpm dev`: signaling server (port 8181) and Vite (port 5173) in parallel (`pnpm -r --parallel`; Ctrl+C stops both).
-- `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`: all workspaces. `pnpm test` is unit tests only.
+- `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`: all workspaces. `pnpm test` is unit tests only, including the root scripts' `scripts/*.test.mts`, run with Node's test runner.
 - `pnpm test:e2e`: Playwright tests, on their own ports. Install browsers first: `pnpm --filter e2e exec playwright install chromium firefox webkit`.
 - `pnpm format` / `pnpm format:check`: oxfmt over the whole repo.
 - `pnpm knip`: unused files, exports and dependencies in every workspace. After knip's own table, `scripts/knip-explain.mts` explains each finding and how to fix it.
+- `pnpm check:deploy-docs`: checks that `docs/deploy/` lists what the deploy workflows use (see "Deployment").
 - One package: `pnpm --filter <package> <script>`.
 
-Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm format:check` and `pnpm test`, and `pnpm build` and `pnpm test:e2e` for client or signaling changes.
+Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm format:check` and `pnpm test`, `pnpm build` and `pnpm test:e2e` for client or signaling changes, and `pnpm check:deploy-docs` for deploy workflow or `docs/deploy/` changes.
 
 ## CI and pull requests
 
-- CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm knip`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and `pnpm build`, and `pnpm test:e2e` as a separate job, one per browser (Chromium, Firefox and WebKit). Pushes to `main` and `dev` run everything, and so does a manual run (`workflow_dispatch`), which the Release workflow uses to start CI on `main`. On a PR, a `changes` job decides from the changed files what runs, and a PR with no changed files skips both jobs. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
-  - Docs (`**/*.md`, `LICENSE`) run no checks and no end-to-end tests, except the format check for Markdown, because oxfmt formats it.
+- CI (`.github/workflows/ci.yml`) runs `pnpm lint`, `pnpm knip`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm check:deploy-docs` and `pnpm build`, and `pnpm test:e2e` as a separate job, one per browser (Chromium, Firefox and WebKit). Pushes to `main` and `dev` run everything, and so does a manual run (`workflow_dispatch`), which the Release workflow uses to start CI on `main`. On a PR, a `changes` job decides from the changed files what runs, and a PR with no changed files skips both jobs. Run `pnpm format:check` locally too, or `pnpm format` to fix it.
+  - Docs (`**/*.md`, `LICENSE`) run no checks and no end-to-end tests, except the format check for Markdown, because oxfmt formats it, and the deployment docs check for Markdown under `docs/deploy/` and `deploy/`.
   - Every PR with changed files, docs included, and every push runs the secret scan (gitleaks) over the commits it adds, in the checks job, so no new required check is needed.
   - A PR into `dev` that changes a `package.json` or `pnpm-lock.yaml` runs a dependency check, a step in the checks job: `pnpm audit` on the PR and on its base, failing only on a known vulnerability of high severity or worse that the PR adds, with the package, advisory and fixed version in the log and job summary (`scripts/audit-report.mts`). Fix it in the same PR, by updating to the fixed version. GitHub's dependency review can't read pnpm 12's two-document lockfile, so it isn't used.
   - The full audit is required before merging into `main`: every PR into `main` and every push to it runs `pnpm audit --audit-level=high` over the whole tree in that same step, whatever files changed, and a finding fails the required checks job and blocks the release. Fix a finding in `dev` first, in its own PR, then update the release PR.
@@ -115,7 +116,11 @@ Before finishing a change, run `pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm
 
 ## Deployment
 
-Anyone with a fork can start a Paranoid server from GitHub Actions. Each provider has its own guide in `docs/deploy/<provider>.md`, listed in the README's "Deploy your own", its own workflows named after it (for example `deploy-<provider>.yml`), its own GitHub environment, and its own scripts in `deploy/<provider>`.
+Anyone with a fork can start a Paranoid server from GitHub Actions. Each provider has its own guide in `docs/deploy/<provider>.md`, its own workflows named after it (for example `deploy-<provider>.yml`), its own GitHub environments (`<provider>` and `<provider>-cleanup`), and its own scripts in `deploy/<provider>`.
+
+- The deployment docs are one folder. `docs/deploy/README.md` is the index, which the README's "Deploy your own" links: how deploying works, the shared repository variables, the cost limit and the providers table. Each `docs/deploy/<provider>.md` starts with "What this deployment needs", before step 1: its environments, secrets and variables, by name only, never values. Each `deploy/<provider>/README.md` is two lines linking that page. "Adding a provider" in the index has the section's template.
+- A deploy PR keeps its provider's page, its folder README and its index row current. `pnpm check:deploy-docs` (`scripts/check-deploy-docs.mts`), in CI's checks job, enforces it: every `environment`, `vars.NAME` and `secrets.NAME` in a provider's `*-<provider>.yml` workflows is in the index's shared table or on the provider's page, nothing listed there is unused, and a provider with workflows has its page, folder README and index row.
+- Shared variables (`MAX_INVITES`, `LIFETIME_MINUTES`, `MAX_EGRESS_MBIT`, `MAX_DEPLOY_COST_USD`) have no prefix, and every provider uses all of them. Every other name starts with its provider's prefix. `MAX_DEPLOY_COST_USD` is every provider's per-deploy cost limit; a provider may add another limit with its own prefixed name, but not instead of it.
 
 - `deploy/server` (cloud-init, `setup.sh`, systemd units, Caddyfile) is provider-neutral: no cloud provider's API, metadata or CLI. `deploy/ci` holds provider-neutral scripts the workflows run. A new provider gets its own scripts and workflows and reuses `deploy/server` and `deploy/ci`.
 - A provider that needs `PARANOID_HOST` (a server behind NAT that only sees a private address) checks it before filling it into `cloud-init.yaml`, and every provider adds it to its `envsubst` list, empty if unused.
