@@ -1,0 +1,55 @@
+{
+  "$schema": "../requirements.schema.json",
+  "guide": "docs/deploy/aws.md",
+  "environments": {
+    "aws": {
+      "reviewers": "required",
+      "step": "#5-connect-your-fork-to-aws"
+    },
+    "aws-cleanup": {
+      "reviewers": "none",
+      "step": "#5-connect-your-fork-to-aws"
+    }
+  },
+  "variables": {
+    "AWS_ROLE_ARN": {
+      "required": true,
+      "pattern": "^arn:aws:iam::[0-9]{12}:role/paranoid-deploy$",
+      "example": "arn:aws:iam::123456789012:role/paranoid-deploy",
+      "environments": ["aws"],
+      "step": "#4-run-the-one-time-setup"
+    },
+    "AWS_CLEANUP_ROLE_ARN": {
+      "required": true,
+      "pattern": "^arn:aws:iam::[0-9]{12}:role/paranoid-cleanup$",
+      "example": "arn:aws:iam::123456789012:role/paranoid-cleanup",
+      "environments": ["aws-cleanup"],
+      "step": "#4-run-the-one-time-setup"
+    },
+    "AWS_SCHEDULER_ROLE_ARN": {
+      "required": true,
+      "pattern": "^arn:aws:iam::[0-9]{12}:role/paranoid-scheduler$",
+      "example": "arn:aws:iam::123456789012:role/paranoid-scheduler",
+      "environments": ["aws"],
+      "step": "#4-run-the-one-time-setup"
+    },
+    "AWS_SECURITY_GROUP_ID": {
+      "required": true,
+      "pattern": "^sg-[0-9a-f]{8,17}$",
+      "example": "sg-0123456789abcdef0",
+      "environments": ["aws"],
+      "step": "#4-run-the-one-time-setup"
+    },
+    "AWS_REGION": {
+      "pattern": "^(eu-north-1|eu-central-1|eu-west-1)$",
+      "example": "eu-north-1",
+      "step": "#6-optional-settings"
+    },
+    "AWS_INSTANCE_TYPE": {
+      "pattern": "^(t4g\\.micro|t4g\\.small|t3\\.micro|t3\\.small)$",
+      "example": "t4g.micro",
+      "environments": ["aws"],
+      "step": "#6-optional-settings"
+    }
+  }
+}
