@@ -34,6 +34,8 @@ whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
   fail "AZURE_VM_SIZE must be a VM size such as Standard_B2ats_v2, not '$VM_SIZE'"
 [[ $IMAGE =~ ^[A-Za-z0-9._-]+:[A-Za-z0-9._-]+:[A-Za-z0-9._-]+:[A-Za-z0-9._-]+$ ]] ||
   fail "AZURE_IMAGE must be an image URN, publisher:offer:sku:version, of Debian with cloud-init, such as Debian:debian-13:13-gen2:latest, not '$IMAGE'"
+[[ $MAX_DEPLOY_COST_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
+  fail "MAX_DEPLOY_COST_USD must be an amount in US dollars such as 1 or 2.50, not '$MAX_DEPLOY_COST_USD'"
 
 {
   echo "MAX_INVITES=$((10#$MAX_INVITES))"
@@ -43,5 +45,6 @@ whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
   echo "RESOURCE_GROUP=$RESOURCE_GROUP"
   echo "VM_SIZE=$VM_SIZE"
   echo "IMAGE=$IMAGE"
+  echo "MAX_DEPLOY_COST_USD=$MAX_DEPLOY_COST_USD"
 } >>"$GITHUB_ENV"
-echo "Invites: $MAX_INVITES, lifetime: $LIFETIME_MINUTES min, outbound limit: $MAX_EGRESS_MBIT Mbit/s, region: $REGION, resource group: $RESOURCE_GROUP, size: $VM_SIZE, image: $IMAGE"
+echo "Invites: $MAX_INVITES, lifetime: $LIFETIME_MINUTES min, outbound limit: $MAX_EGRESS_MBIT Mbit/s, region: $REGION, resource group: $RESOURCE_GROUP, size: $VM_SIZE, image: $IMAGE, cost limit: \$$MAX_DEPLOY_COST_USD"

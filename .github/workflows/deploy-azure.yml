@@ -106,6 +106,7 @@ jobs:
           REGION: ${{ vars.AZURE_REGION || 'swedencentral' }}
           VM_SIZE: ${{ vars.AZURE_VM_SIZE || 'Standard_B2ats_v2' }}
           IMAGE: ${{ vars.AZURE_IMAGE || 'Debian:debian-13:13-gen2:latest' }}
+          MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
         run: bash deploy/azure/settings.sh
 
       - name: Set up Node.js
@@ -119,9 +120,8 @@ jobs:
       # the backstop deletes it within minutes, and the hourly Clean up Azure
       # within about 2 hours even when GitHub runs it late. The check needs
       # only Node.js, no install, and writes WORST_CASE_USD for the summary.
+      # MAX_DEPLOY_COST_USD comes from GITHUB_ENV, as settings.sh checked it
       - name: Check the worst-case cost
-        env:
-          MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
         run: >-
           node packages/deploy/src/cli.ts
           --prices deploy/azure/prices.json
