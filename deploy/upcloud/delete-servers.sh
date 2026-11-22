@@ -27,9 +27,15 @@
 # releases its IP addresses. In case a failed create or delete leaves a disk
 # behind, every mode then also deletes the disks named paranoid-<run id>-OS,
 # upctl's title for a server's disk, that are attached to no server, online
-# (not still being cloned) and whose server doesn't exist. A deploy's disk is
-# never one of them: its server exists from the moment it's created. Disks
-# have no labels, because upctl's `server create` labels only the server.
+# (not still being cloned) and whose server doesn't exist. UpCloud doesn't
+# say whether a disk can exist before its server during `server create`, and
+# a disk has no creation time to wait on, so `finished`, which runs beside
+# deploys, also skips the disks of the deploy runs in ACTIVE_RUNS, the ids of
+# the deploy runs that haven't finished, separated by spaces. Without that
+# list (unset or "unknown"), `finished` deletes no such disks. `all` (Stop,
+# which cancels a deploy first) and `run` (a failed deploy, after its create
+# returned) don't need it. Disks have no labels, because upctl's
+# `server create` labels only the server.
 #
 # Nothing upctl returns is printed: a server's details can hold passwords.
 set -euo pipefail
@@ -111,9 +117,19 @@ disks=$(upctl storage list --private --normal --output json |
     (.storages.storage? // .storages // [])[]
     | select(.title | test($pattern))
     | "\(.uuid) \(.title)"')
+active_runs=${ACTIVE_RUNS-unknown}
+if [ "$mode" = finished ] && [ "$active_runs" = unknown ]; then
+  disks='' # Without the list of running deploys, keep every disk
+  echo "Not deleting disks without a server: the running deploys are unknown."
+fi
 orphans=0
 while read -r uuid title; do
   [ -n "$uuid" ] || continue
+  run_id=${title#paranoid-}
+  run_id=${run_id%-OS}
+  if [ "$mode" = finished ] && [[ " $active_runs " == *" $run_id "* ]]; then
+    continue # Its deploy hasn't finished, and may be creating its server
+  fi
   if grep -qxF "${title%-OS}" <<<"$hostnames"; then
     continue # Its server exists, and is handled above or still running
   fi

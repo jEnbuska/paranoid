@@ -64,6 +64,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: upcloud-cleanup
+    # actions: read, to list the deploy runs that haven't finished
+    permissions:
+      actions: read
+      contents: read
     # Not shared with deploy-upcloud.yml, which may wait hours for its approval
     # in the `upcloud` group. Running beside a deploy or a stop is safe: this
     # deletes only servers that are stopped or expired, never the one a deploy
@@ -93,8 +97,28 @@ jobs:
         uses: ./.github/actions/setup-upctl
         if: steps.token.outputs.present == 'true'
 
+      # A deploy that hasn't finished may be creating its server, so its disk
+      # is never treated as left behind. If the list can't be read, the
+      # cleanup deletes no disks without a server this time.
+      - name: Find the deploys that haven't finished
+        id: active
+        if: steps.token.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ids=$(gh run list --repo "$REPO" --workflow deploy-upcloud.yml \
+            --limit 100 --json databaseId,status \
+            --jq '.[] | select(.status != "completed") | .databaseId'); then
+            echo "runs=$(echo $ids)" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Couldn't list the deploy runs, so no disk without a server is deleted this time."
+            echo "runs=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Delete the servers that are off or expired
         if: steps.token.outputs.present == 'true'
         env:
           UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+          ACTIVE_RUNS: ${{ steps.active.outputs.runs }}
         run: bash deploy/upcloud/delete-servers.sh finished
