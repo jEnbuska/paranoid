@@ -11,7 +11,8 @@ set -euo pipefail
 
 here=$(dirname "$0")
 name="paranoid-$RUN_ID"
-expires=$(($(date +%s) + LIFETIME_MINUTES * 60))
+created=$(date +%s)
+expires=$((created + LIFETIME_MINUTES * 60))
 expires_at=$(date -u -d "@$expires" +%Y-%m-%dT%H:%M:%SZ)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -26,8 +27,8 @@ fail() {
 [[ $RUN_ID =~ ^[0-9]+$ ]] || fail "Unexpected run ID: $RUN_ID"
 
 # Every part of the server carries these, so the cleanup and the backstop
-# find it, and know when it expires.
-tags=(app=paranoid "run=$RUN_ID" "expires-at=$expires_at" "commit=$COMMIT")
+# find it, and know when it expires. The times are Unix seconds.
+tags=(app=paranoid "run=$RUN_ID" "created=$created" "expires=$expires" "commit=$COMMIT")
 
 # The public address comes first: Azure puts it on its own network edge, and
 # the VM only sees a private one, so setup.sh can't find its hostname. It's
@@ -62,7 +63,7 @@ jq -n \
   --arg subnetId "$subnet_id" --arg publicIpId "$ip_id" \
   --rawfile customData "$work/custom-data.yaml" \
   --rawfile sshPublicKey "$work/key.pub" \
-  --arg run "$RUN_ID" --arg expires "$expires_at" --arg commit "$COMMIT" \
+  --arg run "$RUN_ID" --arg created "$created" --arg expires "$expires" --arg commit "$COMMIT" \
   '{
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
     contentVersion: "1.0.0.0",
@@ -73,7 +74,7 @@ jq -n \
       subnetId: {value: $subnetId}, publicIpId: {value: $publicIpId},
       customData: {value: $customData},
       sshPublicKey: {value: ($sshPublicKey | rtrimstr("\n"))},
-      tags: {value: {app: "paranoid", run: $run, "expires-at": $expires, commit: $commit}}
+      tags: {value: {app: "paranoid", run: $run, created: $created, expires: $expires, commit: $commit}}
     }
   }' >"$work/parameters.json"
 

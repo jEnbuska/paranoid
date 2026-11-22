@@ -299,27 +299,39 @@ fi
 step "Done"
 cat <<EOF
 Nothing here costs money until you deploy. Now, with the GitHub CLI signed
-in to GitHub (gh auth login), run these to set the repository variables.
-None of them is a secret:
+in to GitHub as yourself (gh auth login), run these. None of the values is a
+secret.
 
-gh variable set AZURE_CLIENT_ID --repo $repo --body $client_id
-gh variable set AZURE_CLEANUP_CLIENT_ID --repo $repo --body $cleaner_client_id
-gh variable set AZURE_TENANT_ID --repo $repo --body $tenant
-gh variable set AZURE_SUBSCRIPTION_ID --repo $repo --body $subscription
-gh variable set AZURE_RESOURCE_GROUP --repo $repo --body $rg
-gh variable set AZURE_REGION --repo $repo --body $region
-
-These create the azure environment, for deploys: only main may use it, and
-each deploy waits for your approval (gh api user is you):
+First, the azure environment, for deploys: only main may use it, and each
+deploy waits for your approval (gh api user is you):
 
 gh api --method PUT repos/$repo/environments/azure -F prevent_self_review=false -F 'reviewers[][type]=User' -F "reviewers[][id]=\$(gh api user --jq .id)" -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
 gh api --method POST repos/$repo/environments/azure/deployment-branch-policies -f name=main -f type=branch
 
-And these the azure-cleanup environment, for Clean up Azure and Stop Azure:
-only main may use it, with no approval, so the cleanup never waits:
+Its variables, for signing in as paranoid-deployer:
+
+gh variable set AZURE_CLIENT_ID --env azure --repo $repo --body $client_id
+gh variable set AZURE_TENANT_ID --env azure --repo $repo --body $tenant
+gh variable set AZURE_SUBSCRIPTION_ID --env azure --repo $repo --body $subscription
+gh variable set AZURE_RESOURCE_GROUP --env azure --repo $repo --body $rg
+
+Then the azure-cleanup environment, for Clean up Azure and Stop Azure: only
+main may use it, with no approval, so the cleanup never waits:
 
 gh api --method PUT repos/$repo/environments/azure-cleanup -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
 gh api --method POST repos/$repo/environments/azure-cleanup/deployment-branch-policies -f name=main -f type=branch
+
+Its variables, for signing in as paranoid-cleaner. AZURE_CLIENT_ID is the
+same name with the other identity's ID:
+
+gh variable set AZURE_CLIENT_ID --env azure-cleanup --repo $repo --body $cleaner_client_id
+gh variable set AZURE_TENANT_ID --env azure-cleanup --repo $repo --body $tenant
+gh variable set AZURE_SUBSCRIPTION_ID --env azure-cleanup --repo $repo --body $subscription
+gh variable set AZURE_RESOURCE_GROUP --env azure-cleanup --repo $repo --body $rg
+
+And the region, a repository variable, since it's a setting, not an ID:
+
+gh variable set AZURE_REGION --repo $repo --body $region
 
 Then set the repository's log retention to 1 day, as docs/deploy/azure.md
 says: Settings, Actions, General, Artifact and log retention.

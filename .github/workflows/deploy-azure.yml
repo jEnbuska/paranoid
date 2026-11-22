@@ -8,8 +8,8 @@ name: Deploy to Azure
 # No secret exists for Azure. The job signs in through GitHub OIDC as the
 # managed identity paranoid-deployer, whose federated credential trusts only
 # this repository's `azure` environment, which only `main` may use and which
-# waits for the owner's approval before each deploy. The IDs below are
-# repository variables, not secrets. Only a manual run starts this workflow,
+# waits for the owner's approval before each deploy. Its IDs are variables
+# of that environment, not secrets. Only a manual run starts this workflow,
 # never a pull request.
 
 on:
@@ -33,14 +33,14 @@ permissions:
 # up Azure has a group of its own, so a deploy waiting for approval never
 # holds it up.
 concurrency:
-  group: paranoid-azure
+  group: azure
   cancel-in-progress: false
 
 jobs:
   deploy:
     name: Deploy to Azure
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     environment:
       name: azure
       url: ${{ steps.create.outputs.url }}
@@ -52,12 +52,13 @@ jobs:
       RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'paranoid' }}
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       # Before anything is deleted, so a bad setting leaves a running server
-      # alone
+      # alone. The IDs are the azure environment's variables.
       - name: Check the settings
         env:
           CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
@@ -71,16 +72,17 @@ jobs:
           IMAGE: ${{ vars.AZURE_IMAGE || 'Debian:debian-13:13-gen2:latest' }}
         run: bash deploy/azure/settings.sh
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
       # Before signing in to Azure, so nothing starts if it's too much. A VM
       # that powered itself off bills like a running one until it's deleted,
-      # so the worst case adds the price file's cleanupDelayMinutes, an hour:
-      # the backstop deletes it within minutes, and Clean up Azure within the
-      # hour unless GitHub runs it late. The CLI needs only Node.js, no
-      # install.
+      # so the worst case adds the price file's cleanupDelayMinutes, 2 hours:
+      # the backstop deletes it within minutes, and the hourly Clean up Azure
+      # within about 2 hours even when GitHub runs it late. The check needs
+      # only Node.js, no install, and writes WORST_CASE_USD for the summary.
       - name: Check the worst-case cost
         env:
           MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
@@ -90,6 +92,9 @@ jobs:
           --region "$REGION" --server "$VM_SIZE"
           --lifetime-minutes "$LIFETIME_MINUTES"
           --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
+
+      - name: Set up the Azure CLI
+        uses: ./.github/actions/setup-az
 
       - name: Sign in to Azure
         id: login
@@ -132,7 +137,8 @@ jobs:
             echo "**<$URL>**"
             echo
             echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
-            echo "- It's a $VM_SIZE VM in $REGION. The backstop deletes it within a few minutes of shutting down, and the Stop Azure workflow deletes it right away."
+            echo "- It's a $VM_SIZE VM in $REGION. The backstop deletes it within a few minutes of shutting down, Clean up Azure within the hour, and Stop Azure right away."
+            echo "- The most it can cost is \$$WORST_CASE_USD."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Also when the run is cancelled, for example by stop-azure.yml

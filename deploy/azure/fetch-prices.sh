@@ -39,14 +39,14 @@ name() {
 
 # The schema of packages/deploy/src/prices.ts. A VM that powered itself off
 # bills like a running one until it's deleted: the backstop deletes it within
-# minutes, and Clean up Azure within the hour unless GitHub runs it late, so
-# the worst case counts an hour.
+# minutes, and the hourly Clean up Azure within about 2 hours even when
+# GitHub runs it late, so the worst case counts 2 hours.
 result=$(jq -n --arg checked "$(date -u +%F)" '{
   checked: $checked,
   about: "Pay-as-you-go prices in USD, without VAT, from Microsoft'"'"'s retail prices API. Refresh with deploy/azure/fetch-prices.sh.",
   sources: ["https://prices.azure.com/api/retail/prices"],
   currency: "USD",
-  cleanupDelayMinutes: 60,
+  cleanupDelayMinutes: 120,
   regions: {}
 }')
 for region in "${regions[@]}"; do

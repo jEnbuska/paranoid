@@ -3,7 +3,7 @@
   "about": "Pay-as-you-go prices in USD, without VAT, from Microsoft's retail prices API. Refresh with deploy/azure/fetch-prices.sh.",
   "sources": ["https://prices.azure.com/api/retail/prices"],
   "currency": "USD",
-  "cleanupDelayMinutes": 60,
+  "cleanupDelayMinutes": 120,
   "regions": {
     "swedencentral": {
       "name": "Sweden Central, Gävle",

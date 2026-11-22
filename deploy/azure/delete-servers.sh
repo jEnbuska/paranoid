@@ -19,7 +19,7 @@
 # own, so it can run while a deploy is creating its VM, and while Stop Azure
 # deletes. So it never touches a deploy's new VM or parts: a VM counts as
 # stopped only once Azure has finished creating it, and parts without a VM
-# only once their expires-at has passed. A delete that fails because the
+# only once their expires tag has passed. A delete that fails because the
 # resource is already gone, or going, counts as done.
 set -euo pipefail
 
@@ -40,12 +40,21 @@ case "$mode" in
     ;;
 esac
 rg=$RESOURCE_GROUP
-now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+now=$(date +%s)
 
-# expired <expires-at>: whether that time has passed. ISO 8601 times in UTC
-# sort as text. No expiry counts as expired.
+# expired <expires>: whether that time, in Unix seconds, has passed. No
+# expiry, or one that isn't a number, counts as expired.
 expired() {
-  [ -z "$1" ] || [[ ! $1 > $now ]]
+  ! [[ $1 =~ ^[0-9]{1,12}$ ]] || ((10#$1 <= now))
+}
+
+# when <expires>: that time for the log, in UTC
+when() {
+  if [[ $1 =~ ^[0-9]{1,12}$ ]]; then
+    date -u -d "@$1" '+%Y-%m-%d %H:%M UTC'
+  else
+    echo never
+  fi
 }
 
 # gone <command...>: deletes with the command, or waits up to 5 minutes for
@@ -67,11 +76,11 @@ gone() {
 # Azure has created it), power state (such as "VM running" or "VM stopped"),
 # run and expiry time
 vms=$(az vm list -g "$rg" --show-details \
-  --query "[?tags.app=='paranoid'].[id, name, provisioningState || 'unknown', powerState || 'unknown', tags.run || '', tags.\"expires-at\" || '']" \
+  --query "[?tags.app=='paranoid'].[id, name, provisioningState || 'unknown', powerState || 'unknown', tags.run || '', tags.expires || '']" \
   -o tsv)
 
 kept=()
-while IFS=$'\t' read -r id name provisioning power vm_run expires_at; do
+while IFS=$'\t' read -r id name provisioning power vm_run expires; do
   [ -n "$name" ] || continue
   delete=false
   case "$mode" in
@@ -83,16 +92,16 @@ while IFS=$'\t' read -r id name provisioning power vm_run expires_at; do
           "VM stopped" | "VM stopping" | "VM deallocated" | "VM deallocating") delete=true ;;
         esac
       fi
-      if expired "$expires_at"; then
+      if expired "$expires"; then
         delete=true
       fi
       ;;
   esac
   if [ "$delete" = true ]; then
-    echo "Deleting $name ($provisioning, $power, expires ${expires_at:-never})"
+    echo "Deleting $name ($provisioning, $power, expires $(when "$expires"))"
     gone "$id" az vm delete --ids "$id" --yes
   else
-    echo "Keeping $name ($provisioning, $power, expires $expires_at)"
+    echo "Keeping $name ($provisioning, $power, expires $(when "$expires"))"
     kept+=("$name")
   fi
 done <<<"$vms"
@@ -104,11 +113,11 @@ done <<<"$vms"
 # deleted.
 for type in Microsoft.Network/networkInterfaces Microsoft.Network/publicIPAddresses Microsoft.Compute/disks; do
   parts=$(az resource list -g "$rg" --resource-type "$type" \
-    --query "[?tags.app=='paranoid'].[id, name, tags.run || '', tags.\"expires-at\" || '']" -o tsv)
-  while IFS=$'\t' read -r id name part_run expires_at; do
+    --query "[?tags.app=='paranoid'].[id, name, tags.run || '', tags.expires || '']" -o tsv)
+  while IFS=$'\t' read -r id name part_run expires; do
     [ -n "$id" ] || continue
     [ -z "$run" ] || [ "$part_run" = "$run" ] || continue
-    [ "$mode" != finished ] || expired "$expires_at" || continue
+    [ "$mode" != finished ] || expired "$expires" || continue
     vm=${name%-*}
     if [[ " ${kept[*]} " == *" $vm "* ]]; then
       continue

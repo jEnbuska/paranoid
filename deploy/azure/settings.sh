@@ -23,7 +23,7 @@ whole() {
 # id <variable name> <value>: an Azure ID, which bootstrap.sh printed
 id() {
   [[ $2 =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] ||
-    fail "The repository variable $1 must be the ID that deploy/azure/bootstrap.sh printed, not '$2'. See docs/deploy/azure.md."
+    fail "The azure environment's variable $1 must be the ID that deploy/azure/bootstrap.sh printed, not '$2'. See docs/deploy/azure.md, step 5."
 }
 
 id AZURE_CLIENT_ID "$CLIENT_ID"
