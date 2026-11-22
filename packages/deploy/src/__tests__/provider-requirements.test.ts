@@ -3,12 +3,13 @@
 // lists are written alike, and the preflight passes with everything set,
 // names each required item that's missing and each value that breaks its
 // pattern. preflight-cli.test.ts tests the CLI that runs it, and
-// requirements.test.ts the format.
+// requirements.test.ts the format. How a list agrees with its guide and its
+// workflows, its `step` links included, is scripts/check-deploy-docs.mts's.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EnvironmentSettings, Problem } from "../preflight.ts";
 import preflight from "../preflight.ts";
-import type { Requirements, Rule } from "../requirements.ts";
+import type { Rule } from "../requirements.ts";
 import requirements from "../requirements.ts";
 
 const root = new URL("../../../../", import.meta.url).pathname;
@@ -79,52 +80,6 @@ function rules(json: Json): [string, Json][] {
   ];
 }
 
-/** The anchor GitHub gives a Markdown heading */
-function anchor(heading: string): string {
-  return heading
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
-    .replace(/\s/g, "-");
-}
-
-function anchors(guide: string): Set<string> {
-  const seen = new Map<string, number>();
-  const result = new Set<string>();
-  for (const [, heading] of readFileSync(join(root, guide), "utf8").matchAll(
-    /^#{1,6} (.+)$/gm,
-  )) {
-    const base = anchor(heading);
-    const count = seen.get(base) ?? 0;
-    seen.set(base, count + 1);
-    result.add(`#${count === 0 ? base : `${base}-${count}`}`);
-  }
-  return result;
-}
-
-/** Every step a list links, with where it's linked from */
-function steps(list: Requirements): [string, string][] {
-  return [
-    ...[...list.environments].flatMap(([name, environment]) => [
-      [name, environment.step] as [string, string],
-      ...[...environment.variables, ...environment.secrets].map(
-        ([rule, { step }]): [string, string] => [`${name}.${rule}`, step],
-      ),
-    ]),
-    ...[...list.variables].map(([name, { step }]): [string, string] => [
-      name,
-      step,
-    ]),
-  ];
-}
-
-function linksGuideHeadings(list: Requirements) {
-  const headings = anchors(list.guide);
-  for (const [where, step] of steps(list)) {
-    expect(headings, `${where} links ${list.guide}${step}`).toContain(step);
-  }
-}
-
 describe("deploy/requirements.json", () => {
   it("is written in the same order as the providers' lists", () => {
     const json = readJson("deploy/requirements.json");
@@ -132,10 +87,6 @@ describe("deploy/requirements.json", () => {
     for (const [where, rule] of rules(json)) {
       expectOrder(where, rule, ORDER.rule);
     }
-  });
-
-  it("links headings that are in its guide", () => {
-    linksGuideHeadings(shared);
   });
 });
 
@@ -330,15 +281,6 @@ describe.each(providers)("deploy/%s/requirements.json", (provider) => {
       const prefix = `${names[0]?.split("_")[0]}_`;
       for (const name of names) expect(name).toMatch(new RegExp(`^${prefix}`));
     });
-
-    const guide = join(root, list.guide);
-    // A provider's list can land before its guide does.
-    it.skipIf(!existsSync(guide))(
-      "links headings that are in its guide",
-      () => {
-        linksGuideHeadings(list);
-      },
-    );
 
     const prices = `deploy/${provider}/prices.json`;
     // Comes with the provider's deploy, which can land after its list.
