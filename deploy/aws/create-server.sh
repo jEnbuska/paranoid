@@ -21,9 +21,12 @@ fail() {
 [[ $REPOSITORY =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "Unexpected repository name: $REPOSITORY"
 [[ $COMMIT =~ ^[0-9a-f]{40}$ ]] || fail "Unexpected commit: $COMMIT"
 [[ $RUN_ID =~ ^[0-9]+$ ]] || fail "Unexpected run ID: $RUN_ID"
-# Checked here too, though the preflight checks it (#141): it goes into
-# run-instances' shorthand syntax, where a comma would add other options.
+# Checked here too, though the preflight checks them (#141). The security
+# group goes into run-instances' shorthand syntax, where a comma would add
+# other options, and the scheduler role into the backstop's target.
 [[ $SECURITY_GROUP_ID =~ ^sg-[0-9a-f]{8,17}$ ]] || fail "Unexpected security group ID: $SECURITY_GROUP_ID"
+[[ $SCHEDULER_ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-scheduler$ ]] ||
+  fail "Unexpected scheduler role: $SCHEDULER_ROLE_ARN"
 
 name="paranoid-$RUN_ID"
 created=$(date +%s)

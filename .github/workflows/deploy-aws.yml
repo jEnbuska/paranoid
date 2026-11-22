@@ -110,6 +110,7 @@ jobs:
         env:
           MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
           LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
+          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
         run: bash deploy/aws/settings.sh
 
       - name: Set up Node.js

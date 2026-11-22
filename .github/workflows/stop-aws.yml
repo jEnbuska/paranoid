@@ -54,6 +54,12 @@ jobs:
           environment: aws-cleanup
           vars: ${{ toJSON(vars) }}
 
+      # Each script checks the format of what it uses too (#141).
+      - name: Check the settings
+        env:
+          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        run: bash deploy/aws/cleanup-settings.sh
+
       - name: Set up the AWS CLI
         uses: ./.github/actions/setup-aws-cli
 

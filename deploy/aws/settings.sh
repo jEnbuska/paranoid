@@ -4,10 +4,10 @@
 # job through GITHUB_ENV.
 #
 # The deploy preflight checks the variables first (deploy/aws/requirements.json).
-# Every value that reaches the server, its user data or its tags, or decides
-# what it is, is checked here again before the scripts use it (#141), so a
-# change to one check can't let a bad value through. Only the role ARNs and
-# the cost limit, which reach no server, are left to the preflight alone.
+# Every value the deploy uses has its format checked here again, or in
+# create-server.sh where it's used (#141), so a change to one check can't let
+# a bad value through. Only whether a value is set at all is left to the
+# preflight.
 #
 # Only checked values reach GITHUB_ENV and the server's user data, so an input
 # can't add lines or commands to either.
@@ -30,6 +30,10 @@ whole() {
 whole max_invites "$MAX_INVITES" 1 10000
 whole lifetime_minutes "$LIFETIME_MINUTES" 1 1440
 whole MAX_EGRESS_MBIT "$MAX_EGRESS_MBIT" 1 50
+[[ $MAX_DEPLOY_COST_USD =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] ||
+  fail "MAX_DEPLOY_COST_USD must be an amount in dollars such as 1 or 2.50, not '$MAX_DEPLOY_COST_USD'"
+[[ $ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/paranoid-deploy$ ]] ||
+  fail "The aws environment's AWS_ROLE_ARN isn't the deploy role. Run deploy/aws/bootstrap.sh and set the variables it prints (docs/deploy/aws.md)."
 
 # Only the regions and instance types in prices.json, so the cost check always
 # has a price. The deploy role allows only those instance types too.
