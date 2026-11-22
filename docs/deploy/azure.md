@@ -21,26 +21,25 @@ Everything this deployment needs from GitHub, by name. It also reads the [shared
 | `azure`         | `main` only | You                | `deploy-azure.yml`                    |
 | `azure-cleanup` | `main` only | None               | `cleanup-azure.yml`, `stop-azure.yml` |
 
-You create both in [step 4](#4-connect-your-fork-to-azure).
+You create both in [step 5](#5-connect-your-fork-to-azure).
 
 ### Secrets
 
-No secrets. GitHub Actions signs in to Azure with GitHub's OIDC token, which Azure trusts only for these two environments of your fork, so there's no password, key or token anywhere. See [Why there's no secret](#why-theres-no-secret).
+No secrets. GitHub Actions signs in to Azure with GitHub's OIDC token, which Azure trusts only for these two environments of your fork, so there's no password, key or token anywhere. See [The credentials](#the-credentials).
 
 ### Variables
 
-| Variable                  | Set in     | What it does                                                                               | Required | Default                           | Explained in                            |
-| ------------------------- | ---------- | ------------------------------------------------------------------------------------------ | -------- | --------------------------------- | --------------------------------------- |
-| `AZURE_CLIENT_ID`         | Repository | The client ID of `paranoid-deployer`, the identity deploys sign in as.                     | Required | None                              | [Step 4](#4-connect-your-fork-to-azure) |
-| `AZURE_CLEANUP_CLIENT_ID` | Repository | The client ID of `paranoid-cleaner`, the delete-only identity cleanup and stop sign in as. | Required | None                              | [Step 4](#4-connect-your-fork-to-azure) |
-| `AZURE_TENANT_ID`         | Repository | Your Microsoft Entra tenant, where both identities live.                                   | Required | None                              | [Step 4](#4-connect-your-fork-to-azure) |
-| `AZURE_SUBSCRIPTION_ID`   | Repository | The subscription the servers are billed to.                                                | Required | None                              | [Step 4](#4-connect-your-fork-to-azure) |
-| `AZURE_RESOURCE_GROUP`    | Repository | The resource group the setup made, which holds everything.                                 | Optional | `paranoid`                        | [Step 3](#3-run-the-one-time-setup)     |
-| `AZURE_REGION`            | Repository | Where the server runs. Set by the setup, and must match it.                                | Optional | `swedencentral`                   | [Step 6](#6-optional-settings)          |
-| `AZURE_VM_SIZE`           | Repository | The VM size.                                                                               | Optional | `Standard_B2ats_v2`               | [Step 6](#6-optional-settings)          |
-| `AZURE_IMAGE`             | Repository | The Debian 13 image, as `publisher:offer:sku:version`.                                     | Optional | `Debian:debian-13:13-gen2:latest` | [Step 6](#6-optional-settings)          |
+| Variable                | Set in                                | What it does                                                                                                                                  | Required | Default                           | Explained in                            |
+| ----------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------- | --------------------------------- | --------------------------------------- |
+| `AZURE_CLIENT_ID`       | Environments `azure`, `azure-cleanup` | The client ID of the identity the job signs in as: `paranoid-deployer` in `azure`, and the delete-only `paranoid-cleaner` in `azure-cleanup`. | Required | None                              | [Step 5](#5-connect-your-fork-to-azure) |
+| `AZURE_TENANT_ID`       | Environments `azure`, `azure-cleanup` | Your Microsoft Entra tenant, where both identities live.                                                                                      | Required | None                              | [Step 5](#5-connect-your-fork-to-azure) |
+| `AZURE_SUBSCRIPTION_ID` | Environments `azure`, `azure-cleanup` | The subscription the servers are billed to.                                                                                                   | Required | None                              | [Step 5](#5-connect-your-fork-to-azure) |
+| `AZURE_RESOURCE_GROUP`  | Environments `azure`, `azure-cleanup` | The resource group the setup made, which holds everything.                                                                                    | Optional | `paranoid`                        | [Step 4](#4-run-the-one-time-setup)     |
+| `AZURE_REGION`          | Repository                            | Where the server runs. Set by the setup, and must match it.                                                                                   | Optional | `swedencentral`                   | [Step 6](#6-optional-settings)          |
+| `AZURE_VM_SIZE`         | Repository                            | The VM size.                                                                                                                                  | Optional | `Standard_B2ats_v2`               | [Step 6](#6-optional-settings)          |
+| `AZURE_IMAGE`           | Repository                            | The Debian 13 image, as `publisher:offer:sku:version`.                                                                                        | Optional | `Debian:debian-13:13-gen2:latest` | [Step 6](#6-optional-settings)          |
 
-They're IDs and settings, not secrets, and they're repository variables, not environment variables, because the scheduled cleanup reads `AZURE_CLEANUP_CLIENT_ID` before it has an environment.
+None of them is a secret. The IDs are variables of the environments, so only a job that uses an environment can read them, and each environment holds the ID of its own identity under the same name. The region, size and image are settings, so they're repository variables, like the [shared ones](README.md#shared-repository-variables).
 
 ## Contents
 
@@ -48,15 +47,15 @@ They're IDs and settings, not secrets, and they're repository variables, not env
 1. [Words used in this guide](#words-used-in-this-guide)
 1. [Fork the repository](#1-fork-the-repository)
 1. [Sign up for Azure](#2-sign-up-for-azure)
-1. [Run the one-time setup](#3-run-the-one-time-setup)
-1. [Connect your fork to Azure](#4-connect-your-fork-to-azure)
-1. [Keep the logs for 1 day](#5-keep-the-logs-for-1-day)
+1. [Prepare the account](#3-prepare-the-account)
+1. [Run the one-time setup](#4-run-the-one-time-setup)
+1. [Connect your fork to Azure](#5-connect-your-fork-to-azure)
 1. [Optional settings](#6-optional-settings)
 1. [Start a server](#7-start-a-server)
-1. [Stop it, and how it's cleaned up](#8-stop-it-and-how-its-cleaned-up)
+1. [Stop it](#8-stop-it)
 1. [Costs](#costs)
 1. [Checking nothing is left](#checking-nothing-is-left)
-1. [Why there's no secret](#why-theres-no-secret)
+1. [The credentials](#the-credentials)
 1. [Troubleshooting](#troubleshooting)
 1. [Removing everything](#removing-everything)
 1. [Privacy](#privacy)
@@ -109,23 +108,33 @@ You should see **Subscriptions** (search for it at the top) list one subscriptio
 - **12 months of free services,** including 750 hours a month of the B1s, B2pts v2 and B2ats v2 VMs. Paranoid's default, `Standard_B2ats_v2`, is one of them. Microsoft's pages don't say whether the free hours apply in every region, so check your bill after the first deploy (see [Costs](#costs)).
 - **After 30 days, or once the credit is used up,** Azure disables the subscription unless you **upgrade** to pay-as-you-go: in the portal, open **Subscriptions**, your subscription, and click **Upgrade**. The free services keep going for the rest of the 12 months. After upgrading, Azure charges your card for what you use beyond them.
 
-## 3. Run the one-time setup
+## 3. Prepare the account
 
-[`deploy/azure/bootstrap.sh`](../../deploy/azure/bootstrap.sh) creates what the deploys need. It's safe to run again: it changes only what isn't right yet. It takes a few minutes.
+The setup runs in **Cloud Shell**, a terminal in the Azure portal that's already signed in.
 
 1. In the [Azure portal](https://portal.azure.com), click the **Cloud Shell** icon (`>_`) in the top bar.
 2. If it asks, choose **Bash**. Under **Getting started**, choose **No storage account required**, pick your subscription and click **Apply**. A storage account would cost money; you don't need one.
-3. Run these, with your fork's name and an email address for cost alerts:
+3. Check that it's the right subscription:
 
    ```bash
-   git clone https://github.com/<owner>/<repo>.git paranoid
+   az account show --query '{name: name, state: state}' -o table
    ```
 
-   ```bash
-   bash paranoid/deploy/azure/bootstrap.sh <owner>/<repo> <you@example.com>
-   ```
+   You should see your subscription with the state **Enabled**. If you have more than one, pick this one with `az account set --subscription "<name>"`.
 
-You can also run it on your own computer, with the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) and `jq` installed, after `az login`.
+You can also use your own computer instead, with the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) and `jq` installed, after `az login`.
+
+## 4. Run the one-time setup
+
+[`deploy/azure/bootstrap.sh`](../../deploy/azure/bootstrap.sh) creates what the deploys need. It's safe to run again: it changes only what isn't right yet. It takes a few minutes. In Cloud Shell, run these, with your fork's name and an email address for cost alerts:
+
+```bash
+git clone https://github.com/<owner>/<repo>.git paranoid
+```
+
+```bash
+bash paranoid/deploy/azure/bootstrap.sh <owner>/<repo> <you@example.com>
+```
 
 To use another region than `swedencentral`, put `AZURE_REGION=germanywestcentral` (for example) before `bash`. Only the regions in [Costs](#costs) work.
 
@@ -136,18 +145,18 @@ It prints a section for each part, and at the end, **Done** and the commands for
   - `paranoid-deployer` trusts only `repo:<owner>/<repo>:environment:azure`. Its role, _Paranoid deployer_, can only create and delete VMs, disks, NICs and public IPs in `paranoid`, and start the backstop.
   - `paranoid-cleaner` trusts only `repo:<owner>/<repo>:environment:azure-cleanup`. Its role, _Paranoid cleaner_, can only find and delete those.
 
-  See [Why there's no secret](#why-theres-no-secret).
+  See [The credentials](#the-credentials).
 
 - **The backstop,** the Logic App `paranoid-backstop`, also with _Paranoid cleaner_.
 - **A budget** that emails you when Paranoid's costs pass 50% or 100% of 5 a month in your billing currency (USD or EUR, for example), or are forecast to. It's a late warning only: Azure checks costs a few times a day, and a budget never stops anything. To change the amount, put `BUDGET_AMOUNT=10` (for example) before `bash` and run it again.
 
 None of these costs anything while no server runs. Azure also registers the services Paranoid uses in your subscription.
 
-## 4. Connect your fork to Azure
+## 5. Connect your fork to Azure
 
-GitHub needs to know which Azure identities to sign in as. These are IDs, not secrets, and go in **repository variables**. Then come the two **environments** that Azure trusts, and a shorter log retention.
+Now your fork gets its two **environments**, the IDs of the identities in them, and a shorter log retention.
 
-Why the environments matter: Azure lets in only runs that use them, and they decide who can start a deploy. `azure` lets only `main` deploy, and every deploy waits until you approve it, so nobody else can start a server on your account, even someone who can start workflows in your fork. Clean up and stop use `azure-cleanup`, also `main` only, with no approval: they can only delete, and the 5-minutely cleanup mustn't wait for you.
+Why the environments matter: Azure lets in only runs that use them, and they decide who can start a deploy. `azure` lets only `main` deploy, and every deploy waits until you approve it, so nobody else can start a server on your account, even someone who can start workflows in your fork. Clean up and stop use `azure-cleanup`, also `main` only, with no approval: they can only delete, and the hourly cleanup mustn't wait for you. Each environment holds the IDs of its own identity, so only its jobs can read them.
 
 This needs your fork to stay public. In GitHub's [deployments and environments reference](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments), required reviewers work on the Free, Pro and Team plans only in public repositories, and environments in private repositories need Pro, Team or Enterprise. So:
 
@@ -157,28 +166,34 @@ This needs your fork to stay public. In GitHub's [deployments and environments r
 
 ### With the GitHub CLI
 
-The setup printed the commands, with your IDs filled in. Run them where [`gh`](https://cli.github.com) is installed and signed in as yourself (`gh auth login`), for example on your own computer. The first ones look like this:
+The setup printed the commands, with your IDs filled in. Run them in order where [`gh`](https://cli.github.com) is installed and signed in as yourself (`gh auth login`), for example on your own computer:
 
-```bash
-gh variable set AZURE_CLIENT_ID --repo <owner>/<repo> --body <client-id>
-```
+1. Two create `azure`, with you as its required reviewer and only `main` allowed.
+2. Four set its variables, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP`, with `paranoid-deployer`'s client ID. They look like this:
 
-There's one each for `AZURE_CLIENT_ID`, `AZURE_CLEANUP_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP` and `AZURE_REGION`. Then two create `azure`, with you as its required reviewer and only `main` allowed, and two create `azure-cleanup` with only `main` allowed. Then set the log retention in the website, as in step 5 below.
+   ```bash
+   gh variable set AZURE_CLIENT_ID --env azure --repo <owner>/<repo> --body <client-id>
+   ```
+
+3. Two create `azure-cleanup`, with only `main` allowed, and four set the same variables in it, with `paranoid-cleaner`'s client ID.
+4. One sets the repository variable `AZURE_REGION`.
+
+Then set the log retention, below.
 
 ### Or in GitHub's website
 
-1. **Variables:** in your fork, go to **Settings** → **Secrets and variables** → **Actions** → **Variables** → **New repository variable**, and add each of the six variables with the value the setup printed.
-2. **The `azure` environment:** go to **Settings** → **Environments** → **New environment**, name it `azure` and click **Configure environment**. Then:
+1. **The `azure` environment:** in your fork, go to **Settings** → **Environments** → **New environment**, name it `azure` and click **Configure environment**. Then:
    1. Tick **Required reviewers**, type your own GitHub username in the box below it and pick yourself.
    2. Leave **Prevent self-review** unticked. You start the deploys yourself, and with it ticked, you couldn't approve them.
    3. Under **Deployment branches and tags**, choose **Selected branches and tags**, click **Add deployment branch or tag rule**, enter `main` and click **Add rule**.
    4. Click **Save protection rules**.
-3. **The `azure-cleanup` environment:** back in **Settings** → **Environments**, click **New environment**, name it `azure-cleanup` and click **Configure environment**. Don't tick **Required reviewers**. Under **Deployment branches and tags**, choose **Selected branches and tags** and add the rule `main` as above.
-4. **Log retention:** see step 5 below.
+   5. Under **Environment variables**, click **Add environment variable** for each of `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `AZURE_RESOURCE_GROUP`, with the values the setup printed for `azure`.
+2. **The `azure-cleanup` environment:** back in **Settings** → **Environments**, click **New environment**, name it `azure-cleanup` and click **Configure environment**. Don't tick **Required reviewers**. Under **Deployment branches and tags**, choose **Selected branches and tags** and add the rule `main` as above. Add the same four environment variables, with the values the setup printed for `azure-cleanup`: its `AZURE_CLIENT_ID` is `paranoid-cleaner`'s.
+3. **The region:** go to **Settings** → **Secrets and variables** → **Actions** → **Variables** → **New repository variable**, and add `AZURE_REGION` with the value the setup printed.
 
-Either way, **Settings** → **Secrets and variables** → **Actions** → **Variables** lists the six variables, and **Settings** → **Environments** lists `azure`, with **1 protection rule** and the branch rule `main`, and `azure-cleanup` with the branch rule `main`. There are no secrets to add.
+Either way, **Settings** → **Environments** lists `azure`, with **1 protection rule**, the branch rule `main` and four variables, and `azure-cleanup` with the branch rule `main` and four variables. **Settings** → **Secrets and variables** → **Actions** → **Variables** lists `AZURE_REGION`. There are no secrets to add.
 
-## 5. Keep the logs for 1 day
+### Keep the logs for 1 day
 
 Your fork is public, so **anyone can read its workflow logs**, including each deploy's server address and when it shuts down. Paranoid's workflows never print a secret, because there's none, but there's no reason to keep the logs around. GitHub keeps them 90 days unless you change it:
 
@@ -190,7 +205,7 @@ You should see "1 days" there. Runs older than a day then lose their logs. To de
 
 ## 6. Optional settings
 
-Everything works with the defaults. To change one, add a repository variable as in step 4, for example:
+Everything works with the defaults. To change one, add a repository variable, for example:
 
 ```bash
 gh variable set LIFETIME_MINUTES --body 30 --repo <owner>/<repo>
@@ -215,7 +230,7 @@ The app uses Google's STUN servers unless `VITE_ICE_SERVERS` in [`packages/clien
 3. Click the run that appears. It shows **Waiting** and "This workflow is waiting for … to be approved." Check that it's the run you just started, on `main`.
 4. Click **Review deployments**, tick **azure** and click **Approve and deploy**. If you didn't start this run, click **Reject** instead. Nothing has started yet, and nothing does.
 5. Setting up the server takes about 5 to 10 minutes, because it installs and builds the app itself.
-6. When the run is green, its **Summary** shows the URL, `https://<ip-with-dashes>.sslip.io`, and when the server shuts down at the latest.
+6. When the run is green, its **Summary** shows the URL, `https://<ip-with-dashes>.sslip.io`, when the server shuts down at the latest, and the most it can cost.
 
 Or with `gh`:
 
@@ -225,16 +240,16 @@ gh workflow run deploy-azure.yml --ref main --repo <owner>/<repo> -f max_invites
 
 Open the URL, create an invite and open it in a second browser or on another device, such as your phone. The chat starts once both are connected.
 
-Anyone who has the URL can create invites, which use up `max_invites`. In a public fork, anyone can read the run summary and logs for the day they're kept (see [step 5](#5-keep-the-logs-for-1-day)).
+Anyone who has the URL can create invites, which use up `max_invites`. In a public fork, anyone can read the run summary and logs for the day they're kept (see [Keep the logs for 1 day](#keep-the-logs-for-1-day)).
 
 A deploy you haven't approved yet holds up only the next deploy. Clean up Azure never waits for it, and Stop Azure cancels it.
 
-## 8. Stop it, and how it's cleaned up
+## 8. Stop it
 
 - **Stop it now:** **Actions** → **Stop Azure** → **Run workflow** on `main` deletes every Paranoid server, with its disk, NIC and public IP, right away, without waiting for an approval. It also cancels a deploy that's waiting or running. Chats that have started keep working. Or: `gh workflow run stop-azure.yml --ref main --repo <owner>/<repo>`.
 - **On its own:** the server powers off once the last invite is finished, or at the end of its lifetime. A powered-off VM is still billed, so two things delete it:
   - **the backstop,** in Azure, checks the server every 2 minutes and deletes it once it's stopped or its lifetime is over. Each deploy starts it, and it also runs once a day for anything left over. It doesn't depend on GitHub at all.
-  - **Clean up Azure,** in GitHub, runs every 5 minutes and deletes Paranoid servers that are off or past their lifetime, and any disk, NIC or IP address left without a server. You can also run it by hand from the Actions tab.
+  - **Clean up Azure,** in GitHub, runs every hour, at 5 past, and deletes Paranoid servers that are off or past their lifetime, and any disk, NIC or IP address left without a server once it's past its lifetime too. You can also run it by hand from the Actions tab.
 
 Starting **Deploy to Azure** again first deletes any Paranoid server that's left, so there's only ever one.
 
@@ -261,12 +276,12 @@ What a server is made of, per hour:
 - **Free:** the NSG, the network, the managed identity, the network watcher and the budget.
 - **With the free account**, the VM's hours are covered for 12 months (750 hours a month of `Standard_B2ats_v2`, `Standard_B1s` or `Standard_B2pts_v2`), and the $200 credit covers the rest in the first 30 days.
 
-**Worst case for one deploy.** Before starting anything, **Deploy to Azure** works out the most the deploy could cost: every started hour of the lifetime plus an hour for the cleanup, at the hourly price, plus outbound traffic at `MAX_EGRESS_MBIT` for the whole lifetime, without the free 100 GB. It refuses the deploy if that's above `MAX_DEPLOY_COST_USD`, $1 by default (see [The cost limit](README.md#the-cost-limit)). With the defaults in `swedencentral`:
+**Worst case for one deploy.** Before starting anything, **Deploy to Azure** works out the most the deploy could cost: every started hour of the lifetime plus 2 hours for the cleanup, at the hourly price, plus outbound traffic at `MAX_EGRESS_MBIT` for the whole lifetime, without the free 100 GB. It refuses the deploy if that's above `MAX_DEPLOY_COST_USD`, $1 by default (see [The cost limit](README.md#the-cost-limit)). With the defaults in `swedencentral`:
 
 | Lifetime           | Worst case | Allowed with the default $1 limit                                                                       |
 | ------------------ | ---------- | ------------------------------------------------------------------------------------------------------- |
-| 60 minutes         | $0.11      | Yes                                                                                                     |
-| 24 hours, the most | $2.33      | No: the longest that fits is 600 minutes. Or set `MAX_DEPLOY_COST_USD` to 3, or lower `MAX_EGRESS_MBIT` |
+| 60 minutes         | $0.13      | Yes                                                                                                     |
+| 24 hours, the most | $2.35      | No: the longest that fits is 600 minutes. Or set `MAX_DEPLOY_COST_USD` to 3, or lower `MAX_EGRESS_MBIT` |
 
 A typical deploy of an hour, deleted within minutes of shutting down, costs about $0.02.
 
@@ -294,7 +309,7 @@ To see what the backstop did, open `paranoid-backstop` → **Run history**.
 
 If a server is left, run **Stop Azure**, or delete it in the portal: open the virtual machine, click **Delete**, and tick its disk, network interface and public IP address to delete them with it.
 
-## Why there's no secret
+## The credentials
 
 There's nothing to leak, so there's nothing to rotate or revoke:
 
@@ -328,28 +343,28 @@ It can't change the firewall or the network, so it can't open port 22. It can't 
 
 The run's log says which step failed and why. There's no SSH, so you can't log in to a server to look.
 
-| What you see                                                                                      | What to do                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "The repository variable AZURE_CLIENT_ID must be the ID that deploy/azure/bootstrap.sh printed"   | Set the variables as in [step 4](#4-connect-your-fork-to-azure). They're **repository** variables, not environment variables or secrets.                                                                                                                                                                                                     |
-| `AADSTS700213` or `AADSTS70021`, "No matching federated identity record found"                    | Azure didn't recognize the run. Check that you started it on `main`, that the environments are named `azure` and `azure-cleanup`, that `AZURE_CLIENT_ID` and `AZURE_CLEANUP_CLIENT_ID` aren't swapped, and that you gave the setup your fork's name exactly as GitHub writes it, capitals included. Run the setup again with the right name. |
-| The deploy shows **Waiting** and doesn't start                                                    | It's waiting for your approval: click **Review deployments**, tick **azure** and **Approve and deploy**, as in [step 7](#7-start-a-server). If GitHub says you can't approve your own run, untick **Prevent self-review** on the `azure` environment.                                                                                        |
-| "Branch is not allowed to deploy to azure", or the run waits for the environment                  | You started the workflow on another branch. Start it on `main`. Check the environment's deployment branch rule says `main`.                                                                                                                                                                                                                  |
-| `AuthorizationFailed` right after the setup                                                       | Azure takes a few minutes to spread a new role everywhere. Wait 5 minutes and run it again. If it keeps happening, check that `AZURE_RESOURCE_GROUP` is `paranoid`, and run the setup again.                                                                                                                                                 |
-| `MissingSubscriptionRegistration`                                                                 | Run the setup again: it registers the services Paranoid uses.                                                                                                                                                                                                                                                                                |
-| `SkuNotAvailable`, `ZonalAllocationFailed` or "capacity"                                          | Azure has no room for that VM size in the region right now. Try again later, or set `AZURE_VM_SIZE` to `Standard_B1s`.                                                                                                                                                                                                                       |
-| `QuotaExceeded` or "Operation could not be completed as it results in exceeding approved … quota" | New subscriptions have small limits on CPUs per VM family. In the portal, search for **Quotas** → **Compute**, find the family (for example _Standard Basv2 Family vCPUs_) in your region and request 2 or more.                                                                                                                             |
-| "has no price for … in …"                                                                         | The region or size isn't in [`prices.json`](../../deploy/azure/prices.json). Use one from [Costs](#costs), or add it with `fetch-prices.sh` and commit it.                                                                                                                                                                                   |
-| "This deployment could cost up to …, more than the limit"                                         | See [Costs](#costs). Shorten the lifetime, lower `MAX_EGRESS_MBIT`, or raise `MAX_DEPLOY_COST_USD`.                                                                                                                                                                                                                                          |
-| An image isn't found                                                                              | Debian may have renamed it. List them with `az vm image list --publisher Debian --offer debian-13 --all -o table` in Cloud Shell and set `AZURE_IMAGE`.                                                                                                                                                                                      |
-| "The app didn't come up in time"                                                                  | The server took too long to set up, or its setup failed. The deploy deleted it. The message gives the last reason, for example "Couldn't connect", which means the server never got as far as starting its web server. Run Deploy again.                                                                                                     |
-| "HTTPS certificate problem"                                                                       | Let's Encrypt didn't give a certificate for the hostname. It allows only 5 certificates a week for the same hostname, which happens if you deploy many times in a week and get the same IP address. Wait, or try another region.                                                                                                             |
-| Your subscription is disabled                                                                     | The free account's 30 days or $200 are over. Upgrade it to pay-as-you-go, as in [step 2](#2-sign-up-for-azure).                                                                                                                                                                                                                              |
-| A server stays _Stopped_ and isn't deleted                                                        | Open `paranoid-backstop` → **Run history** to see what it did, and run **Stop Azure** or **Clean up Azure** by hand. If GitHub disabled Clean up Azure after 60 days without activity, enable it in the Actions tab.                                                                                                                         |
-| The budget step says it couldn't create the budget                                                | Some subscription types can't have budgets made from the command line. Create one in **Cost Management** → **Budgets** instead.                                                                                                                                                                                                              |
+| What you see                                                                                                                            | What to do                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "The azure environment's variable AZURE_CLIENT_ID must be the ID that deploy/azure/bootstrap.sh printed", or the same for azure-cleanup | Set the variables in that environment as in [step 5](#5-connect-your-fork-to-azure). They're **environment** variables, not repository variables or secrets.                                                                                                                                                                                                                                                     |
+| `AADSTS700213` or `AADSTS70021`, "No matching federated identity record found"                                                          | Azure didn't recognize the run. Check that you started it on `main`, that the environments are named `azure` and `azure-cleanup`, that each environment's `AZURE_CLIENT_ID` is its own identity's (`paranoid-deployer` in `azure`, `paranoid-cleaner` in `azure-cleanup`), and that you gave the setup your fork's name exactly as GitHub writes it, capitals included. Run the setup again with the right name. |
+| The deploy shows **Waiting** and doesn't start                                                                                          | It's waiting for your approval: click **Review deployments**, tick **azure** and **Approve and deploy**, as in [step 7](#7-start-a-server). If GitHub says you can't approve your own run, untick **Prevent self-review** on the `azure` environment.                                                                                                                                                            |
+| "Branch is not allowed to deploy to azure", or the run waits for the environment                                                        | You started the workflow on another branch. Start it on `main`. Check the environment's deployment branch rule says `main`.                                                                                                                                                                                                                                                                                      |
+| `AuthorizationFailed` right after the setup                                                                                             | Azure takes a few minutes to spread a new role everywhere. Wait 5 minutes and run it again. If it keeps happening, check that `AZURE_RESOURCE_GROUP` is `paranoid` in both environments, and run the setup again.                                                                                                                                                                                                |
+| `MissingSubscriptionRegistration`                                                                                                       | Run the setup again: it registers the services Paranoid uses.                                                                                                                                                                                                                                                                                                                                                    |
+| `SkuNotAvailable`, `ZonalAllocationFailed` or "capacity"                                                                                | Azure has no room for that VM size in the region right now. Try again later, or set `AZURE_VM_SIZE` to `Standard_B1s`.                                                                                                                                                                                                                                                                                           |
+| `QuotaExceeded` or "Operation could not be completed as it results in exceeding approved … quota"                                       | New subscriptions have small limits on CPUs per VM family. In the portal, search for **Quotas** → **Compute**, find the family (for example _Standard Basv2 Family vCPUs_) in your region and request 2 or more.                                                                                                                                                                                                 |
+| "has no price for … in …"                                                                                                               | The region or size isn't in [`prices.json`](../../deploy/azure/prices.json). Use one from [Costs](#costs), or add it with `fetch-prices.sh` and commit it.                                                                                                                                                                                                                                                       |
+| "This deployment could cost up to …, more than the limit"                                                                               | See [Costs](#costs). Shorten the lifetime, lower `MAX_EGRESS_MBIT`, or raise `MAX_DEPLOY_COST_USD`.                                                                                                                                                                                                                                                                                                              |
+| An image isn't found                                                                                                                    | Debian may have renamed it. List them with `az vm image list --publisher Debian --offer debian-13 --all -o table` in Cloud Shell and set `AZURE_IMAGE`.                                                                                                                                                                                                                                                          |
+| "The app didn't come up in time"                                                                                                        | The server took too long to set up, or its setup failed. The deploy deleted it. The message gives the last reason, for example "Couldn't connect", which means the server never got as far as starting its web server. Run Deploy again.                                                                                                                                                                         |
+| "HTTPS certificate problem"                                                                                                             | Let's Encrypt didn't give a certificate for the hostname. It allows only 5 certificates a week for the same hostname, which happens if you deploy many times in a week and get the same IP address. Wait, or try another region.                                                                                                                                                                                 |
+| Your subscription is disabled                                                                                                           | The free account's 30 days or $200 are over. Upgrade it to pay-as-you-go, as in [step 2](#2-sign-up-for-azure).                                                                                                                                                                                                                                                                                                  |
+| A server stays _Stopped_ and isn't deleted                                                                                              | Open `paranoid-backstop` → **Run history** to see what it did, and run **Stop Azure** or **Clean up Azure** by hand. If GitHub disabled Clean up Azure after 60 days without activity, enable it in the Actions tab.                                                                                                                                                                                             |
+| The budget step says it couldn't create the budget                                                                                      | Some subscription types can't have budgets made from the command line. Create one in **Cost Management** → **Budgets** instead.                                                                                                                                                                                                                                                                                  |
 
 ## Removing everything
 
-1. Run [`teardown.sh`](../../deploy/azure/teardown.sh) in Cloud Shell, as in [step 3](#3-run-the-one-time-setup):
+1. Run [`teardown.sh`](../../deploy/azure/teardown.sh) in Cloud Shell, as in [step 4](#4-run-the-one-time-setup):
 
    ```bash
    bash paranoid/deploy/azure/teardown.sh
@@ -358,7 +373,7 @@ The run's log says which step failed and why. There's no SSH, so you can't log i
    Type `paranoid` when it asks. It deletes the budget, the roles, and the resource group with everything in it: any server, the identity, the backstop and the network. It ends with "Nothing tagged app=paranoid is left in this subscription."
 
 2. [Check nothing is left](#checking-nothing-is-left): **Resource groups** no longer lists `paranoid`.
-3. In your fork, delete the `azure` and `azure-cleanup` environments (**Settings** → **Environments** → each one → **Delete environment**) and the six `AZURE_` variables.
+3. In your fork, delete the `azure` and `azure-cleanup` environments (**Settings** → **Environments** → each one → **Delete environment**), which deletes their variables too, and the repository variables `AZURE_REGION`, and `AZURE_VM_SIZE` and `AZURE_IMAGE` if you set them (**Settings** → **Secrets and variables** → **Actions** → **Variables**).
 4. If you want to close your Azure account, first wait for the last invoice, then follow [Cancel your Azure subscription](https://learn.microsoft.com/azure/cost-management-billing/manage/cancel-azure-subscription): **Subscriptions** → your subscription → **Cancel subscription**. A free account you don't upgrade is disabled on its own after 30 days.
 
 ## Privacy
@@ -369,7 +384,7 @@ The server keeps no access logs. Its own logs hold only connections and errors, 
 - **Azure's Activity Log** records every change to your resources, such as creating and deleting a server, for 90 days. It records management calls, not your users' traffic, and it can't be turned off. See it by searching for **Activity log**.
 - **Google's STUN servers**, the default, see your users' IP addresses when their browsers find a way to connect. `VITE_ICE_SERVERS` can point to another one.
 - **sslip.io** turns the hostname into the IP address, so it sees the lookups. It and **Let's Encrypt's public Certificate Transparency logs** reveal the server's IP-based hostname, but not who uses it.
-- **GitHub**: in a public fork, anyone can read the workflow logs and run summaries, with the server's URL and shutdown time, for as long as they're kept: 1 day after [step 5](#5-keep-the-logs-for-1-day). They hold no secret, because there's none.
+- **GitHub**: in a public fork, anyone can read the workflow logs and run summaries, with the server's URL and shutdown time, for as long as they're kept: 1 day after [Keep the logs for 1 day](#keep-the-logs-for-1-day). They hold no secret, because there's none.
 
 ## What a deploy does
 
@@ -377,12 +392,12 @@ The server keeps no access logs. Its own logs hold only connections and errors, 
 
 1. Checks the settings ([`settings.sh`](../../deploy/azure/settings.sh)), before it changes anything.
 2. Works out the worst-case cost from [`prices.json`](../../deploy/azure/prices.json), with the shared [`packages/deploy`](../../packages/deploy/src/cli.ts), and stops if it's above `MAX_DEPLOY_COST_USD`.
-3. Signs in to Azure as `paranoid-deployer` with Microsoft's [`azure/login`](https://github.com/Azure/login) action, through OIDC. The job uses the `azure` environment, so it only started once you approved it.
+3. Installs the Azure CLI 2.92.0 from Microsoft's package repository, after checking the package's checksum ([`setup-az`](../../.github/actions/setup-az/action.yml)), with its telemetry off, and signs in to Azure as `paranoid-deployer` with Microsoft's [`azure/login`](https://github.com/Azure/login) action, through OIDC. The job uses the `azure` environment, so it only started once you approved it.
 4. Deletes any existing Paranoid server, running or off, with its disk, NIC and public IP ([`delete-servers.sh`](../../deploy/azure/delete-servers.sh)).
 5. Creates ([`create-server.sh`](../../deploy/azure/create-server.sh)):
    - a static public IPv4 address, `paranoid-<run id>-ip`. The VM only sees a private address, so its hostname, `<ip-with-dashes>.sslip.io`, is worked out here and passed to it;
    - from [`server.json`](../../deploy/azure/server.json), the NIC `paranoid-<run id>-nic` on the setup's network, and the VM `paranoid-<run id>` with its disk `paranoid-<run id>-disk`, and [`deploy/server/cloud-init.yaml`](../../deploy/server/cloud-init.yaml) as its setup data. Deleting the VM deletes the disk, NIC and IP with it. Its login is a throwaway SSH key whose private half is deleted at once, with password login off, and VM extensions and boot diagnostics are off.
-   - Everything is tagged `app=paranoid`, `run`, `expires-at` (when its lifetime ends, in UTC) and `commit`.
+   - Everything is tagged `app=paranoid`, `run`, `created` and `expires` (when it was made and when its lifetime ends, in Unix seconds) and `commit`.
 6. Starts the backstop for the new server.
 7. Waits up to 15 minutes for `https://<host>/healthz` and a socket.io handshake. If they don't come up, it deletes the server and fails, with the reason from the last attempt.
 
@@ -394,6 +409,6 @@ On the server, cloud-init turns off SSH, locks root's password and sets a timer 
 - starts Caddy, which gets a Let's Encrypt certificate for `<ip-with-dashes>.sslip.io`, serves the app and passes `/socket.io/` and `/healthz` to the signaling server;
 - limits all outbound traffic to `MAX_EGRESS_MBIT` with `tc`.
 
-The backstop, [`backstop.json`](../../deploy/azure/backstop.json), lists the VMs tagged `app=paranoid`, checks each every 2 minutes, and deletes it, its NIC, IP address and disk once Azure has finished creating it and it's stopped or deallocated, or once it's past `expires-at`. [`cleanup-azure.yml`](../../.github/workflows/cleanup-azure.yml) does the same from GitHub every 5 minutes, as `paranoid-cleaner`: it runs on the default branch, which can't use the `azure-cleanup` environment, so it starts itself on `main`, which can. [`stop-azure.yml`](../../.github/workflows/stop-azure.yml) deletes every Paranoid server, as `paranoid-cleaner`.
+The backstop, [`backstop.json`](../../deploy/azure/backstop.json), lists the VMs tagged `app=paranoid`, checks each every 2 minutes, and deletes it, its NIC, IP address and disk once Azure has finished creating it and it's stopped or deallocated, or once it's past its `expires` tag. [`cleanup-azure.yml`](../../.github/workflows/cleanup-azure.yml) does the same from GitHub every hour, as `paranoid-cleaner`: it runs on the default branch, which can't use the `azure-cleanup` environment, so it starts itself on `main`, which can. [`stop-azure.yml`](../../.github/workflows/stop-azure.yml) deletes every Paranoid server, as `paranoid-cleaner`.
 
-Deploy to Azure and Stop Azure share a concurrency group, so two deploys never overlap, and Stop Azure cancels a deploy that's running or waiting for your approval. The cancelled deploy's last step deletes its own server, and then Stop Azure deletes whatever is left. Clean up Azure has a group of its own, so a deploy waiting for your approval never holds it up. A cleanup can run while a deploy is creating its server, so it leaves alone what a deploy is making: a VM counts as stopped only once Azure has finished creating it, and a disk, NIC or IP address without a VM is deleted only once its `expires-at` has passed.
+Deploy to Azure and Stop Azure share a concurrency group, so two deploys never overlap, and Stop Azure cancels a deploy that's running or waiting for your approval. The cancelled deploy's last step deletes its own server, and then Stop Azure deletes whatever is left. Clean up Azure has a group of its own, so a deploy waiting for your approval never holds it up. A cleanup can run while a deploy is creating its server, so it leaves alone what a deploy is making: a VM counts as stopped only once Azure has finished creating it, and a disk, NIC or IP address without a VM is deleted only once its `expires` has passed.
