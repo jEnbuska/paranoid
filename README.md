@@ -231,6 +231,10 @@ The workflows use a read-only `GITHUB_TOKEN` by default (`permissions: contents:
 
 The branches, the rules for pull requests and how releases work are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Security
+
+Report a vulnerability privately, never in a public issue. [`SECURITY.md`](SECURITY.md) says how, and what's in scope.
+
 ## License
 
 [MIT](LICENSE), so you're free to use, change, fork and deploy it.
