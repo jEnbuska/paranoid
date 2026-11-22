@@ -7,21 +7,19 @@ Paranoid has two long-lived branches:
 
 ## The rules
 
-|                                | Into `dev`                                                                                                     | Into `main`                                                     |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Allowed source                 | A PR that links an open issue, a `hotfix/*` branch in this repository, or a [Dependabot](#dependabot) update   | `dev` of this repository                                        |
-| Direct pushes                  | Refused, for everyone                                                                                          | Refused, unless they fast-forward to the commit of a passing PR |
-| Force-pushes and deletion      | Refused, for everyone                                                                                          | Refused, for everyone                                           |
-| Must be up to date with target | Yes                                                                                                            | Yes                                                             |
-| Checks that must pass          | `Lint, format, typecheck, test & build`, `End-to-end tests (chromium)`, `(firefox)` and `(webkit)`, `PR rules` | The same                                                        |
-| How it lands                   | Rebase and merge                                                                                               | Fast-forward                                                    |
-| Who merges                     | The maintainer                                                                                                 | The maintainer                                                  |
+|                                | Into `dev`                                                                                                                                                                             | Into `main`                                                     |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Allowed source                 | A PR that links an open issue, a `hotfix/*` branch in this repository, or a [Dependabot](#dependabot) update                                                                           | `dev` of this repository                                        |
+| Direct pushes                  | Refused, for everyone                                                                                                                                                                  | Refused, unless they fast-forward to the commit of a passing PR |
+| Force-pushes and deletion      | Refused, for everyone                                                                                                                                                                  | Refused, for everyone                                           |
+| Must be up to date with target | Yes                                                                                                                                                                                    | Yes                                                             |
+| Checks that must pass          | `Lint, format, typecheck, test & build`, `End-to-end tests (chromium)`, `(firefox)` and `(webkit)`, `PR rules`, and [CodeQL](README.md#continuous-integration)'s code scanning results | The same                                                        |
+| How it lands                   | Rebase and merge                                                                                                                                                                       | Fast-forward                                                    |
+| Who merges                     | The maintainer                                                                                                                                                                         | The maintainer                                                  |
 
-CI skips the work a PR's changes can't affect, and a skipped check counts as passing. This is intended:
+CI skips the work a PR's changes can't affect, and a skipped check counts as passing. This is intended. Which checks run for which changed files is in the README's ["Continuous integration"](README.md#continuous-integration), and the filter itself is the "Decide which jobs run" step in [`ci.yml`](.github/workflows/ci.yml).
 
-- A docs-only PR (`**/*.md`, `LICENSE`) runs only the format check, for Markdown, and the `End-to-end tests` checks pass with their steps skipped.
-- A PR that changes no package and nothing that installs them, for example only a root config file, runs the checks, and the end-to-end steps skip the same way.
-- A PR with no changed files skips both CI jobs. It fails `PR rules` unless it's a draft, and the `End-to-end tests` checks are never reported, so an empty PR can't get through by skipping CI. GitHub won't merge a draft.
+A PR with no changed files skips both CI jobs. It fails `PR rules` unless it's a draft, and the `End-to-end tests` checks are never reported, so an empty PR can't get through by skipping CI. GitHub won't merge a draft.
 
 ## When a PR can merge
 
@@ -52,13 +50,13 @@ GitHub's rebase drops empty commits, but `git rebase` keeps them. So "Update bra
 
 ## Opening a pull request
 
-1. Find or open an issue, and start your branch from `dev`. Name it `<TICKET_NUMBER>-<name>`, for example `2-peers-stuck-connecting`. Start each commit message with the ticket number and a space, without `#`: `2 Reconnect peers that get stuck`. Git deletes lines that start with `#` as comments whenever it opens a message in your editor, such as when a rebase stops on a conflict, so a `#N` subject would be lost. Commits on a `hotfix/*` branch have no ticket number, and [Dependabot](#dependabot)'s start with `Dependabot:`. Older commits keep their `#N` subjects.
+1. Find or open an issue, and start your branch from `dev`. Name it `<TICKET_NUMBER>-<name>`, for example `2-peers-stuck-connecting`. Start each commit message with the ticket number and a space, without `#`: `2 Reconnect peers that get stuck`. Git deletes lines that start with `#` as comments whenever it opens a message in your editor, such as when a rebase stops on a conflict, so a `#N` subject would be lost. Commits on a `hotfix/*` branch have no ticket number, and [Dependabot](#dependabot)'s start with `Dependabot:`. Commits already pushed, in `dev`, `main` or an open PR, keep their `#N` subject. New commits use `N`. If git opens a `#N` message in the editor, restore its subject.
 2. Open the PR against `dev`, with `Closes #N`, `Fixes #N` or `Resolves #N` in its description. The issue has to be open. It closes when the PR merges. Title the PR with its branch name, for example `97-dependency-audit`, and add a colon and a few words when the name doesn't explain the PR: `85-deploy-hetzner: Hetzner Cloud in the EU`. A hotfix PR uses its `hotfix/<name>` branch the same way.
 3. Keep the branch up to date by rebasing, with `git rebase origin/dev` or the "Update with rebase" option on the PR (see [When a PR can merge](#when-a-pr-can-merge), including why not to use that option on a PR whose only commit is empty).
 
 When an issue is too big for one PR, split it. Pieces that can't really be built on their own, because they depend on each other or only make sense together, become [sub-issues](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-sub-issues) of the original issue (`gh issue create --parent <N>`, or `gh issue edit <N> --add-sub-issue <CHILD>` for an existing issue). Work that can be built on its own becomes a separate issue. The same goes for whatever a PR leaves undone: move it to a sub-issue or a separate issue before the PR merges.
 
-Run the checks listed in the [README](README.md#scripts) before pushing. CI runs the end-to-end tests in Chromium, Firefox and WebKit on every PR. If a browser fails on a ready PR, move the PR to draft and add a comment saying which browser and test failed.
+Run the checks listed in the [README](README.md#scripts) before pushing. CI runs the end-to-end tests in Chromium, Firefox and WebKit on every PR that changes a package or what installs them ([which files](README.md#continuous-integration)). If a browser fails on a ready PR, move the PR to draft and add a comment saying which browser and test failed.
 
 ## Answering review comments
 
@@ -125,7 +123,7 @@ A hotfix is a `hotfix/*` branch into `dev` that doesn't need an issue. It's rele
 
 ## Dependabot
 
-Dependabot does one job here: it keeps the GitHub Actions in our workflows up to date. [`.github/dependabot.yml`](.github/dependabot.yml) checks `dev` weekly and opens one PR into `dev` with every action that has a newer release. Every action is pinned to a commit SHA, with its version in a comment on the same line (`uses: actions/checkout@<sha> # v7.0.1`), and Dependabot updates both. It skips releases less than a week old, so a hijacked release has time to be noticed first.
+Dependabot does one job here: it keeps the GitHub Actions in our workflows and composite actions (`.github/actions`) up to date. [`.github/dependabot.yml`](.github/dependabot.yml) checks `dev` weekly and opens one PR into `dev` with every action that has a newer release. Every action is pinned to a commit SHA, with its version in a comment on the same line (`uses: actions/checkout@<sha> # v7.0.1`), and Dependabot updates both. It skips releases less than a week old, so a hijacked release has time to be noticed first.
 
 - **Its PRs don't link an issue.** `dependabot.yml` can't set a PR's description, so `PR rules` lets a PR through without one when Dependabot opened it from a `dependabot/*` branch. Both have to hold: anyone who can push can name a branch `dependabot/*`. Everything else applies as usual: CI runs everything, because the PR changes workflows, and the maintainer reviews and merges it.
 - **Its PR titles are Dependabot's own**, not the branch name.
@@ -187,7 +185,7 @@ If it does get pressed, the maintainer turns off the `main` ruleset, force-pushe
 | Rule                                     | Defined in                                                                   | Enforced by                                                         |
 | ---------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | PRs only, no force-push or deletion      | The `main` and `dev` rulesets, under repository settings                     | GitHub, with no bypass for admins                                   |
-| Checks pass, branch up to date           | The same rulesets, as required checks                                        | GitHub, with no bypass for admins                                   |
+| Checks pass, branch up to date           | The same rulesets, as required checks and the code scanning rule             | GitHub, with no bypass for admins                                   |
 | Rebase only, no merge commits            | Repository merge settings and the same rulesets                              | GitHub                                                              |
 | Allowed source, open issue, no empty PRs | [`pr-rules.yml`](.github/workflows/pr-rules.yml)                             | GitHub, as the required `PR rules` check                            |
 | Only the maintainer merges               | The repository's collaborators: the maintainer is the only one               | GitHub, as anyone else has no write access                          |
