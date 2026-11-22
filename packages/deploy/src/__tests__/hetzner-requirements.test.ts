@@ -213,7 +213,7 @@ describe("deploy/hetzner/requirements.json", () => {
       const result = await run(deploy, { HCLOUD_TOKEN: FAKE });
       expect(result.status).toBe(1);
       expect(result.output).toBe(
-        `::error::The environment ${name} doesn't exist. Fix: docs/deploy/hetzner.md#4-create-the-environments-in-your-fork\n`,
+        `::error::The environment ${name} doesn't exist. Fix: ${hetzner.guide}${hetzner.environments.get(name)!.step}\n`,
       );
     });
 
@@ -227,7 +227,7 @@ describe("deploy/hetzner/requirements.json", () => {
         const result = await run(args(job), { [secret]: "" });
         expect(result.status).toBe(1);
         expect(result.output).toBe(
-          `::error::The secret ${secret} isn't set in the environment ${name}. Fix: docs/deploy/hetzner.md#5-create-the-api-tokens-and-add-them\n`,
+          `::error::The secret ${secret} isn't set in the environment ${name}. Fix: ${hetzner.guide}${rule.step}\n`,
         );
       });
     }
