@@ -3,7 +3,14 @@
 // write-summary.sh and start-cleanup.sh. Each runs in bash, as on the
 // runner, with only the environment the test gives it.
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -112,7 +119,11 @@ settings_line "zone: $ZONE"`,
     ["LIFETIME_MINUTES", "-1", "LIFETIME_MINUTES (or the lifetime_minutes"],
     ["MAX_EGRESS_MBIT", "51", "MAX_EGRESS_MBIT must be a whole number from 1"],
     ["MAX_EGRESS_MBIT", "1.5", "not '1.5'"],
-    ["MAX_DEPLOY_COST_USD", "10000", "MAX_DEPLOY_COST_USD must be an amount"],
+    [
+      "MAX_DEPLOY_COST_USD",
+      "10000",
+      "MAX_DEPLOY_COST_USD, an amount in US dollars, must match",
+    ],
     ["MAX_DEPLOY_COST_USD", "2.505", "not '2.505'"],
     ["MAX_DEPLOY_COST_USD", "$1", "not '$1'"],
     ["RUN_ID", "12a", "The run ID isn't a number"],
@@ -198,8 +209,175 @@ echo ok`,
     const result = bash(amount, ["2,50"]);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain(
-      "::error::GCP_MONTHLY_BUDGET_USD must be an amount in US dollars",
+      "::error::GCP_MONTHLY_BUDGET_USD, an amount in US dollars, must match",
     );
+  });
+
+  describe("the rules in deploy/requirements.json", () => {
+    const real = JSON.parse(
+      readFileSync(join(root, "deploy/requirements.json"), "utf8"),
+    ) as { variables: Record<string, Record<string, unknown>> };
+
+    it("follows the real file's limits", () => {
+      for (const name of [
+        "MAX_INVITES",
+        "LIFETIME_MINUTES",
+        "MAX_EGRESS_MBIT",
+      ]) {
+        const { minimum, maximum } = real.variables[name];
+        expect(
+          bash(settings, [], { ...good, [name]: String(maximum) }).status,
+        ).toBe(0);
+        const over = bash(settings, [], {
+          ...good,
+          [name]: String(Number(maximum) + 1),
+        });
+        expect(over.status).toBe(1);
+        expect(over.stdout).toContain(`from ${minimum} to ${maximum}`);
+      }
+    });
+
+    /**
+     * A copy of shared-settings.sh in a tree of its own, as
+     * <tree>/ci/shared-settings.sh, with <tree>/requirements.json holding
+     * `rules`, or no such file when it's undefined
+     */
+    const tree = (rules?: string) => {
+      const at = mkdtempSync(join(tmpdir(), "deploy-rules-"));
+      mkdirSync(join(at, "ci"));
+      copyFileSync(
+        join(ci, "shared-settings.sh"),
+        join(at, "ci/shared-settings.sh"),
+      );
+      if (rules !== undefined)
+        writeFileSync(join(at, "requirements.json"), rules);
+      return script(
+        `settings-${Math.random()}.sh`,
+        `. "${at}/ci/shared-settings.sh"
+shared_settings
+amount GCP_MONTHLY_BUDGET_USD "\${BUDGET:-5}"
+settings_line`,
+      );
+    };
+    const changed = (change: (rules: typeof real) => void) => {
+      const rules = structuredClone(real);
+      change(rules);
+      return tree(JSON.stringify(rules));
+    };
+
+    it("passes with a copy of the real file", () => {
+      const result = bash(
+        changed(() => {}),
+        [],
+        good,
+      );
+      expect(result.status).toBe(0);
+      expect(result.written).toContain("MAX_INVITES=5\n");
+    });
+
+    it("takes a changed limit from the file, with no copy in the script", () => {
+      const lower = changed((rules) => {
+        rules.variables.MAX_EGRESS_MBIT.maximum = 20;
+      });
+      expect(bash(lower, [], { ...good, MAX_EGRESS_MBIT: "20" }).status).toBe(
+        0,
+      );
+      const result = bash(lower, [], { ...good, MAX_EGRESS_MBIT: "21" });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "MAX_EGRESS_MBIT must be a whole number from 1 to 20, not '21'.",
+      );
+    });
+
+    it("takes a changed pattern from the file, for amount too", () => {
+      const whole = changed((rules) => {
+        rules.variables.MAX_DEPLOY_COST_USD.pattern = "^[0-9]{1,2}$";
+      });
+      const cost = bash(whole, [], { ...good, MAX_DEPLOY_COST_USD: "2.50" });
+      expect(cost.status).toBe(1);
+      expect(cost.stdout).toContain(
+        "must match ^[0-9]{1,2}$, such as 2.50, not '2.50'",
+      );
+      const budget = bash(whole, [], { ...good, BUDGET: "2.50" });
+      expect(budget.status).toBe(1);
+      expect(budget.stdout).toContain("GCP_MONTHLY_BUDGET_USD, an amount");
+    });
+
+    // Each fails before anything is written
+    it.each([
+      [
+        "the file is missing",
+        undefined,
+        "Can't read the shared variables' rules",
+      ],
+      [
+        "the file isn't JSON",
+        "{ not json",
+        "Can't read the shared variables' rules",
+      ],
+      [
+        "a variable's rule is absent",
+        JSON.stringify({
+          variables: { ...real.variables, MAX_EGRESS_MBIT: undefined },
+        }),
+        "deploy/requirements.json has no pattern for MAX_EGRESS_MBIT",
+      ],
+      [
+        "a rule is the wrong type",
+        JSON.stringify({
+          variables: { ...real.variables, MAX_INVITES: "^[0-9]+$" },
+        }),
+        "Can't read the shared variables' rules",
+      ],
+    ])("fails closed when %s", (_, rules, message) => {
+      const result = bash(tree(rules), [], good);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(`::error::${message}`);
+      expect(result.written).toBe("");
+    });
+
+    it.each([
+      [
+        "a rule has no pattern",
+        (rules: typeof real) => {
+          delete rules.variables.LIFETIME_MINUTES.pattern;
+        },
+        "has no pattern for LIFETIME_MINUTES",
+      ],
+      [
+        "a pattern isn't anchored",
+        (rules: typeof real) => {
+          rules.variables.LIFETIME_MINUTES.pattern = "[0-9]+";
+        },
+        "has no pattern for LIFETIME_MINUTES",
+      ],
+      [
+        "a maximum isn't a whole number",
+        (rules: typeof real) => {
+          rules.variables.MAX_INVITES.maximum = 1.5;
+        },
+        "minimum and maximum for MAX_INVITES aren't whole numbers",
+      ],
+      [
+        "a minimum is missing beside a maximum",
+        (rules: typeof real) => {
+          delete rules.variables.MAX_INVITES.minimum;
+        },
+        "minimum and maximum for MAX_INVITES aren't whole numbers",
+      ],
+      [
+        "the cost limit's rule is absent, which amount needs too",
+        (rules: typeof real) => {
+          delete rules.variables.MAX_DEPLOY_COST_USD;
+        },
+        "has no pattern for MAX_DEPLOY_COST_USD",
+      ],
+    ])("fails closed when %s", (_, change, message) => {
+      const result = bash(changed(change), [], good);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(message);
+      expect(result.written).toBe("");
+    });
   });
 });
 
