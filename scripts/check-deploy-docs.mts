@@ -10,8 +10,10 @@
  * (`docs/deploy/README.md`) or in the provider's "What this deployment needs"
  * section (`docs/deploy/<provider>.md`). It also checks the parts of the
  * index's common pattern that it can read: that identity values stay in their
- * environments and tuning values in the repository, and the guide's headings.
- * "Adding a provider" in the index describes the tables this reads.
+ * environments and tuning values in the repository, the guide's headings,
+ * and that the provider uses the shared pieces (its `settings.sh` and
+ * `delete-servers.sh` are read for that). "Adding a provider" in the index
+ * describes the tables this reads.
  *
  * The preflight's lists are checked against the docs too: each provider's
  * `deploy/<provider>/requirements.json` names what its page does, in the same
@@ -393,6 +395,7 @@ export function checkDeployDocs(files: Files): string[] {
 
   for (const [provider, use] of usages) {
     checkProvider(errors, files, provider, use, shared, rows.get(provider));
+    checkSharedPieces(errors, files, provider);
     // A list whose provider has no workflows yet waits for its page
     const listPath = `deploy/${provider}/requirements.json`;
     if (!files.has(listPath)) {
@@ -1234,6 +1237,111 @@ function checkPreflightSteps(
   }
 }
 
+// ------------------------------------------------------------ Shared pieces
+
+/** Every step of a workflow, in every job */
+function workflowSteps(text: string): Array<Record<string, unknown>> {
+  const { jobs = {} } = (parse(text) ?? {}) as {
+    jobs?: Record<string, { steps?: unknown } | null>;
+  };
+  return Object.values(jobs).flatMap((job) =>
+    Array.isArray(job?.steps)
+      ? (job.steps as unknown[]).filter(
+          (step): step is Record<string, unknown> =>
+            typeof step === "object" && step !== null,
+        )
+      : [],
+  );
+}
+
+const runs = (step: Record<string, unknown>, pattern: RegExp) =>
+  typeof step.run === "string" && pattern.test(step.run);
+
+/**
+ * That the provider uses the pieces every deploy shares, points 1 to 5 of
+ * "Shared pieces" in the pattern: the cleanup's start job, the settings
+ * checks, the delete modes, the summary and the cost check. What each piece
+ * does is tested with the piece itself; this only finds where it's used.
+ */
+function checkSharedPieces(
+  errors: string[],
+  files: Files,
+  provider: string,
+): void {
+  const see = `See "Shared pieces" in ${INDEX}.`;
+  const deployPath = `${WORKFLOWS}deploy-${provider}.yml`;
+  const cleanupPath = `${WORKFLOWS}cleanup-${provider}.yml`;
+
+  const cleanup = files.get(cleanupPath);
+  if (cleanup === undefined) {
+    errors.push(
+      `${cleanupPath}: is missing. Every provider with a deploy-${provider}.yml cleans up hourly. ${see}`,
+    );
+  } else {
+    const start = workflowSteps(cleanup).find(
+      (step) => step.uses === "./.github/actions/start-cleanup-on-main",
+    );
+    const inputs = (start?.with ?? {}) as Record<string, unknown>;
+    if (!start) {
+      errors.push(
+        `${cleanupPath}: the scheduled start job doesn't use ./.github/actions/start-cleanup-on-main. ${see}`,
+      );
+    } else if (
+      inputs.provider !== provider ||
+      inputs.workflow !== `cleanup-${provider}.yml`
+    ) {
+      errors.push(
+        `${cleanupPath}: start-cleanup-on-main needs provider: ${provider} and workflow: cleanup-${provider}.yml.`,
+      );
+    }
+  }
+
+  const deploy = workflowSteps(files.get(deployPath) ?? "");
+  if (!deploy.some((step) => runs(step, /\bdeploy\/ci\/write-summary\.sh\b/))) {
+    errors.push(
+      `${deployPath}: doesn't write its summary with deploy/ci/write-summary.sh. ${see}`,
+    );
+  }
+  const prices = `deploy/${provider}/prices.json`.replace(/[./]/g, "\\$&");
+  const costCheck = new RegExp(
+    `\\bpackages/deploy/src/cli\\.ts\\b[\\s\\S]*--prices\\s+${prices}\\b`,
+  );
+  if (!deploy.some((step) => runs(step, costCheck))) {
+    errors.push(
+      `${deployPath}: doesn't run the cost check, packages/deploy/src/cli.ts, with --prices deploy/${provider}/prices.json. ${see}`,
+    );
+  }
+
+  const scripts = [
+    [
+      "settings.sh",
+      "shared-settings.sh",
+      /^\s*shared_settings\s*$/m,
+      "and call shared_settings",
+    ],
+    [
+      "delete-servers.sh",
+      "delete-mode.sh",
+      /^\s*delete_mode\s+\S+\s+"\$@"\s*$/m,
+      'and read its mode with delete_mode <pattern> "$@"',
+    ],
+  ] as const;
+  for (const [name, piece, call, how] of scripts) {
+    const path = `deploy/${provider}/${name}`;
+    const text = files.get(path);
+    // Such as `. "$here/../ci/shared-settings.sh"`
+    const sources = new RegExp(
+      `^\\s*(\\.|source)\\s+"?[^"\\s]*\\bci/${piece.replace(".", "\\.")}"?\\s*$`,
+      "m",
+    );
+    if (text === undefined) {
+      errors.push(`${path}: is missing. ${see}`);
+    } else if (!sources.test(text) || !call.test(text)) {
+      errors.push(`${path}: must source deploy/ci/${piece} ${how}. ${see}`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------- CLI
 
 /** The files the check reads, from a checkout at `root`. */
@@ -1261,8 +1369,14 @@ export function readFiles(root: string): Files {
   }
   read(SHARED_LIST);
   for (const name of names("deploy")) {
-    read(`deploy/${name}/README.md`);
-    read(`deploy/${name}/requirements.json`);
+    for (const file of [
+      "README.md",
+      "requirements.json",
+      "settings.sh",
+      "delete-servers.sh",
+    ]) {
+      read(`deploy/${name}/${file}`);
+    }
   }
   return files;
 }

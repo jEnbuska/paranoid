@@ -120,6 +120,12 @@ jobs:
           ACME_PLAN: \${{ vars.ACME_PLAN || 'small' }}
           ACME_ROLE_ARN: \${{ vars.ACME_ROLE_ARN }}
         run: echo "vars.NOT_AN_EXPRESSION"
+      - name: Check the worst-case cost
+        run: |
+          node packages/deploy/src/cli.ts --prices deploy/acme/prices.json \\
+            --region "$ZONE" --server "$PLAN"
+      - name: Write the summary
+        run: bash deploy/ci/write-summary.sh --url "$URL"
 `;
 
 const CLEANUP = `name: Clean up Acme
@@ -127,6 +133,16 @@ on:
   schedule:
     - cron: "17 * * * *"
 jobs:
+  start:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start the cleanup on main
+        uses: ./.github/actions/start-cleanup-on-main
+        with:
+          provider: acme
+          workflow: cleanup-acme.yml
   cleanup:
     runs-on: ubuntu-latest
     environment: acme-cleanup
@@ -210,6 +226,21 @@ It also reads the [shared repository variables](README.md#shared-repository-vari
 ## What a deploy does
 `;
 
+const SETTINGS = `#!/usr/bin/env bash
+set -euo pipefail
+here=$(dirname "$0")
+# shellcheck source=deploy/ci/shared-settings.sh
+. "$here/../ci/shared-settings.sh"
+shared_settings
+settings_line "zone: $ZONE"
+`;
+
+const DELETE_SERVERS = `#!/usr/bin/env bash
+set -euo pipefail
+. deploy/ci/delete-mode.sh
+delete_mode '[0-9]+' "$@"
+`;
+
 /** A repository whose docs match its one provider, Acme. */
 function acme(): Files {
   return new Map([
@@ -221,6 +252,8 @@ function acme(): Files {
     ["deploy/acme/README.md", "See [Acme](../../docs/deploy/acme.md).\n"],
     ["deploy/requirements.json", json(SHARED_LIST)],
     ["deploy/acme/requirements.json", json(ACME_LIST)],
+    ["deploy/acme/settings.sh", SETTINGS],
+    ["deploy/acme/delete-servers.sh", DELETE_SERVERS],
   ]);
 }
 
@@ -588,7 +621,7 @@ describe("checkDeployDocs", () => {
         acme(),
         ".github/workflows/cleanup-acme.yml",
         "jobs:\n",
-        "jobs:\n  start:\n    if: vars.ACME_ROLE_ARN != ''\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n",
+        "jobs:\n  early:\n    if: vars.ACME_ROLE_ARN != ''\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n",
       );
       expectError(
         files,
@@ -1149,5 +1182,117 @@ describe("checkDeployDocs", () => {
         /says "up to two decimals", but deploy\/requirements\.json allows `1\.555`/,
       );
     });
+  });
+});
+
+describe("the shared pieces", () => {
+  it("fails without a cleanup workflow", () => {
+    const files = acme();
+    files.delete(".github/workflows/cleanup-acme.yml");
+    expectError(files, /cleanup-acme\.yml: is missing/);
+  });
+
+  it("fails on a cleanup that doesn't use start-cleanup-on-main", () => {
+    const files = edit(
+      acme(),
+      ".github/workflows/cleanup-acme.yml",
+      "uses: ./.github/actions/start-cleanup-on-main",
+      "run: gh workflow run cleanup-acme.yml --ref main",
+    );
+    expectError(
+      files,
+      /cleanup-acme\.yml: the scheduled start job doesn't use \.\/\.github\/actions\/start-cleanup-on-main/,
+    );
+  });
+
+  it("fails on start-cleanup-on-main with another provider", () => {
+    const files = edit(
+      acme(),
+      ".github/workflows/cleanup-acme.yml",
+      "provider: acme",
+      "provider: zeta",
+    );
+    expectError(
+      files,
+      /start-cleanup-on-main needs provider: acme and workflow: cleanup-acme\.yml/,
+    );
+  });
+
+  it("fails on start-cleanup-on-main with another workflow", () => {
+    const files = edit(
+      acme(),
+      ".github/workflows/cleanup-acme.yml",
+      "workflow: cleanup-acme.yml",
+      "workflow: deploy-acme.yml",
+    );
+    expectError(files, /start-cleanup-on-main needs provider: acme/);
+  });
+
+  it("fails on a deploy that writes its own summary", () => {
+    const files = edit(
+      acme(),
+      ".github/workflows/deploy-acme.yml",
+      'bash deploy/ci/write-summary.sh --url "$URL"',
+      'echo "## Paranoid is running" >> "$GITHUB_STEP_SUMMARY"',
+    );
+    expectError(
+      files,
+      /deploy-acme\.yml: doesn't write its summary with deploy\/ci\/write-summary\.sh/,
+    );
+  });
+
+  it("fails on a deploy without the cost check on its own prices", () => {
+    const files = edit(
+      acme(),
+      ".github/workflows/deploy-acme.yml",
+      "--prices deploy/acme/prices.json",
+      "--prices deploy/zeta/prices.json",
+    );
+    expectError(
+      files,
+      /deploy-acme\.yml: doesn't run the cost check, packages\/deploy\/src\/cli\.ts, with --prices deploy\/acme\/prices\.json/,
+    );
+  });
+
+  it("fails on a settings.sh that doesn't use shared-settings.sh", () => {
+    const files = edit(
+      acme(),
+      "deploy/acme/settings.sh",
+      "shared_settings\n",
+      'whole max_invites "$MAX_INVITES" 1 10000\n',
+    );
+    expectError(
+      files,
+      /deploy\/acme\/settings\.sh: must source deploy\/ci\/shared-settings\.sh and call shared_settings/,
+    );
+  });
+
+  it("fails on a settings.sh that only mentions shared-settings.sh", () => {
+    const files = edit(
+      acme(),
+      "deploy/acme/settings.sh",
+      '. "$here/../ci/shared-settings.sh"',
+      "# like deploy/ci/shared-settings.sh",
+    );
+    expectError(files, /deploy\/acme\/settings\.sh: must source/);
+  });
+
+  it("fails on a delete-servers.sh that reads its own mode", () => {
+    const files = edit(
+      acme(),
+      "deploy/acme/delete-servers.sh",
+      "delete_mode '[0-9]+' \"$@\"",
+      'case "$1" in all | finished | run) ;; esac',
+    );
+    expectError(
+      files,
+      /deploy\/acme\/delete-servers\.sh: must source deploy\/ci\/delete-mode\.sh and read its mode with delete_mode <pattern> "\$@"/,
+    );
+  });
+
+  it("fails on a missing script", () => {
+    const files = acme();
+    files.delete("deploy/acme/delete-servers.sh");
+    expectError(files, /deploy\/acme\/delete-servers\.sh: is missing/);
   });
 });
