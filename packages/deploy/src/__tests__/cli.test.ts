@@ -13,7 +13,7 @@ writeFileSync(
     regions: {
       "eu-test-1": {
         name: "Test",
-        servers: { small: 0.0086 },
+        servers: { small: 0.0086, medium: 0.03 },
         items: [{ name: "public IPv4 address", usdPerHour: 0.005 }],
         egress: { usdPerGb: 0.09 },
       },
@@ -81,6 +81,92 @@ describe("cli", () => {
       "1",
     );
     expect(result.status).toBe(1);
-    expect(result.stdout).toContain("has no price for large. It has small.");
+    expect(result.stdout).toContain(
+      "has no price for large. It has small, medium.",
+    );
+  });
+
+  describe("with several server types", () => {
+    const several = (servers: string, limitUsd: string) =>
+      run(
+        "--server",
+        servers,
+        "--lifetime-minutes",
+        "60",
+        "--egress-mbit",
+        "2",
+        "--limit-usd",
+        limitUsd,
+      );
+
+    it("checks each one and writes the highest worst case", () => {
+      const result = several("medium,small", "1");
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain(
+        "Worst case for this deployment on small",
+      );
+      expect(result.stdout).toContain(
+        "Worst case for this deployment on medium",
+      );
+      expect(result.stdout).toContain("- small, running, for 1 h: $0.0086");
+      expect(result.stdout).toContain("- medium, running, for 1 h: $0.0300");
+      expect(result.stdout).toContain(
+        "The highest worst case is medium's, $0.1160.",
+      );
+      expect(result.githubEnv).toBe("WORST_CASE_USD=0.1160\n");
+    });
+
+    it("writes the same whatever the order", () => {
+      expect(several("small,medium", "1").githubEnv).toBe(
+        "WORST_CASE_USD=0.1160\n",
+      );
+    });
+
+    it("refuses them if one is above the limit, with a lifetime that fits both", () => {
+      // small's worst case for an hour is $0.0946, medium's $0.1160
+      const result = several("small,medium", "0.10");
+      expect(result.status).toBe(1);
+      expect(result.githubEnv).toBe("WORST_CASE_USD=0.1160\n");
+      expect(result.stdout).toContain(
+        "::error::The worst case, $0.1160 on medium, is more than the limit, $0.10.",
+      );
+      const fitting =
+        /The longest lifetime that fits every server type is (\d+) minutes/.exec(
+          result.stdout,
+        );
+      expect(fitting).not.toBeNull();
+      const minutes = Number(fitting?.[1]);
+      expect(minutes).toBeGreaterThan(0);
+      expect(minutes).toBeLessThan(60);
+      expect(several("medium", "0.10").stdout).toContain(
+        `The longest lifetime that fits is ${minutes} minutes.`,
+      );
+    });
+
+    it("refuses one without a price", () => {
+      const result = several("small,large", "1");
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("has no price for large.");
+      expect(result.githubEnv).toBe("");
+    });
+
+    it.each([["small,"], [",small"], ["small,,medium"]])(
+      "refuses an empty type in %s",
+      (servers) => {
+        const result = several(servers, "1");
+        expect(result.status).toBe(1);
+        expect(result.stdout).toContain(
+          "::error::--server must be server types separated by commas",
+        );
+      },
+    );
+
+    it("refuses a type named twice", () => {
+      const result = several("small,small", "1");
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "::error::--server names a server type twice: 'small,small'",
+      );
+    });
   });
 });
