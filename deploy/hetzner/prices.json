@@ -1,0 +1,70 @@
+{
+  "checked": "2026-11-20",
+  "about": "Read by packages/deploy (its src/prices.ts explains the format) for the worst-case cost check in deploy-hetzner.yml, which checks every type in HCLOUD_SERVER_TYPES. Hetzner prices in EUR, excluding VAT, and the check takes USD, so each price is Hetzner's EUR price times 1.0990, the European Central Bank's euro reference rate for USD on 2026-11-20, rounded up. A server's hourly price is the higher of Hetzner's hourly price and its monthly price divided by 730, and Hetzner bills every started hour (wholeHours). A server is billed the same while it's off (serverBilledWhileStopped), until it's deleted. Its disk is in the price. Its primary IPv4 address is its own item: Hetzner's docs give EUR 0.50 a month but no hourly price on the pages checked, so it's taken as EUR 0.001 an hour, more than that monthly price spread over any month. Hetzner's product pages say their prices include IPv4, so this may count it twice, which only makes the check stricter. Outbound traffic is 0: each server includes 20 TB a month in the EU, and MAX_EGRESS_MBIT is at most 50 Mbit/s, about 0.56 TB in the longest deploy (25 hours) and 16 TB in a month. Only the EU locations are listed, so a deploy elsewhere is refused. cleanupDelayMinutes covers a server that powered off, or reached its lifetime, until cleanup-hetzner.yml deletes it: up to an hour between cleanup runs, 15 minutes more for a server that powered off right after it was created, and 45 minutes for GitHub delaying the scheduled run. Update every price, the rate and the date together, and docs/deploy/hetzner.md's cost table too.",
+  "sources": {
+    "servers": "cx23 (2 shared x86 vCPUs, 4 GB) EUR 0.0096 an hour, at most EUR 5.99 a month; cax11 (2 shared Arm vCPUs, 4 GB) EUR 0.0104 an hour, at most EUR 6.49 a month, from https://www.hetzner.com/cloud/cost-optimized/. cpx12 (1 shared x86 vCPU, 2 GB) EUR 0.0160 an hour, at most EUR 11.99 a month in fsn1 and nbg1 and EUR 9.99 in hel1, from https://www.hetzner.com/cloud/regular-performance/. Excluding VAT.",
+    "billing": "Billed by the hour, rounded up, never more than the monthly price, and for as long as the server exists, on or off, from https://docs.hetzner.com/cloud/billing/faq/",
+    "ipv4": "EUR 0.50 a month excluding VAT for a primary IPv4 address, IPv6 free, from https://docs.hetzner.com/cloud/servers/overview/",
+    "egress": "At least 20 TB of outbound traffic a month included in the EU, EUR 1 for each TB more, incoming traffic free, from https://docs.hetzner.com/cloud/billing/faq/ and the product pages",
+    "rate": "1 EUR = 1.0990 USD on 2026-11-20, from https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+  },
+  "currency": "USD",
+  "wholeHours": true,
+  "cleanupDelayMinutes": 120,
+  "regions": {
+    "nbg1": {
+      "name": "Nuremberg",
+      "servers": {
+        "cx23": 0.010551,
+        "cax11": 0.01143,
+        "cpx12": 0.018051
+      },
+      "serverBilledWhileStopped": true,
+      "items": [
+        {
+          "name": "primary IPv4 address",
+          "usdPerHour": 0.001099
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0
+      }
+    },
+    "fsn1": {
+      "name": "Falkenstein",
+      "servers": {
+        "cx23": 0.010551,
+        "cax11": 0.01143,
+        "cpx12": 0.018051
+      },
+      "serverBilledWhileStopped": true,
+      "items": [
+        {
+          "name": "primary IPv4 address",
+          "usdPerHour": 0.001099
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0
+      }
+    },
+    "hel1": {
+      "name": "Helsinki",
+      "servers": {
+        "cx23": 0.010551,
+        "cax11": 0.01143,
+        "cpx12": 0.017584
+      },
+      "serverBilledWhileStopped": true,
+      "items": [
+        {
+          "name": "primary IPv4 address",
+          "usdPerHour": 0.001099
+        }
+      ],
+      "egress": {
+        "usdPerGb": 0
+      }
+    }
+  }
+}

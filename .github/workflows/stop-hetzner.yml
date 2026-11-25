@@ -1,0 +1,56 @@
+name: Stop Hetzner
+
+# Deletes every Paranoid server on Hetzner Cloud right away, running or not.
+# Chats that have started keep working, because they're peer to peer.
+#
+# HCLOUD_TOKEN comes from the `hetzner-cleanup` environment, which only `main`
+# may use, and only the step that calls hcloud gets it. Only a manual run
+# starts this. Unlike `hetzner`, that environment has no required reviewers,
+# so stopping never waits for an approval.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shared with deploy-hetzner.yml. Stopping cancels a deploy in progress, or one
+# waiting for approval, and a running deploy then deletes the server it
+# created. This run deletes whatever is left.
+concurrency:
+  group: hetzner
+  cancel-in-progress: true
+
+jobs:
+  stop:
+    name: Delete the servers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: hetzner-cleanup
+    # actions: read, for the preflight
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: hetzner
+          environment: hetzner-cleanup
+          vars: ${{ toJSON(vars) }}
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+
+      - name: Set up hcloud
+        uses: ./.github/actions/setup-hcloud
+
+      - name: Delete every server
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: bash deploy/hetzner/delete-servers.sh all
