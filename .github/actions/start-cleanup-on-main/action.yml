@@ -1,0 +1,37 @@
+name: Start the cleanup on main
+description: >-
+  The scheduled cleanup's start job, the same for every provider. Scheduled
+  runs use the default branch, dev, which can't use the <provider>-cleanup
+  environment, so this starts the provider's cleanup workflow on main
+  instead, and that run cleans up. Without a <provider>-cleanup environment
+  or the workflow on main, nothing can have been deployed, so it starts
+  nothing and passes. See README.md here.
+
+inputs:
+  provider:
+    description: The provider, whose environment is <provider>-cleanup, such as upcloud.
+    required: true
+  workflow:
+    description: The cleanup workflow's file, cleanup-<provider>.yml.
+    required: true
+  token:
+    description: >-
+      Reads whether the environment and the workflow on main exist, and
+      starts the workflow. With the default, the job's token, the job needs
+      the permission actions write.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    # In deploy/ci, where CI's shellcheck checks it. The job has checked out
+    # the repository, since a local action needs that too.
+    - name: Start the cleanup on main
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ github.repository }}
+        PROVIDER: ${{ inputs.provider }}
+        WORKFLOW: ${{ inputs.workflow }}
+      run: bash deploy/ci/start-cleanup.sh
