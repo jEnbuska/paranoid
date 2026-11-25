@@ -1,0 +1,185 @@
+name: Deploy to Azure
+
+# Starts a Paranoid server on Azure for a set number of invites. It powers
+# itself off once the last one is finished, or when its lifetime is over, and
+# the backstop, or else cleanup-azure.yml, then deletes it. See
+# docs/deploy/azure.md.
+#
+# No secret exists for Azure. The job signs in through GitHub OIDC as the
+# managed identity paranoid-deployer, whose federated credential trusts only
+# this repository's `azure` environment, which only `main` may use and which
+# waits for the owner's approval before each deploy. Its IDs are variables
+# of that environment, not secrets. Only a manual run starts this workflow,
+# never a pull request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_invites:
+        description: "Invites before the server shuts down. Empty: the MAX_INVITES variable, or 5."
+        required: false
+        type: string
+      lifetime_minutes:
+        description: "Minutes until it shuts down at the latest, at most 1440 (24 hours). Empty: the LIFETIME_MINUTES variable, or 60."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Shared with stop-azure.yml, so two deploys never overlap: a deploy waits
+# for the run before it to finish. Stop Azure cancels a deploy that's running
+# or waiting for approval, whose last step then deletes what it made. Clean
+# up Azure has a group of its own, so a deploy waiting for approval never
+# holds it up.
+concurrency:
+  group: azure
+  cancel-in-progress: false
+
+jobs:
+  # Before anyone is asked to approve the deploy: fails a run that someone
+  # without admin permission started, and checks the environments and the
+  # repository variables. The deploy job runs it again for the azure
+  # environment's own variables.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reads the environments' settings
+      actions: read
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the deploy's requirements
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: azure
+          environment: azure
+          in-environment: "false"
+          vars: ${{ toJSON(vars) }}
+
+  deploy:
+    name: Deploy to Azure
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: azure
+      url: ${{ steps.create.outputs.url }}
+    permissions:
+      contents: read
+      # Reads the environments' settings, for the preflight
+      actions: read
+      # Only for the OIDC token that azure/login exchanges with Azure
+      id-token: write
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'paranoid' }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The azure environment's own variables, now that the job has it. No
+      # secret exists to pass.
+      - name: Check the deploy's requirements
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: azure
+          environment: azure
+          vars: ${{ toJSON(vars) }}
+
+      # The workflow's inputs, and the settings that reach the server, before
+      # anything is deleted, so a bad one leaves a running server alone
+      - name: Check the settings
+        env:
+          MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
+          LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
+          MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
+          REGION: ${{ vars.AZURE_REGION || 'swedencentral' }}
+          VM_SIZE: ${{ vars.AZURE_VM_SIZE || 'Standard_B2ats_v2' }}
+          IMAGE: ${{ vars.AZURE_IMAGE || 'Debian:debian-13:13-gen2:latest' }}
+          MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
+        run: bash deploy/azure/settings.sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Before signing in to Azure, so nothing starts if it's too much. A VM
+      # that powered itself off bills like a running one until it's deleted,
+      # so the worst case adds the price file's cleanupDelayMinutes, 2 hours:
+      # the backstop deletes it within minutes, and the hourly Clean up Azure
+      # within about 2 hours even when GitHub runs it late. The check needs
+      # only Node.js, no install, and writes WORST_CASE_USD for the summary.
+      # MAX_DEPLOY_COST_USD comes from GITHUB_ENV, as settings.sh checked it
+      - name: Check the worst-case cost
+        run: >-
+          node packages/deploy/src/cli.ts
+          --prices deploy/azure/prices.json
+          --region "$REGION" --server "$VM_SIZE"
+          --lifetime-minutes "$LIFETIME_MINUTES"
+          --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
+
+      - name: Set up the Azure CLI
+        uses: ./.github/actions/setup-az
+
+      - name: Sign in to Azure
+        id: login
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Running or stopped, so there's only ever one server
+      - name: Delete the existing servers
+        run: bash deploy/azure/delete-servers.sh all
+
+      # The server fetches this exact commit of this repository, which is
+      # public, so it needs no credentials.
+      - name: Create the server
+        id: create
+        env:
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/azure/create-server.sh
+
+      # The server installs and builds the app first, which takes a few
+      # minutes.
+      - name: Wait for the app
+        env:
+          HOST: ${{ steps.create.outputs.host }}
+        run: bash deploy/ci/wait-for-app.sh "$HOST" 900
+
+      - name: Write the summary
+        env:
+          URL: ${{ steps.create.outputs.url }}
+          EXPIRES: ${{ steps.create.outputs.expires }}
+        run: |
+          shutdown=$(date -u -d "@$EXPIRES" '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "## Paranoid is running"
+            echo
+            echo "**<$URL>**"
+            echo
+            echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
+            echo "- It's a $VM_SIZE VM in $REGION. The backstop deletes it within a few minutes of shutting down, Clean up Azure within the hour, and Stop Azure right away."
+            echo "- The most it can cost is \$$WORST_CASE_USD."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Also when the run is cancelled, for example by stop-azure.yml
+      - name: Delete the server after a failed deploy
+        if: (failure() || cancelled()) && steps.login.outcome == 'success'
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/azure/delete-servers.sh run "$RUN_ID"

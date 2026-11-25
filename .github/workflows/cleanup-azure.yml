@@ -1,0 +1,114 @@
+name: Clean up Azure
+
+# Every hour, at minute 5, deletes the Paranoid VMs on Azure that are stopped
+# or past their expiry time, with their disks, NICs and public IPs, and any
+# of those left without a VM once they've expired. A VM that powered itself
+# off is still billed like a running one until it's deleted. The backstop (a
+# Logic App in Azure, see deploy/azure/backstop.json) deletes it within
+# minutes whatever GitHub does; this is the second line.
+#
+# It signs in through GitHub OIDC, with no secret, as paranoid-cleaner,
+# which can only find and delete, using the `azure-cleanup` environment,
+# which only `main` may use and which holds its IDs as variables. Unlike
+# `azure`, it needs no approval, so the schedule never waits. Scheduled runs
+# use the default branch, `dev`, so they can't use the environment
+# themselves: the `start` job starts this workflow on `main` instead, and
+# that run cleans up.
+
+on:
+  schedule:
+    - cron: "5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  start:
+    name: Start the cleanup on main
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      # Without an azure-cleanup environment or a cleanup-azure.yml on main,
+      # there's nothing to clean up with. deploy-azure.yml and
+      # cleanup-azure.yml reach main together. The cleanup job checks the
+      # environment's settings with the preflight.
+      - name: Start the cleanup on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          missing() {
+            local error
+            if error=$(gh api "$1" --silent 2>&1); then
+              return 1
+            fi
+            if [[ $error == *"HTTP 404"* ]]; then
+              return 0
+            fi
+            echo "::error::$error"
+            exit 1
+          }
+          if missing "repos/$REPO/environments/azure-cleanup"; then
+            echo "There's no azure-cleanup environment, so there's nothing to clean up with. See docs/deploy/azure.md."
+          elif missing "repos/$REPO/contents/.github/workflows/cleanup-azure.yml?ref=main"; then
+            echo "cleanup-azure.yml isn't on main yet, and neither is deploy-azure.yml, so there's nothing to clean up."
+          else
+            gh workflow run cleanup-azure.yml --repo "$REPO" --ref main
+            echo "Started the cleanup on main."
+          fi
+
+  cleanup:
+    name: Delete finished servers
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: azure-cleanup
+    permissions:
+      contents: read
+      # Reads the environments' settings, for the preflight
+      actions: read
+      id-token: write
+    # Its own group, so it never waits behind a deploy, even one waiting for
+    # approval. It can run while a deploy creates its server: it only deletes
+    # VMs that Azure has finished creating and that are stopped, or are past
+    # their expiry, and parts without a VM past theirs.
+    concurrency:
+      group: azure-cleanup
+      cancel-in-progress: false
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'paranoid' }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Not owner-only: the scheduled start job runs as whoever last edited
+      # the schedule, and this run as github-actions[bot]
+      - name: Check the requirements
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: azure
+          environment: azure-cleanup
+          owner-only: "false"
+          vars: ${{ toJSON(vars) }}
+
+      - name: Set up the Azure CLI
+        uses: ./.github/actions/setup-az
+
+      - name: Sign in to Azure
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Delete the servers that are off or expired
+        run: bash deploy/azure/delete-servers.sh finished

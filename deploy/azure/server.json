@@ -1,0 +1,125 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "One Paranoid server: a NIC with the public IP create-server.sh made, a VM running the shared cloud-init, and the tags on its OS disk. Deleting the VM deletes its disk, NIC and public IP too. No SSH (no password, a key nobody has, port 22 closed by the subnet's NSG), no VM extensions and no boot diagnostics. Accelerated networking stays off: it adds a second network interface inside the VM, which the outbound limit on eth0 wouldn't cover."
+  },
+  "parameters": {
+    "name": { "type": "string" },
+    "vmSize": { "type": "string" },
+    "imagePublisher": { "type": "string" },
+    "imageOffer": { "type": "string" },
+    "imageSku": { "type": "string" },
+    "imageVersion": { "type": "string" },
+    "subnetId": { "type": "string" },
+    "publicIpId": { "type": "string" },
+    "customData": {
+      "type": "string",
+      "metadata": {
+        "description": "The rendered deploy/server/cloud-init.yaml. It holds no secret."
+      }
+    },
+    "sshPublicKey": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure requires a key or a password for Linux. Nobody has this key's private half."
+      }
+    },
+    "tags": { "type": "object" }
+  },
+  "variables": {
+    "nicName": "[concat(parameters('name'), '-nic')]",
+    "diskName": "[concat(parameters('name'), '-disk')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2024-05-01",
+      "name": "[variables('nicName')]",
+      "location": "[resourceGroup().location]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "enableAcceleratedNetworking": false,
+        "ipConfigurations": [
+          {
+            "name": "ipconfig",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": { "id": "[parameters('subnetId')]" },
+              "publicIPAddress": {
+                "id": "[parameters('publicIpId')]",
+                "properties": { "deleteOption": "Delete" }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2024-07-01",
+      "name": "[parameters('name')]",
+      "location": "[resourceGroup().location]",
+      "tags": "[parameters('tags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+      ],
+      "properties": {
+        "hardwareProfile": { "vmSize": "[parameters('vmSize')]" },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[parameters('imagePublisher')]",
+            "offer": "[parameters('imageOffer')]",
+            "sku": "[parameters('imageSku')]",
+            "version": "[parameters('imageVersion')]"
+          },
+          "osDisk": {
+            "name": "[variables('diskName')]",
+            "createOption": "FromImage",
+            "caching": "ReadWrite",
+            "deleteOption": "Delete",
+            "managedDisk": { "storageAccountType": "StandardSSD_LRS" }
+          }
+        },
+        "osProfile": {
+          "computerName": "[parameters('name')]",
+          "adminUsername": "azureuser",
+          "customData": "[base64(parameters('customData'))]",
+          "allowExtensionOperations": false,
+          "linuxConfiguration": {
+            "disablePasswordAuthentication": true,
+            "ssh": {
+              "publicKeys": [
+                {
+                  "path": "/home/azureuser/.ssh/authorized_keys",
+                  "keyData": "[parameters('sshPublicKey')]"
+                }
+              ]
+            }
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]",
+              "properties": { "primary": true, "deleteOption": "Delete" }
+            }
+          ]
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": { "enabled": false }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/tags",
+      "apiVersion": "2021-04-01",
+      "name": "default",
+      "scope": "[concat('Microsoft.Compute/disks/', variables('diskName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', parameters('name'))]"
+      ],
+      "properties": { "tags": "[parameters('tags')]" }
+    }
+  ]
+}

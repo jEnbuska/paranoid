@@ -1,0 +1,65 @@
+name: Stop Azure
+
+# Deletes every Paranoid VM on Azure right away, running or not, with its
+# disk, NIC and public IP. Chats that have started keep working, because
+# they're peer to peer.
+#
+# It signs in through GitHub OIDC, with no secret, as paranoid-cleaner,
+# which can only find and delete, using the `azure-cleanup` environment,
+# which only `main` may use and which holds its IDs as variables. It doesn't
+# wait for an approval, unlike a deploy, so stopping is never held up. Only a
+# manual run starts this.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shared with deploy-azure.yml. Stopping cancels a deploy that's running or
+# waiting for approval, so it never waits behind one. The cancelled deploy's
+# last step deletes the server it created, and this run, which starts once
+# that's done, deletes whatever is left.
+concurrency:
+  group: azure
+  cancel-in-progress: true
+
+jobs:
+  stop:
+    name: Delete the servers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: azure-cleanup
+    permissions:
+      contents: read
+      # Reads the environments' settings, for the preflight
+      actions: read
+      id-token: write
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'paranoid' }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the requirements
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: azure
+          environment: azure-cleanup
+          vars: ${{ toJSON(vars) }}
+
+      - name: Set up the Azure CLI
+        uses: ./.github/actions/setup-az
+
+      - name: Sign in to Azure
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Delete every server
+        run: bash deploy/azure/delete-servers.sh all

@@ -1,0 +1,52 @@
+name: Set up the Azure CLI
+description: >-
+  Installs the Azure CLI, az, at a pinned version from Microsoft's package
+  repository, after checking the package against its SHA-256, in place of
+  whatever version the runner image has. Turns off az's telemetry and its
+  automatic installs of extensions.
+
+# To update: pick a release at least a week old from
+# https://github.com/Azure/azure-cli/releases, and take each package's SHA256
+# from https://packages.microsoft.com/repos/azure-cli/dists/<codename>/main/binary-amd64/Packages
+# for noble (Ubuntu 24.04) and resolute (Ubuntu 26.04). Change the version and
+# both checksums together. Dependabot doesn't update this.
+
+runs:
+  using: composite
+  steps:
+    - name: Install the Azure CLI
+      shell: bash
+      env:
+        AZ_VERSION: 2.92.0
+        # Checked on 2026-11-22
+        NOBLE_SHA256: 83c994db3fdbb70368c257f575e0d181f0c8ffed7ebcd761596c8f14af678346
+        RESOLUTE_SHA256: 3731b9b982402fd77564dd4aec63920435d211dcd06b4228d09ecfb17245553e
+      run: |
+        set -euo pipefail
+        # shellcheck source=/dev/null
+        . /etc/os-release
+        case "$VERSION_CODENAME" in
+          noble) sum=$NOBLE_SHA256 ;;
+          resolute) sum=$RESOLUTE_SHA256 ;;
+          *)
+            echo "::error::There's no pinned Azure CLI package for Ubuntu $VERSION_CODENAME. Add its checksum to .github/actions/setup-az."
+            exit 1
+            ;;
+        esac
+        [ "$(dpkg --print-architecture)" = amd64 ] || {
+          echo "::error::The pinned Azure CLI package is for amd64 runners only."
+          exit 1
+        }
+        deb="$RUNNER_TEMP/azure-cli.deb"
+        curl -fsSL --retry 3 -o "$deb" \
+          "https://packages.microsoft.com/repos/azure-cli/pool/main/a/azure-cli/azure-cli_${AZ_VERSION}-1~${VERSION_CODENAME}_amd64.deb"
+        echo "$sum  $deb" | sha256sum --check --strict -
+        sudo dpkg -i "$deb" >/dev/null
+        rm -f "$deb"
+        installed=$(az version --query '"azure-cli"' -o tsv)
+        [ "$installed" = "$AZ_VERSION" ] || {
+          echo "::error::Installed the Azure CLI $AZ_VERSION, but az says $installed."
+          exit 1
+        }
+        az config set core.collect_telemetry=false extension.use_dynamic_install=no --only-show-errors
+        echo "Azure CLI $installed"

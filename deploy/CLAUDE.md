@@ -26,3 +26,5 @@ Anyone with a fork can start a Paranoid server from GitHub Actions. Each provide
 ## Providers
 
 Each provider's own rules go here, one bullet each, linking its guide (`../docs/deploy/<provider>.md`, relative to this file).
+
+- **Azure** ([guide](../docs/deploy/azure.md)): no secret exists. GitHub signs in through OIDC as `paranoid-deployer` (environment `azure`) or the delete-only `paranoid-cleaner` (`azure-cleanup`), each with one federated credential and a custom role on the `paranoid` resource group only, so never add a client secret, a certificate or a subscription-wide role. A role permission added in `deploy/azure/bootstrap.sh` is listed with its reason in the guide's "The credentials". The Logic App backstop (`deploy/azure/backstop.json`) compares the `expires` tag as Unix seconds. The Azure CLI comes from `.github/actions/setup-az`, pinned with a checksum per Ubuntu release: change the version and both checksums together, and add a release's checksum before runners move to it.
