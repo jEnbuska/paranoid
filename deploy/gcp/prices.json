@@ -1,0 +1,84 @@
+{
+  "about": "Google Cloud's on-demand prices in USD for one Paranoid VM: an e2-micro, its ephemeral IPv4 address, a 10 GiB pd-standard boot disk and Standard Tier egress. Read from Google's pricing pages on the date below. No free tier is subtracted: not the e2-micro and 30 GiB-months of disk in the US regions, not the first IPv4 hour, and not the first 200 GiB of Standard Tier egress a month. Google bills VMs by the second (wholeHours false). cleanupDelayMinutes covers a VM that powered off until cleanup-gcp.yml deletes it, when only its disk is billed. Update every price and the date together, and docs/deploy/gcp.md's cost table too.",
+  "sources": [
+    "https://cloud.google.com/products/compute/pricing/general-purpose",
+    "https://cloud.google.com/compute/disks-image-pricing",
+    "https://cloud.google.com/vpc/network-pricing"
+  ],
+  "checked": "2026-11-20",
+  "currency": "USD",
+  "wholeHours": false,
+  "cleanupDelayMinutes": 120,
+  "regions": {
+    "europe-north1": {
+      "name": "Finland",
+      "servers": { "e2-micro": 0.009222195 },
+      "serverBilledWhileStopped": false,
+      "items": [
+        {
+          "name": "IPv4 address",
+          "usdPerHour": 0.005,
+          "billedWhileStopped": false
+        },
+        { "name": "disk", "usdPerGibHour": 0.000060274, "gib": 10 }
+      ],
+      "egress": { "usdPerGib": 0.085 }
+    },
+    "europe-west1": {
+      "name": "Belgium",
+      "servers": { "e2-micro": 0.009214433 },
+      "serverBilledWhileStopped": false,
+      "items": [
+        {
+          "name": "IPv4 address",
+          "usdPerHour": 0.005,
+          "billedWhileStopped": false
+        },
+        { "name": "disk", "usdPerGibHour": 0.000054795, "gib": 10 }
+      ],
+      "egress": { "usdPerGib": 0.085 }
+    },
+    "us-central1": {
+      "name": "Iowa",
+      "servers": { "e2-micro": 0.008376428 },
+      "serverBilledWhileStopped": false,
+      "items": [
+        {
+          "name": "IPv4 address",
+          "usdPerHour": 0.005,
+          "billedWhileStopped": false
+        },
+        { "name": "disk", "usdPerGibHour": 0.000054795, "gib": 10 }
+      ],
+      "egress": { "usdPerGib": 0.085 }
+    },
+    "us-east1": {
+      "name": "South Carolina",
+      "servers": { "e2-micro": 0.008376428 },
+      "serverBilledWhileStopped": false,
+      "items": [
+        {
+          "name": "IPv4 address",
+          "usdPerHour": 0.005,
+          "billedWhileStopped": false
+        },
+        { "name": "disk", "usdPerGibHour": 0.000054795, "gib": 10 }
+      ],
+      "egress": { "usdPerGib": 0.085 }
+    },
+    "us-west1": {
+      "name": "Oregon",
+      "servers": { "e2-micro": 0.008376428 },
+      "serverBilledWhileStopped": false,
+      "items": [
+        {
+          "name": "IPv4 address",
+          "usdPerHour": 0.005,
+          "billedWhileStopped": false
+        },
+        { "name": "disk", "usdPerGibHour": 0.000054795, "gib": 10 }
+      ],
+      "egress": { "usdPerGib": 0.085 }
+    }
+  }
+}

@@ -14,6 +14,10 @@
       ],
       "includeEntryExports": false
     },
+    "deploy/gcp": {
+      // The deploy workflows run it with node (deploy/gcp/ledger.sh)
+      "entry": ["cli.ts"]
+    },
     "packages/client-app": {
       // Only imported from CSS (`@import` in src/index.css), which knip
       // doesn't parse

@@ -40,7 +40,7 @@ Vulnerabilities are reported privately, through the repository's "Report a vulne
 
 ## Monorepo
 
-pnpm workspace (`pnpm-workspace.yaml`) with five packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and preflight, and their CLIs, run by Node.js directly from TypeScript, with each provider's price file and requirements in `deploy/<provider>/prices.json` and `requirements.json`) and `packages/e2e` (Playwright tests).
+pnpm workspace (`pnpm-workspace.yaml`) with six packages: `packages/client-app` (React + Vite), `packages/signaling-server` (socket.io, run by Node.js directly from TypeScript), `packages/shared-lib` (shared utils and socket event types, imported as source as `shared-lib/...`), `packages/deploy` (the deploy workflows' worst-case cost check and preflight, and their CLIs, run by Node.js directly from TypeScript, with each provider's price file and requirements in `deploy/<provider>/prices.json` and `requirements.json`), `packages/e2e` (Playwright tests) and `deploy/gcp` (the Google Cloud deployment's ledger for its spending limit, run by its workflows with Node).
 
 ## Installing dependencies
 

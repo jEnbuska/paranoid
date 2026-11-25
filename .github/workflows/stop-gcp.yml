@@ -1,0 +1,83 @@
+name: Stop Google Cloud
+
+# Deletes every Paranoid VM on Google Cloud right away, running or not, and
+# settles its cost in the ledger. Chats that have started keep working,
+# because they're peer to peer.
+#
+# No secret: it signs in with Workload Identity Federation as the delete-only
+# paranoid-cleanup service account, in the `gcp-cleanup` environment, which
+# only `main` may use. It doesn't wait for approval, so it's quick in an
+# emergency, and it can only delete. Only a manual run starts this.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shared with deploy-gcp.yml. Stopping cancels a deploy that's running, and
+# one waiting for approval if GitHub counts that as in the group. Either
+# way it never waits behind one. A cancelled
+# deploy deletes the VM it created and settles its cost. This run then
+# deletes whatever is left.
+concurrency:
+  group: gcp
+  cancel-in-progress: true
+
+jobs:
+  stop:
+    name: Delete the servers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      # The preflight reads the environments' settings
+      actions: read
+    environment: gcp-cleanup
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The environment's variables, the repository variables and the shared
+      # ones, against deploy/gcp/requirements.json, before any cloud step
+      - name: Run the deploy preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: gcp
+          environment: gcp-cleanup
+          vars: ${{ toJSON(vars) }}
+
+      # deploy/gcp/cli.ts runs with Node's type stripping and imports
+      # packages/deploy, so pnpm links that workspace package. --prod skips
+      # every dev dependency, so nothing else is downloaded.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install the ledger's dependencies
+        run: pnpm install --frozen-lockfile --prod --filter deploy-gcp
+
+      - name: Sign in to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ vars.GCP_PROJECT }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      # Pinned and checked, not the runner image's gcloud
+      - name: Set up gcloud
+        uses: ./.github/actions/setup-gcloud
+
+      - name: Delete every server
+        env:
+          GCP_BUCKET: ${{ vars.GCP_BUCKET }}
+          CLOUDSDK_CORE_PROJECT: ${{ vars.GCP_PROJECT }}
+        run: bash deploy/gcp/delete-servers.sh all
