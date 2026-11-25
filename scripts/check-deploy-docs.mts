@@ -1302,9 +1302,9 @@ function checkSharedPieces(
       `${deployPath}: doesn't write its summary with deploy/ci/write-summary.sh. ${see}`,
     );
   }
-  const prices = `deploy/${provider}/prices.json`.replace(/[./]/g, "\\$&");
+  // A provider name is [a-z0-9-], so it needs no escaping in a pattern
   const costCheck = new RegExp(
-    `\\bpackages/deploy/src/cli\\.ts\\b[\\s\\S]*--prices\\s+${prices}\\b`,
+    `\\bpackages/deploy/src/cli\\.ts\\b[\\s\\S]*--prices\\s+deploy/${provider}/prices\\.json\\b`,
   );
   if (!deploy.some((step) => runs(step, costCheck))) {
     errors.push(
@@ -1312,28 +1312,26 @@ function checkSharedPieces(
     );
   }
 
+  // Each sourced as such as `. "$here/../ci/shared-settings.sh"`
   const scripts = [
     [
       "settings.sh",
       "shared-settings.sh",
+      /^\s*(\.|source)\s+"?[^"\s]*\bci\/shared-settings\.sh"?\s*$/m,
       /^\s*shared_settings\s*$/m,
       "and call shared_settings",
     ],
     [
       "delete-servers.sh",
       "delete-mode.sh",
+      /^\s*(\.|source)\s+"?[^"\s]*\bci\/delete-mode\.sh"?\s*$/m,
       /^\s*delete_mode\s+\S+\s+"\$@"\s*$/m,
       'and read its mode with delete_mode <pattern> "$@"',
     ],
   ] as const;
-  for (const [name, piece, call, how] of scripts) {
+  for (const [name, piece, sources, call, how] of scripts) {
     const path = `deploy/${provider}/${name}`;
     const text = files.get(path);
-    // Such as `. "$here/../ci/shared-settings.sh"`
-    const sources = new RegExp(
-      `^\\s*(\\.|source)\\s+"?[^"\\s]*\\bci/${piece.replace(".", "\\.")}"?\\s*$`,
-      "m",
-    );
     if (text === undefined) {
       errors.push(`${path}: is missing. ${see}`);
     } else if (!sources.test(text) || !call.test(text)) {
