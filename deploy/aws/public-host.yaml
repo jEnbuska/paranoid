@@ -1,0 +1,50 @@
+#cloud-config
+# The part of an EC2 instance's user data that fills in PARANOID_HOST, after
+# deploy/server/cloud-init.yaml (see user-data.sh). An instance only sees its
+# private address: its public one is translated to it outside the instance,
+# so deploy/server/setup.sh can't find it itself, and the deploy can't know
+# it before the instance starts. The instance metadata service, which only
+# the instance can reach, has it.
+#
+# This holds no secret either, and asks the metadata service only for the
+# public address. The instance has no role, so the metadata service has no
+# credentials to give.
+#
+# cloud-init merges this part into the one before it. This runcmd goes before
+# that part's runcmd, which starts setup.sh, and after its write_files, which
+# writes /etc/paranoid/deploy.env with an empty PARANOID_HOST= line.
+#
+# It fills PARANOID_HOST in only while it's empty, and only with
+# <ip-with-dashes>.sslip.io for a checked IPv4 address. setup.sh reads
+# deploy.env as data, and the last PARANOID_HOST line counts.
+merge_how:
+  - name: list
+    settings: [prepend]
+  - name: dict
+    settings: [no_replace, recurse_list]
+
+runcmd:
+  - - bash
+    - -ec
+    - |
+      env=/etc/paranoid/deploy.env
+      current=$(sed -n 's/^PARANOID_HOST=//p' "$env" | tail -n 1)
+      if [ -n "$current" ]; then
+        echo "PARANOID_HOST is already $current"
+        exit 0
+      fi
+      imds=http://169.254.169.254/latest
+      token=$(curl -fsS --retry 5 -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' "$imds/api/token")
+      ip=$(curl -fsS --retry 5 -H "X-aws-ec2-metadata-token: $token" "$imds/meta-data/public-ipv4")
+      octet='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
+      if ! [[ $ip =~ ^$octet\.$octet\.$octet\.$octet$ ]]; then
+        echo "The metadata service's public IPv4 address isn't one: '$ip'" >&2
+        exit 1
+      fi
+      host="${ip//./-}.sslip.io"
+      if grep -q '^PARANOID_HOST=$' "$env"; then
+        sed -i "s/^PARANOID_HOST=\$/PARANOID_HOST=$host/" "$env"
+      else
+        echo "PARANOID_HOST=$host" >>"$env"
+      fi
+      echo "PARANOID_HOST is $host"

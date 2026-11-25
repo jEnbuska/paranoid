@@ -1,0 +1,74 @@
+name: Stop AWS
+
+# Terminates every Paranoid server on AWS right away. Chats that have started
+# keep working, because they're peer to peer.
+#
+# The job signs in as the paranoid-cleanup role with its GitHub OIDC token, in
+# the `aws-cleanup` environment, which only `main` may use. That role can only
+# list and terminate Paranoid's servers. The environment has no required
+# reviewer, unlike `aws`, so stopping never waits for an approval. Only a
+# manual run starts this.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shared with deploy-aws.yml, and cancel-in-progress, so stopping never
+# waits: it cancels a deploy in progress, including one waiting for its
+# approval, and any deploy queued behind it. A cancelled deploy terminates
+# the server it started, if it got that far, and this run terminates
+# whatever is left.
+concurrency:
+  group: aws
+  cancel-in-progress: true
+
+jobs:
+  stop:
+    name: Delete the servers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: aws-cleanup
+    permissions:
+      contents: read
+      # Reads the environments' settings
+      actions: read
+      id-token: write
+    # The preflight, the job's first step, checks it if it's set.
+    env:
+      REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Who started it, the environment and its AWS_ROLE_ARN, before any AWS
+      # step
+      - name: Preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: aws
+          environment: aws-cleanup
+          vars: ${{ toJSON(vars) }}
+
+      # Each script checks the format of what it uses too (#141).
+      - name: Check the settings
+        env:
+          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        run: bash deploy/aws/cleanup-settings.sh
+
+      - name: Set up the AWS CLI
+        uses: ./.github/actions/setup-aws-cli
+
+      - name: Sign in to AWS
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: paranoid-stop-${{ github.run_id }}
+          aws-region: ${{ env.REGION }}
+
+      - name: Delete every server
+        run: bash deploy/aws/delete-servers.sh all

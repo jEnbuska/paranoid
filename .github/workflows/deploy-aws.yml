@@ -1,0 +1,190 @@
+name: Deploy to AWS
+
+# Starts a Paranoid server on AWS EC2 for a set number of invites. It powers
+# itself off once the last one is finished, or when its lifetime is over, and
+# powering off terminates it. An EventBridge Scheduler schedule terminates it
+# at the end of its lifetime even if it doesn't. See docs/deploy/aws.md.
+#
+# There's no AWS secret anywhere: the job gets short-lived credentials for the
+# paranoid-deploy role from its GitHub OIDC token. The role trusts only jobs of
+# this repository that use the `aws` environment, which only `main` may use,
+# and whose required reviewer is the repository's owner, so every deploy
+# waits for their approval before it starts. Only a manual run starts this
+# workflow, never a pull request.
+#
+# The repository is public, so its run logs are too. Nothing here prints a
+# secret, because there is none, and the guide sets the logs to be deleted
+# after 1 day.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_invites:
+        description: "Invites before the server shuts down. Empty: the MAX_INVITES variable, or 5."
+        required: false
+        type: string
+      lifetime_minutes:
+        description: "Minutes until it shuts down at the latest, at most 1440 (24 hours). Empty: the LIFETIME_MINUTES variable, or 60."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Shared with stop-aws.yml. A deploy waits for the deploy before it to
+# finish, so two never overlap, and Stop AWS cancels it. A deploy waiting for
+# its approval may hold the group, which only makes other deploys wait.
+# cleanup-aws.yml has a group of its own, so it never waits behind a deploy.
+concurrency:
+  group: aws
+  cancel-in-progress: false
+
+jobs:
+  # Without the environment, so it runs before anyone is asked to approve the
+  # deploy: a run that someone without admin permission started, or one with
+  # a wrong repository variable, fails here, and nobody approves it in vain.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reads the environments' settings
+      actions: read
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check who started it and the repository variables
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: aws
+          environment: aws
+          in-environment: "false"
+          vars: ${{ toJSON(vars) }}
+
+  deploy:
+    name: Deploy to AWS
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: aws
+      url: ${{ steps.create.outputs.url }}
+    permissions:
+      contents: read
+      actions: read
+      # For the OIDC token that the deploy role trusts
+      id-token: write
+    # The preflight, the job's first step, checks every variable that's set,
+    # so the later steps read them as they are.
+    env:
+      MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
+      MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
+      REGION: ${{ vars.AWS_REGION || 'eu-north-1' }}
+      INSTANCE_TYPE: ${{ vars.AWS_INSTANCE_TYPE || 't4g.micro' }}
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The environment's variables, the repository's and the shared ones,
+      # before anything changes, so a bad setting leaves a running server
+      # alone. There's no secret to pass: AWS trusts the job's OIDC token.
+      - name: Preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: aws
+          environment: aws
+          vars: ${{ toJSON(vars) }}
+
+      # The workflow's inputs, which override two of the variables and which
+      # the preflight doesn't see, and, again, every setting that reaches the
+      # server (#141).
+      - name: Check the settings
+        env:
+          MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
+          LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
+          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        run: bash deploy/aws/settings.sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Before signing in to AWS, so a deploy above the limit never starts an
+      # instance or terminates a running one. The instance can run, and send,
+      # until the backstop terminates it, a few minutes after its lifetime.
+      # Terminating stops all billing, so there's no cleanup delay.
+      - name: Check the worst-case cost
+        run: |
+          . deploy/aws/names.sh
+          node packages/deploy/src/cli.ts --prices deploy/aws/prices.json \
+            --region "$REGION" --server "$INSTANCE_TYPE" \
+            --lifetime-minutes "$LIFETIME_MINUTES" \
+            --extra-running-minutes "$BACKSTOP_GRACE_MINUTES" \
+            --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
+
+      - name: Set up the AWS CLI
+        uses: ./.github/actions/setup-aws-cli
+
+      - name: Sign in to AWS
+        id: aws
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: paranoid-deploy-${{ github.run_id }}
+          aws-region: ${{ env.REGION }}
+
+      # So there's only ever one server
+      - name: Delete the existing servers
+        run: bash deploy/aws/delete-servers.sh all
+
+      # The server fetches this exact commit of this repository, which is
+      # public, so it needs no credentials.
+      - name: Create the server
+        id: create
+        env:
+          SCHEDULER_ROLE_ARN: ${{ vars.AWS_SCHEDULER_ROLE_ARN }}
+          SECURITY_GROUP_ID: ${{ vars.AWS_SECURITY_GROUP_ID }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/aws/create-server.sh
+
+      # The server installs and builds the app first, which takes a few
+      # minutes.
+      - name: Wait for the app
+        env:
+          HOST: ${{ steps.create.outputs.host }}
+        run: bash deploy/ci/wait-for-app.sh "$HOST" 600
+
+      - name: Write the summary
+        env:
+          URL: ${{ steps.create.outputs.url }}
+          EXPIRES: ${{ steps.create.outputs.expires }}
+        run: |
+          shutdown=$(date -u -d "@$EXPIRES" '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "## Paranoid is running"
+            echo
+            echo "**<$URL>**"
+            echo
+            echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
+            echo "- It's a $INSTANCE_TYPE instance in $REGION. Shutting down terminates it, and so does the Stop AWS workflow, right away."
+            echo "- If it doesn't shut itself down, its backstop schedule terminates it a few minutes after that, and Clean up AWS within the hour."
+            echo "- The most it can cost is \$$WORST_CASE_USD."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Also when the run is cancelled, for example by stop-aws.yml
+      - name: Delete the server after a failed deploy
+        if: (failure() || cancelled()) && steps.aws.outcome == 'success'
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/aws/delete-servers.sh run "$RUN_ID"
