@@ -10,6 +10,7 @@ This page is the index: how deploying works on every provider, the settings they
 - [What every provider needs from GitHub](#what-every-provider-needs-from-github)
 - [Shared repository variables](#shared-repository-variables)
 - [The cost limit](#the-cost-limit)
+- [What every guide shares](#what-every-guide-shares): [what runs on the server](#what-runs-on-the-server), [privacy](#privacy) and [troubleshooting](#troubleshooting)
 - [Providers](#providers)
 - [Adding a provider](#adding-a-provider)
 
@@ -49,6 +50,46 @@ Every provider uses the same name, `MAX_DEPLOY_COST_USD`, for the most a single 
 
 A provider may add a second limit on top, but never instead of it. Google Cloud is the example: it has no prepaid balance or hard cap on spending, so its deploy also keeps a ledger of the month's deploys and refuses one that doesn't fit the month's total. That's a different amount, the total for a calendar month, so it has its own name with the provider's prefix, `GCP_MONTHLY_BUDGET_USD`, and is listed on Google Cloud's page.
 
+## What every guide shares
+
+Every provider's server runs the same setup, and much of what each guide says about it is the same. It's here once, and each guide links it from its own sections, which add what's true only of that provider.
+
+### What runs on the server
+
+The server gets its setup data from the deploy, [`deploy/server/cloud-init.yaml`](../../deploy/server/cloud-init.yaml), which turns off SSH, locks root's password and sets a timer that powers the server off at the end of its lifetime. It then fetches exactly the deployed commit from the public repository with `git`, which checks every file against its hash, so the server needs no credentials. [`deploy/server/setup.sh`](../../deploy/server/setup.sh) from that commit does the rest:
+
+- installs Node.js 24 and Caddy from pinned releases, after checking their checksums;
+- runs `pnpm install --frozen-lockfile` and builds the app with `VITE_SIGNALING_SERVER=/`, as a user of its own, with a temporary swap file on a server with less than 2 GB of memory;
+- starts the signaling server as a locked-down systemd service on `127.0.0.1` only, with `MAX_INVITES`. When it exits because its last invite is finished, the server powers off;
+- starts Caddy, which gets a Let's Encrypt certificate for `<ip-with-dashes>.sslip.io`, serves the app and passes `/socket.io/` and `/healthz` to the signaling server;
+- limits all outbound traffic to `MAX_EGRESS_MBIT` with `tc`.
+
+None of it is a provider's: a provider whose server starts the setup another way, or has to find its public address first, says so on its page.
+
+### Privacy
+
+The server keeps no access logs. Its own logs hold only connections and errors, in memory, and go when the server is deleted, which deletes its disk too. Messages are end-to-end encrypted, and don't even pass through the server. On every provider, what remains visible to others:
+
+- **The provider**, as the network provider, can see which IP addresses connect to the server, but not message contents. Each guide says what else the provider records, such as its audit log of the deploy's API calls.
+- **Google's STUN servers**, the default, see your users' IP addresses when their browsers find a way to connect. `VITE_ICE_SERVERS` can point to another one.
+- **sslip.io** turns the hostname into the IP address, so it sees the lookups. It and **Let's Encrypt's public Certificate Transparency logs** reveal the server's IP-based hostname, but not who uses it.
+- **GitHub**: in a public fork, anyone signed in to GitHub can read the run summary with the server's URL, and the logs, until the run is deleted. With log retention at 1 day, as every guide sets it, that's a day after the run.
+
+### Troubleshooting
+
+The run's log says which step failed and why. There's no SSH, so you can't log in to a server to look. These are the same on every provider. Each guide's own table has its provider's errors, and its settings' names.
+
+| What you see                                                 | What to do                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The **Preflight** job, or the preflight step of a job, fails | It lists everything that's missing or wrong, by name, with a link to the step of the guide that fixes it, and writes the same list to the run's summary. It never shows a secret's value. Fix each item and run the workflow again.                                 |
+| The preflight says you don't have admin permission           | Deploy and Stop run only when someone with admin permission on the fork starts them, usually its owner. The run stops before anything is approved or created.                                                                                                       |
+| A deploy waits, and its page asks for a review               | It waits for your approval: click **Review deployments**, tick the provider's environment and click **Approve and deploy**. If you can't approve it, check that you're the environment's required reviewer and that **Prevent self-review** is off.                 |
+| "Branch is not allowed to deploy to …"                       | You started the workflow on another branch. Start it on `main`. Check the environment's deployment branch rule says `main`.                                                                                                                                         |
+| The cleanup or the stop waits for a review                   | The `<provider>-cleanup` environment has a required reviewer. Remove it: these two workflows must run without approval.                                                                                                                                             |
+| "The worst case … is more than the limit"                    | The deploy refused before creating anything. Choose a lifetime no longer than the one the message gives, or a lower `MAX_EGRESS_MBIT`, or raise `MAX_DEPLOY_COST_USD`. See [The cost limit](#the-cost-limit).                                                       |
+| "The app didn't come up in time"                             | The server took too long to set up, or its setup failed. The deploy deleted it. The message gives the last reason, for example "Couldn't connect", which means the server never got as far as starting its web server. Run the deploy again, or try another region. |
+| "HTTPS certificate problem"                                  | Let's Encrypt didn't give a certificate for the hostname. It allows only 5 certificates a week for the same hostname, which happens if you deploy many times in a week and get the same IP address. Wait, or try another region to get another address.             |
+
 ## Providers
 
 A provider is listed here only once its pull request has merged, with its page, its workflows and its scripts. **Needs a secret** is "No" for providers that sign in with GitHub's OIDC token. **Deployed for real** says whether the guide has been followed end to end on a real account.
@@ -78,7 +119,7 @@ Every provider's deploy works the same way, so that whoever knows one knows them
    - Identity values are environment secrets or environment variables, in each of `<provider>` and `<provider>-cleanup` that uses them, never repository variables. Only `main`, and for a deploy only once you approve it, can read them.
    - One name per role: a value that differs between the two environments, such as the role or client ID each one signs in as, keeps one name in both, such as `<PROVIDER>_ROLE_ARN`, never a `<PROVIDER>_CLEANUP_…` second name. The environment, not the name, says which one a job gets.
    - Tuning values (region, zone, size, plan, image) and every limit, a provider's own included, such as `GCP_MONTHLY_BUDGET_USD`, are repository variables, like the shared ones.
-   - No job reads an identity value outside its environment, where GitHub gives it as empty. A scheduled cleanup's `start` job, which has no environment, checks only that `<provider>-cleanup` exists, and the cleanup job it starts checks the rest with the preflight.
+   - No job reads an identity value outside its environment, where GitHub gives it as empty. A scheduled cleanup's `start` job, which has no environment, checks only that `<provider>-cleanup` exists, with the [shared action](#shared-pieces), and the cleanup job it starts checks the rest with the preflight.
 3. **Pinned CLIs.** The provider's CLI is installed at a pinned version with a checked checksum, like every download, never taken from the runner image, which changes it without notice. A provider that can't do this says why in its pull request.
 4. **Concurrency groups:** deploy and stop share `<provider>`, so a stop cancels a deploy in progress. Cleanup uses `<provider>-cleanup`, so it never waits behind a deploy that is waiting hours for its approval.
 5. **Scheduled cleanup**, hourly, at a different minute for each provider, so that cleanups of several providers in one fork don't all start at once: UpCloud 17, Hetzner 23, AWS 41, Google Cloud 47, Azure 5. The cost check counts the time a finished server may wait for it, `cleanupDelayMinutes: 120` in the price file, an hour between runs and an hour of margin. AWS has none, because its server terminates itself, and a terminated instance stops billing.
@@ -86,12 +127,12 @@ Every provider's deploy works the same way, so that whoever knows one knows them
 7. **Names:**
    - Jobs: the stop job is "Delete the servers", the cleanup job "Delete finished servers".
    - Steps: "Check the worst-case cost", "Delete the existing servers" and "Create the server" (`id: create`). Every step has a name.
-   - Scripts: `deploy/<provider>/create-server.sh`, and `deploy/<provider>/delete-servers.sh all|finished|run`. Log lines may use the provider's own word, such as AWS's "terminate", but names don't.
+   - Scripts: `deploy/<provider>/settings.sh`, `deploy/<provider>/create-server.sh`, and `deploy/<provider>/delete-servers.sh all|finished|run <id>`. Log lines may use the provider's own word, such as AWS's "terminate", but names don't.
 8. **Labels or tags** on everything a deploy creates: `app=paranoid`, `run`, `created` and `expires`, the times in Unix seconds. Two exceptions, for what only that provider has:
    - Google Cloud adds `paranoid-month` for its monthly ledger, and its `run` is `<run_id>-<attempt>`, because a re-run creates a server of its own.
    - Azure keeps ISO times only if its Logic App backstop can't compare Unix seconds.
-9. **The cost check** gets the server size the deploy will actually use, from its setting. Google Cloud may pass `e2-micro` as written only while its size isn't a setting.
-10. **The deploy's summary** has the app's URL, the shutdown time, the size and region, what deletes the server (the cleanup or a backstop), and "The most it can cost is $WORST_CASE_USD". A provider's extras, such as Google Cloud's budget left for the month, come after it.
+9. **The cost check** gets the server size the deploy will actually use, from its setting, or every size it may use, such as Hetzner's fallback types, as one `--server a,b,c`. Google Cloud may pass `e2-micro` as written only while its size isn't a setting.
+10. **The deploy's summary**, written by [`deploy/ci/write-summary.sh`](#shared-pieces), has the app's URL, the shutdown time, the invites, the size and region, what deletes the server (the cleanup or a backstop), and "The most it can cost is $WORST_CASE_USD, before tax". A provider's extras, such as Google Cloud's budget left for the month, come after it.
 11. **The guide's skeleton**, after "What this deployment needs", "Contents" and "Words used in this guide":
     1. Fork the repository
     2. Sign up
@@ -104,6 +145,22 @@ Every provider's deploy works the same way, so that whoever knows one knows them
 
     A provider that needs fewer steps folds two together, such as "4. Create the credentials and connect your fork", and keeps the order. Then come "Costs", the provider's own extras, "Checking nothing is left", "The credentials" (where they live, what they may do and how to replace them, or why there's no secret), "Troubleshooting", "Removing everything", "Privacy" and "What a deploy does".
 
+    "Troubleshooting", "Privacy" and "What a deploy does" link [what every guide shares](#what-every-guide-shares) and add only their provider's own rows, points and steps, keeping their headings. The beginner steps, "Fork the repository", "Start a server" and log retention, stay in every guide, so each guide still works from a GitHub account alone.
+
+12. **The shared pieces** below, each used by every provider, never copied.
+
+### Shared pieces
+
+What every provider's deploy, stop and cleanup would otherwise repeat is shared. A piece reads no `vars` or `secrets`: the provider's own workflow or script passes every value in, so `check-deploy-docs` still sees every environment, variable and secret in `*-<provider>.yml`, and no credential reaches a step that doesn't need it. The deploy, stop and cleanup workflows themselves stay each provider's own, not reusable workflows, which would hide their names from that check and need every provider's secrets by name.
+
+1. **[`.github/actions/start-cleanup-on-main`](../../.github/actions/start-cleanup-on-main/README.md)**, the scheduled cleanup's `start` job: it starts `cleanup-<provider>.yml` on `main` once `<provider>-cleanup` and the workflow on `main` exist. The provider keeps the job header, its cron, the `if:` on `schedule` and `actions: write`, and checks out the repository first.
+2. **[`deploy/ci/shared-settings.sh`](../../deploy/ci/shared-settings.sh)**, sourced by `deploy/<provider>/settings.sh`: `fail`, `whole`, `amount` and `to_env`, and `shared_settings`, which checks the shared variables, the two inputs and the run ID, and passes them on through `GITHUB_ENV`. The shared variables' patterns and limits come from `deploy/requirements.json`, the one copy of them, which the check below compares with the shared table, and `amount` uses `MAX_DEPLOY_COST_USD`'s. If that file or a rule can't be read, the settings check fails before it writes anything. The settings step passes `RUN_ID: ${{ github.run_id }}` with the shared values. Every value goes into `GITHUB_ENV` through `to_env`, which refuses a line break. The provider checks its own region, size, image and identity values with the same helpers.
+3. **[`deploy/ci/write-summary.sh`](../../deploy/ci/write-summary.sh)**, the deploy's summary in point 10's form, with `--url`, `--expires`, `--invites`, `--size`, `--region`, `--cost`, `--deleted-by` and any `--extra` lines.
+4. **[`deploy/ci/delete-mode.sh`](../../deploy/ci/delete-mode.sh)**, sourced by `deploy/<provider>/delete-servers.sh`: `delete_mode '<id pattern>' "$@"` reads `all`, `finished` or `run <id>`, with the provider's run ID pattern, such as Google Cloud's `[0-9]+-[0-9]+`. The provider keeps its filters, its "already gone counts as done" and every API call.
+5. **The cost check, [`packages/deploy`](../../packages/deploy/src/cli.ts)**, with the provider's `deploy/<provider>/prices.json`, and `--server a,b,c` for a deploy that may use any of several sizes. It writes the highest worst case as `WORST_CASE_USD`.
+
+Each piece's tests are next to the others': the shell pieces' in [`ci-scripts.test.ts`](../../packages/deploy/src/__tests__/ci-scripts.test.ts), the cost check's in [`cli.test.ts`](../../packages/deploy/src/__tests__/cli.test.ts), and how the workflows call the deploy scripts in [`workflow-scripts.test.ts`](../../packages/deploy/src/__tests__/workflow-scripts.test.ts).
+
 ### What CI checks
 
 CI keeps the pages true to the workflows, and checks the parts of the pattern above that it can read. [`scripts/check-deploy-docs.mts`](../../scripts/check-deploy-docs.mts) reads every `.github/workflows/*-<provider>.yml` and fails if:
@@ -111,7 +168,8 @@ CI keeps the pages true to the workflows, and checks the parts of the pattern ab
 - a page doesn't list an environment, secret or variable that the provider's workflows use, or lists one they no longer use, or a provider with workflows has no page, no folder README or no row here;
 - a secret, or a variable set in an environment, is read outside that environment's jobs, a job's own `if:` included, which runs before the job gets its environment;
 - a variable's **Set in** doesn't match where the workflows read it, an identity value is set in the repository or a tuning value in an environment, judged by its name's ending (`_ARN`, `_CLIENT_ID`, `_PROJECT` and the like, or `_REGION`, `_SIZE`, `_USD` and the like), a token is a variable, or an identity value has a second, `_CLEANUP_` name;
-- the guide's `##` headings aren't the skeleton's, in its order, with the steps numbered from 1, starting with "Fork" and "Sign up" and ending with "Optional settings", "Start a server" and "Stop it".
+- the guide's `##` headings aren't the skeleton's, in its order, with the steps numbered from 1, starting with "Fork" and "Sign up" and ending with "Optional settings", "Start a server" and "Stop it";
+- a provider doesn't use the [shared pieces](#shared-pieces): `cleanup-<provider>.yml` doesn't start itself on `main` with `start-cleanup-on-main`, for its own provider and workflow, `deploy-<provider>.yml` doesn't write its summary with `write-summary.sh` or run the cost check with its own price file, or `deploy/<provider>/settings.sh` and `delete-servers.sh` don't source and call `shared-settings.sh` and `delete-mode.sh`.
 
 It also reads the preflight's lists, `deploy/requirements.json` and each `deploy/<provider>/requirements.json`, so the page, the workflows and what the preflight checks can't drift apart. A provider's list is checked once its workflows land, and the check fails if:
 
@@ -122,7 +180,7 @@ It also reads the preflight's lists, `deploy/requirements.json` and each `deploy
 
 The lists' own format, and what the preflight does with them, are `packages/deploy`'s tests, which `pnpm test` runs.
 
-The rest of the pattern, such as the CLIs, schedules, timeouts, job and step names, labels and the summary, is for review. Run the check from the repository root:
+The rest of the pattern, such as the CLIs, schedules, timeouts, job and step names, labels and what the summary says, is for review. Run the check from the repository root:
 
 ```bash
 node scripts/check-deploy-docs.mts
