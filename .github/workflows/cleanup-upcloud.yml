@@ -1,0 +1,125 @@
+name: Clean up UpCloud
+
+# Every hour, deletes the Paranoid servers on UpCloud that are stopped or
+# past their expiry time, with their storage. A stopped server's storage and
+# IPv4 address are still billed, so this is what stops the cost.
+#
+# UPCLOUD_TOKEN is a secret of the `upcloud-cleanup` environment, which only
+# `main` may use, and only the step that calls upctl gets it. Unlike `upcloud`,
+# which deploy-upcloud.yml uses, it has no required reviewers, so the hourly
+# cleanup never waits for an approval. Scheduled runs use the default branch,
+# `dev`, so they can't use the environment themselves: the `start` job starts
+# this workflow on `main` instead, and that run cleans up.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  start:
+    name: Start the cleanup on main
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      # Without an upcloud-cleanup environment or a cleanup-upcloud.yml on
+      # main, there's nothing to clean up with. deploy-upcloud.yml and
+      # cleanup-upcloud.yml reach main together.
+      - name: Start the cleanup on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          missing() {
+            local error
+            if error=$(gh api "$1" --silent 2>&1); then
+              return 1
+            fi
+            if [[ $error == *"HTTP 404"* ]]; then
+              return 0
+            fi
+            echo "::error::$error"
+            exit 1
+          }
+          if missing "repos/$REPO/environments/upcloud-cleanup"; then
+            echo "There's no upcloud-cleanup environment, so there's nothing to clean up with."
+          elif missing "repos/$REPO/contents/.github/workflows/cleanup-upcloud.yml?ref=main"; then
+            echo "cleanup-upcloud.yml isn't on main yet, and neither is deploy-upcloud.yml, so there's nothing to clean up."
+          else
+            gh workflow run cleanup-upcloud.yml --repo "$REPO" --ref main
+            echo "Started the cleanup on main."
+          fi
+
+  cleanup:
+    name: Delete finished servers
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: upcloud-cleanup
+    # actions: read, for the preflight to read the environments' settings
+    # and to list the deploy runs that haven't finished
+    permissions:
+      actions: read
+      contents: read
+    # Not shared with deploy-upcloud.yml, which may wait hours for its approval
+    # in the `upcloud` group. Running beside a deploy or a stop is safe: this
+    # deletes only servers that are stopped or expired, never the one a deploy
+    # is setting up, and delete-servers.sh skips a server something else
+    # deleted first.
+    concurrency:
+      group: upcloud-cleanup
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # owner-only "false": the scheduled run starts as whoever last edited
+      # the schedule, and the run on main as github-actions[bot]. Without a
+      # valid token the run fails, so a cleanup that can't run shows.
+      - name: Run the preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: upcloud
+          environment: upcloud-cleanup
+          owner-only: "false"
+          vars: ${{ toJSON(vars) }}
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+
+      - name: Set up upctl
+        uses: ./.github/actions/setup-upctl
+
+      # A deploy that hasn't finished may be creating its server, so its disk
+      # is never treated as left behind. If the list can't be read, the
+      # cleanup deletes no disks without a server this time.
+      - name: Find the deploys that haven't finished
+        id: active
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ids=$(gh run list --repo "$REPO" --workflow deploy-upcloud.yml \
+            --limit 100 --json databaseId,status \
+            --jq '.[] | select(.status != "completed") | .databaseId'); then
+            echo "runs=$(echo $ids)" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Couldn't list the deploy runs, so no disk without a server is deleted this time."
+            echo "runs=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Delete the servers that are off or expired
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+          ACTIVE_RUNS: ${{ steps.active.outputs.runs }}
+        run: bash deploy/upcloud/delete-servers.sh finished

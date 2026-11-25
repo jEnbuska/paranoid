@@ -1,0 +1,176 @@
+name: Deploy to UpCloud
+
+# Starts a Paranoid server on UpCloud for a set number of invites. It
+# powers itself off once the last one is finished, or when its lifetime is
+# over, and cleanup-upcloud.yml then deletes it. See docs/deploy/upcloud.md.
+#
+# The UpCloud API token, UPCLOUD_TOKEN, is a secret of the `upcloud`
+# environment, which only `main` may use and which docs/deploy/upcloud.md
+# sets up to need the owner's approval, so every deploy waits for it. Only this
+# workflow uses it: stop-upcloud.yml and cleanup-upcloud.yml use
+# `upcloud-cleanup`, which has no reviewers, so they never wait. Only the
+# steps that call upctl get the token, through `env:`, and nothing writes it to
+# disk or prints it. Only a manual run starts this workflow, never a pull
+# request, so no PR or fork can reach the secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_invites:
+        description: "Invites before the server shuts down. Empty: the MAX_INVITES variable, or 5."
+        required: false
+        type: string
+      lifetime_minutes:
+        description: "Minutes until it shuts down at the latest, at most 1440 (24 hours). Empty: the LIFETIME_MINUTES variable, or 60."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Shared with stop-upcloud.yml, which cancels a deploy that is running or
+# waiting for approval. A deploy waits for the deploy before it to finish.
+# cleanup-upcloud.yml has its own group, so a deploy waiting for approval
+# doesn't hold up the cleanup.
+concurrency:
+  group: upcloud
+  cancel-in-progress: false
+
+jobs:
+  # Before the approval: fails a run that someone without admin permission
+  # on the repository started, or one whose environments aren't set up as
+  # the guide says, before anyone is asked to approve it.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # reads the environments' settings
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: upcloud
+          environment: upcloud
+          in-environment: "false"
+          vars: ${{ toJSON(vars) }}
+
+  deploy:
+    name: Deploy to UpCloud
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: upcloud
+      url: ${{ steps.create.outputs.url }}
+    permissions:
+      contents: read
+      actions: read # the preflight reads the environments' settings
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # After the approval, with the environment's secret, which it only
+      # tests for being set and matching its pattern
+      - name: Run the preflight
+        uses: ./.github/actions/deploy-preflight
+        with:
+          provider: upcloud
+          environment: upcloud
+          vars: ${{ toJSON(vars) }}
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+
+      # Before anything is deleted, so a bad input leaves a running server
+      # alone. Every value that reaches the server's user data or labels is
+      # checked here as well as by the preflight (#141), and the workflow's
+      # inputs, which win over the variables, only here.
+      - name: Check the settings
+        env:
+          MAX_INVITES: ${{ inputs.max_invites || vars.MAX_INVITES || '5' }}
+          LIFETIME_MINUTES: ${{ inputs.lifetime_minutes || vars.LIFETIME_MINUTES || '60' }}
+          MAX_EGRESS_MBIT: ${{ vars.MAX_EGRESS_MBIT || '2' }}
+          MAX_DEPLOY_COST_USD: ${{ vars.MAX_DEPLOY_COST_USD || '1' }}
+          ZONE: ${{ vars.UPCLOUD_ZONE || 'fi-hel1' }}
+          PLAN: ${{ vars.UPCLOUD_PLAN || 'STARTER-1xCPU-1GB' }}
+          DEFAULT_PLAN: STARTER-1xCPU-1GB
+          TEMPLATE: ${{ vars.UPCLOUD_TEMPLATE || 'Debian GNU/Linux 13 (Trixie)' }}
+        run: bash deploy/upcloud/settings.sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Before anything is deleted or created, so a deploy above the limit
+      # changes nothing. The server is billed from its creation until
+      # cleanup-upcloud.yml deletes it, at the latest the price file's
+      # cleanupDelayMinutes after its lifetime, running or not. A zone or plan
+      # that isn't in the price file is refused here too.
+      - name: Check the worst-case cost
+        run: |
+          node packages/deploy/src/cli.ts --prices deploy/upcloud/prices.json \
+            --region "$ZONE" --server "$PLAN" \
+            --lifetime-minutes "$LIFETIME_MINUTES" \
+            --egress-mbit "$MAX_EGRESS_MBIT" --limit-usd "$MAX_DEPLOY_COST_USD"
+
+      - name: Set up upctl
+        id: upctl
+        uses: ./.github/actions/setup-upctl
+
+      # Running or stopped, so there's only ever one server
+      - name: Delete the existing servers
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+        run: bash deploy/upcloud/delete-servers.sh all
+
+      # The server fetches this exact commit of this repository, which is
+      # public, so it needs no credentials. The same step sets its firewall.
+      - name: Create the server
+        id: create
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/upcloud/create-server.sh
+
+      # The server installs and builds the app first, which takes a few
+      # minutes.
+      - name: Wait for the app
+        env:
+          HOST: ${{ steps.create.outputs.host }}
+        run: bash deploy/ci/wait-for-app.sh "$HOST" 600
+
+      - name: Write the summary
+        env:
+          URL: ${{ steps.create.outputs.url }}
+          EXPIRES: ${{ steps.create.outputs.expires }}
+        run: |
+          shutdown=$(date -u -d "@$EXPIRES" '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "## Paranoid is running"
+            echo
+            echo "**<$URL>**"
+            echo
+            echo "- It shuts down once $MAX_INVITES invites are finished, or at $shutdown at the latest. Chats that have started keep working after that."
+            echo "- It's a $PLAN server in $ZONE. The Clean up UpCloud workflow deletes it within about an hour of shutting down, and Stop UpCloud deletes it right away."
+            echo "- The most it can cost is \$$WORST_CASE_USD, before VAT."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Also when the run is cancelled, for example by stop-upcloud.yml
+      - name: Delete the server after a failed deploy
+        if: (failure() || cancelled()) && steps.upctl.outcome == 'success'
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: bash deploy/upcloud/delete-servers.sh run "$RUN_ID"

@@ -26,3 +26,8 @@ Anyone with a fork can start a Paranoid server from GitHub Actions. Each provide
 ## Providers
 
 Each provider's own rules go here, one bullet each, linking its guide (`../docs/deploy/<provider>.md`, relative to this file).
+
+- UpCloud ([guide](../docs/deploy/upcloud.md)): `deploy-upcloud.yml`, `stop-upcloud.yml` and `cleanup-upcloud.yml` manage one server, with scripts in `deploy/upcloud`.
+  - Don't use `UpCloudLtd/upcloud-cli-action`: it writes the token to `GITHUB_ENV`, on disk and for every later step. `.github/actions/setup-upctl` installs `upctl` instead. Use the token, never UpCloud's username and password.
+  - `deploy/upcloud/settings.sh` checks every value before it reaches user data or labels.
+  - Servers are created with an SSH key whose private half is deleted, password delivery `none` and no `--create-password`, so UpCloud sets no root password. Never print `upctl`'s JSON output: a server's details can hold passwords.
